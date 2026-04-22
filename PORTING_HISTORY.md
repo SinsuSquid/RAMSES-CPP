@@ -28,14 +28,14 @@ This file tracks the architectural decisions and progress of the port from Fortr
 ## Phase 6: Hydro Solver (Current)
 
 ### [2026-04-22] - Godunov Solver & 3D Stencil
-- **Riemann & MUSCL:** Core physics implemented and verified.
-- **Stencil Assembly:** Implemented `HydroSolver::gather_stencil` to construct 6x6x6 local cubes for each oct, including coarse-to-fine interpolation placeholder.
-- **AMR Navigation:** Added `get_3x3x3_father` to `AmrGrid` to facilitate 3D neighbor gathering.
-- **Verification:** Verified that the 6x6x6 stencil correctly maps oct-internal cells to the local processing block.
+- **Riemann & MUSCL:** Core physics (LLF, MUSCL-Hancock, Slopes) implemented and verified.
+- **Stencil Assembly:** Implemented `gather_stencil` to construct 6x6x6 local cubes for each oct, providing a unified physics buffer.
+- **Interpolation:** Added `interpol_hydro` skeleton for coarse-to-fine prolongation at AMR boundaries.
+- **Unsplit Logic:** Implemented a functional 1D unsplit skeleton in `godfine1`, demonstrating the full flow from stencil assembly to `unew` update.
 
 ### Architectural Decisions
-1. **Stencil Struct:** Used a dedicated `LocalStencil` struct to manage the 6x6x6 local buffer, mirroring the `uloc` logic in `godunov_fine.f90`.
-2. **Modular Gathering:** Separated neighbor navigation (`AmrGrid`) from variable gathering (`HydroSolver`) to maintain clean abstraction boundaries.
+1. **Oct-Centric Processing:** The solver processes data oct-by-oct to maintain cache locality and match RAMSES' vector-sweep philosophy.
+2. **Buffer-Driven Physics:** By assembling a 6x6x6 `LocalStencil`, the physics solvers (MUSCL, Riemann) are shielded from the complexities of the AMR tree navigation.
 
 ## Final Summary of C++ Port Initialization
 This task has successfully initialized the RAMSES-2025 C++ port with the following verified components:

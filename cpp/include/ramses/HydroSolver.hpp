@@ -40,6 +40,13 @@ private:
     static void ctoprim(const real_t u[], real_t q[], real_t gamma);
 
     /**
+     * @brief Performs hydro interpolation (prolongation) from father cells to children.
+     * @param u1 Input 7 conservative states (center + 6 neighbors)
+     * @param u2 Output 8 conservative states (children)
+     */
+    static void interpol_hydro(const real_t u1[7][5], real_t u2[8][5]);
+
+    /**
      * @brief A local 6x6x6 (3D) or equivalent 1D/2D stencil for Godunov solver.
      */
     struct LocalStencil {
