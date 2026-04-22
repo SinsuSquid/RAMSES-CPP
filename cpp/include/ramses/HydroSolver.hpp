@@ -37,6 +37,7 @@ private:
      * @brief Inner worker for Godunov solver on a batch of grids.
      */
     void godfine1(const std::vector<int>& ind_grid, int ilevel);
+    static void ctoprim(const real_t u[], real_t q[], real_t gamma);
 };
 
 } // namespace ramses
