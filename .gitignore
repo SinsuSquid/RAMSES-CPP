@@ -43,6 +43,9 @@ build/
 *.out
 *.app
 
+# Tests
+tests/
+
 # debug information files
 *.dwo
 
