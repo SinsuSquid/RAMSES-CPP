@@ -75,15 +75,55 @@ void Simulation::dump_snapshot(int iout) {
     std::stringstream ss;
     ss << "output_" << std::setw(5) << std::setfill('0') << iout;
     std::string dir = ss.str();
-    
     mkdir(dir.c_str(), 0777);
     
-    std::string amr_file = dir + "/amr_00001.out1";
-    RamsesWriter writer(amr_file);
-    if (writer.is_open()) {
-        writer.write_amr(grid_);
-        std::cout << "[Simulation] Snapshot written to " << amr_file << std::endl;
+    // 1. AMR file
+    std::string amr_file = dir + "/amr_00001.out00001"; // Match CPU numbering
+    {
+        RamsesWriter writer(amr_file);
+        if (writer.is_open()) writer.write_amr(grid_);
     }
+
+    // 2. Hydro file
+    std::string hydro_file = dir + "/hydro_00001.out00001";
+    {
+        RamsesWriter writer(hydro_file);
+        if (writer.is_open()) writer.write_hydro(grid_, grid_.nlevelmax);
+    }
+
+    // 3. Info file (Plain text)
+    std::string info_file = dir + "/info_" + std::string(ss.str().substr(7)) + ".txt";
+    std::ofstream info(info_file);
+    if (info.is_open()) {
+        info << "ncpu         = " << grid_.ncpu << "\n";
+        info << "ndim         = " << NDIM << "\n";
+        info << "nx           = " << params::nx << "\n";
+        info << "ny           = " << params::ny << "\n";
+        info << "nz           = " << params::nz << "\n";
+        info << "levelmin     = " << config_.get_int("amr_params", "levelmin", 1) << "\n";
+        info << "levelmax     = " << grid_.nlevelmax << "\n";
+        info << "ngridmax     = " << grid_.ngridmax << "\n";
+        info << "boxlen       = 1.0\n";
+        info << "time         = " << t_ << "\n";
+        info << "unit_l       = 1.0\n";
+        info << "unit_d       = 1.0\n";
+        info << "unit_t       = 1.0\n";
+        info.close();
+    }
+
+    // 4. Descriptor file
+    std::ofstream desc(dir + "/hydro_file_descriptor.txt");
+    if (desc.is_open()) {
+        desc << "# version:  1\n";
+        desc << "1, density, double\n";
+        desc << "2, velocity_x, double\n";
+        if (NDIM > 1) desc << "3, velocity_y, double\n";
+        if (NDIM > 2) desc << "4, velocity_z, double\n";
+        desc << "5, pressure, double\n";
+        desc.close();
+    }
+    
+    std::cout << "[Simulation] Snapshot " << iout << " dumped successfully." << std::endl;
 }
 
 void Simulation::amr_step(int ilevel) {

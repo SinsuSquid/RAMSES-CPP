@@ -44,6 +44,11 @@ public:
      */
     void write_amr(const AmrGrid& grid);
 
+    /**
+     * @brief Dumps the hydro variables to a binary file.
+     */
+    void write_hydro(const AmrGrid& grid, int ilevel);
+
 private:
     std::ofstream file_;
 };
