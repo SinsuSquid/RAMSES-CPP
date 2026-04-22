@@ -42,15 +42,20 @@ void Simulation::run() {
 }
 
 void Simulation::amr_step(int ilevel) {
+    if (ilevel > grid_.nlevelmax) return;
+
     // 1. Hydro update for this level
     hydro_.godunov_fine(ilevel);
     
-    // 2. Recursive step for finer levels (simplified)
+    // 2. Recursive step for finer levels (Sub-cycling)
     if (ilevel < grid_.nlevelmax) {
-        // amr_step(ilevel + 1);
+        amr_step(ilevel + 1);
+        amr_step(ilevel + 1);
     }
     
     // 3. Restriction (average fine cells to coarse)
+    // This is where upload_fine(ilevel) would go
 }
+
 
 } // namespace ramses

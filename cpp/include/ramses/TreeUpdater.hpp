@@ -24,6 +24,11 @@ public:
      */
     void refine_fine(int ilevel);
 
+    /**
+     * @brief Marks cells for refinement based on gradients.
+     */
+    void mark_cells(int ilevel);
+
 private:
     AmrGrid& grid_;
 

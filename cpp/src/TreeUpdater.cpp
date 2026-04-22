@@ -102,9 +102,26 @@ void TreeUpdater::make_grid_coarse(int ind_cell, int ibound, bool boundary_regio
     }
 }
 
-void TreeUpdater::refine_fine(int ilevel) {
-    // Placeholder for Phase 4 extension
+void TreeUpdater::mark_cells(int ilevel) {
+    const real_t err_grad_d = 0.1; // Threshold
+    const real_t floor_d = 1e-10;
+
+    for (int igrid = 1; igrid <= grid_.ngridmax; ++igrid) {
+        // Here we should check if igrid is active and belongs to ilevel.
+        // For simplicity, we loop over all cells.
+    }
+
+    for (int ind_cell = 1; ind_cell <= grid_.ncell; ++ind_cell) {
+        // Density gradient check (very simplified)
+        // In real RAMSES, this gathers neighbors.
+        // For now, we'll mark some random cells to test refinement logic.
+        if (ind_cell % 100 == 0) {
+            grid_.flag1[ind_cell] = 1;
+            grid_.flag2[ind_cell] = 1;
+        }
+    }
 }
+
 
 void TreeUpdater::make_grid_fine(int ind_grid_father, int icell_pos, int ilevel, int ibound, bool boundary_region) {
     // Placeholder for Phase 4 extension

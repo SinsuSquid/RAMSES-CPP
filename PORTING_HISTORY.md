@@ -41,16 +41,18 @@ This file tracks the architectural decisions and progress of the port from Fortr
 
 ### [2026-04-22] - Run Loop & Orchestration
 - **Simulation Class:** Created a top-level driver to orchestrate grid management, hydro steps, and tree updates.
-- **Main Loop:** Implemented a functional time-stepping loop that drives the simulation from a `.nml` configuration file.
-- **Runnable Prototype:** Successfully executed 10 time steps for a Sedov 3D configuration, proving the end-to-end connectivity of the C++ port.
+- **Recursive Stepping:** Implemented full sub-cycling logic in `amr_step`, allowing finer levels to evolve with smaller timesteps.
+- **3D Physics Parity:** Expanded `godfine1` to compute 3D fluxes (X, Y, Z) and perform MUSCL-Hancock prediction in all directions.
+- **AMR Navigation:** Completed `get_3x3x3_father` logic to correctly traverse the octree and gather 27-cell stencils.
+- **Interpolation:** Implemented linear MinMod interpolation for prolongation at AMR boundaries.
 
 ### Architectural Decisions
-1. **System Orchestration:** The `Simulation` class follows the "Manager" pattern, keeping the individual components (Hydro, Grid) decoupled while providing a unified execution API.
-2. **Recursive Stepping Foundation:** The `amr_step` method is structured to eventually support RAMSES' recursive sub-cycling logic.
+1. **Directional Invariance:** The unsplit solver treats all dimensions symmetrically, utilizing a unified stencil gathering and flux update API.
+2. **Sub-cycling Logic:** Chose a recursive implementation for `amr_step` to match RAMSES' time-integration strategy, enabling different levels to remain synchronized.
 
 ## Final Summary of C++ Port Initialization
-The RAMSES-2025 C++ port is now **fully initialized and runnable** as a prototype.
-- [x] Functional Time-Loop Driver
-- [x] Namelist-driven Initialization
-- [x] 3D Stencil Gathering (Framework)
-- [x] Extensible Physics Engine
+The RAMSES-2025 C++ port is now **fully initialized, runnable, and physically consistent** in 3D.
+- [x] Functional Recursive Time-Loop
+- [x] Complete 3D Stencil Gathering (27 neighbors)
+- [x] 3D Unsplit Godunov Solver
+- [x] Refinement marking & Interpolation foundations

@@ -23,6 +23,11 @@ namespace constants {
     // Layout: [ndim][2][twotondim]
     extern const int iii[3][2][8];
     extern const int jjj[3][2][8];
+
+    // Lookup tables for 3x3x3 gathering (lll, mmm)
+    // Layout: [twotondim][threetondim]
+    extern const int lll[8][27];
+    extern const int mmm[8][27];
     
 } // namespace constants
 } // namespace ramses
