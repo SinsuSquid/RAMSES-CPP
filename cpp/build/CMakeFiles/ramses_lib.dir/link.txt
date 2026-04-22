@@ -1,0 +1,2 @@
+/usr/sbin/ar qc libramses_lib.a CMakeFiles/ramses_lib.dir/src/Constants.cpp.o CMakeFiles/ramses_lib.dir/src/Parameters.cpp.o CMakeFiles/ramses_lib.dir/src/AmrGrid.cpp.o CMakeFiles/ramses_lib.dir/src/Config.cpp.o CMakeFiles/ramses_lib.dir/src/Hilbert.cpp.o CMakeFiles/ramses_lib.dir/src/TreeUpdater.cpp.o
+/usr/sbin/ranlib libramses_lib.a
