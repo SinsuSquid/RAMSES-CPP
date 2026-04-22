@@ -1,6 +1,6 @@
 # RAMSES-CPP
 
-A high-performance, modern C++17 port of the **RAMSES-2025** Adaptive Mesh Refinement (AMR) code. 
+A high-performance, modern C++17 port of the [**RAMSES-2025**](https://github.com/ramses-organisation/ramses/releases/tag/2025.05) Adaptive Mesh Refinement (AMR) code. 
 
 RAMSES-CPP provides a functional, physically consistent alternative to the original Fortran implementation while maintaining strict binary compatibility for snapshots and restart files.
 
