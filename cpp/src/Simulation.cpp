@@ -1,5 +1,6 @@
 #include "ramses/Simulation.hpp"
 #include "ramses/Parameters.hpp"
+#include "ramses/Initializer.hpp"
 #include <iostream>
 
 namespace ramses {
@@ -22,20 +23,33 @@ void Simulation::initialize(const std::string& nml_path) {
 
     grid_.allocate(p::nx, p::ny, p::nz, ngridmax, nvar, 1, nlevelmax);
     
-    std::cout << "[Simulation] Grid allocated: " << grid_.ncell << " cells." << std::endl;
+    // Apply Initial Conditions
+    Initializer init(grid_, config_);
+    init.apply_all();
+    
+    std::cout << "[Simulation] Grid allocated and initialized." << std::endl;
 }
 
 void Simulation::run() {
     std::cout << "[Simulation] Starting main loop..." << std::endl;
     
+    real_t gamma = config_.get_double("hydro_params", "gamma", 1.4);
+    real_t courant_factor = config_.get_double("hydro_params", "courant_factor", 0.8);
+    real_t dx = config_.get_double("amr_params", "boxlen", 1.0) / static_cast<real_t>(params::nx);
+
     while (t_ < tend_ && nstep_ < nstepmax_) {
         nstep_++;
-        std::cout << "  Step " << nstep_ << " t=" << t_ << std::endl;
+        
+        // Calculate dynamic timestep
+        real_t dt = hydro_.compute_courant_step(1, dx, gamma, courant_factor);
+        if (dt > 0.1) dt = 0.1; // Cap for stability in initial steps
+
+        std::cout << "  Step " << nstep_ << " t=" << t_ << " dt=" << dt << std::endl;
         
         // Root level step
         amr_step(1);
         
-        t_ += 0.1; // Placeholder timestep
+        t_ += dt;
     }
     
     std::cout << "[Simulation] Run complete." << std::endl;

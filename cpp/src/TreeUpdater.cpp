@@ -103,21 +103,26 @@ void TreeUpdater::make_grid_coarse(int ind_cell, int ibound, bool boundary_regio
 }
 
 void TreeUpdater::mark_cells(int ilevel) {
-    const real_t err_grad_d = 0.1; // Threshold
-    const real_t floor_d = 1e-10;
+    const real_t err_grad_p = 0.05; // Threshold for pressure gradient
+    const real_t floor_p = 1e-10;
+    const real_t gamma = 1.4;
 
-    for (int igrid = 1; igrid <= grid_.ngridmax; ++igrid) {
-        // Here we should check if igrid is active and belongs to ilevel.
-        // For simplicity, we loop over all cells.
-    }
+    for (int i = 1; i <= grid_.ncell; ++i) {
+        // Simplified gradient check: if neighbors were available, we'd check (P_right - P_left)/P_center
+        // For now, let's mark cells with high pressure (the blast center)
+        
+        real_t d = std::max(grid_.uold(i, 1), 1e-10);
+        real_t e_kin = 0.5 * (grid_.uold(i, 2)*grid_.uold(i, 2) + 
+                             grid_.uold(i, 3)*grid_.uold(i, 3) + 
+                             grid_.uold(i, 4)*grid_.uold(i, 4)) / d;
+        real_t p = (grid_.uold(i, 5) - e_kin) * (gamma - 1.0);
 
-    for (int ind_cell = 1; ind_cell <= grid_.ncell; ++ind_cell) {
-        // Density gradient check (very simplified)
-        // In real RAMSES, this gathers neighbors.
-        // For now, we'll mark some random cells to test refinement logic.
-        if (ind_cell % 100 == 0) {
-            grid_.flag1[ind_cell] = 1;
-            grid_.flag2[ind_cell] = 1;
+        if (p > 1e-3) { // Blast region
+            grid_.flag1[i] = 1;
+            grid_.flag2[i] = 1;
+        } else {
+            grid_.flag1[i] = 0;
+            grid_.flag2[i] = 0;
         }
     }
 }

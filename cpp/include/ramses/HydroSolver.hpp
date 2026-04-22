@@ -27,6 +27,11 @@ public:
 
     void godfine1(const std::vector<int>& ind_grid, int ilevel);
 
+    /**
+     * @brief Computes the dynamic timestep based on CFL condition.
+     */
+    real_t compute_courant_step(int ilevel, real_t dx, real_t gamma, real_t courant_factor);
+
 private:
     AmrGrid& grid_;
 

@@ -65,16 +65,6 @@ CMAKE_BINARY_DIR = /home/bgkang/RAMSES_CPP/cpp/build
 #=============================================================================
 # Targets provided globally by CMake.
 
-# Special rule for the target test
-test:
-	@$(CMAKE_COMMAND) -E cmake_echo_color "--switch=$(COLOR)" --cyan "Running tests..."
-	/usr/bin/ctest --force-new-ctest-process $(ARGS)
-.PHONY : test
-
-# Special rule for the target test
-test/fast: test
-.PHONY : test/fast
-
 # Special rule for the target edit_cache
 edit_cache:
 	@$(CMAKE_COMMAND) -E cmake_echo_color "--switch=$(COLOR)" --cyan "Running CMake cache editor..."
@@ -272,6 +262,54 @@ src/HydroSolver.cpp.s:
 	$(MAKE) $(MAKESILENT) -f CMakeFiles/ramses_lib.dir/build.make CMakeFiles/ramses_lib.dir/src/HydroSolver.cpp.s
 .PHONY : src/HydroSolver.cpp.s
 
+src/Initializer.o: src/Initializer.cpp.o
+.PHONY : src/Initializer.o
+
+# target to build an object file
+src/Initializer.cpp.o:
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/ramses_lib.dir/build.make CMakeFiles/ramses_lib.dir/src/Initializer.cpp.o
+.PHONY : src/Initializer.cpp.o
+
+src/Initializer.i: src/Initializer.cpp.i
+.PHONY : src/Initializer.i
+
+# target to preprocess a source file
+src/Initializer.cpp.i:
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/ramses_lib.dir/build.make CMakeFiles/ramses_lib.dir/src/Initializer.cpp.i
+.PHONY : src/Initializer.cpp.i
+
+src/Initializer.s: src/Initializer.cpp.s
+.PHONY : src/Initializer.s
+
+# target to generate assembly for a file
+src/Initializer.cpp.s:
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/ramses_lib.dir/build.make CMakeFiles/ramses_lib.dir/src/Initializer.cpp.s
+.PHONY : src/Initializer.cpp.s
+
+src/MpiManager.o: src/MpiManager.cpp.o
+.PHONY : src/MpiManager.o
+
+# target to build an object file
+src/MpiManager.cpp.o:
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/ramses_lib.dir/build.make CMakeFiles/ramses_lib.dir/src/MpiManager.cpp.o
+.PHONY : src/MpiManager.cpp.o
+
+src/MpiManager.i: src/MpiManager.cpp.i
+.PHONY : src/MpiManager.i
+
+# target to preprocess a source file
+src/MpiManager.cpp.i:
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/ramses_lib.dir/build.make CMakeFiles/ramses_lib.dir/src/MpiManager.cpp.i
+.PHONY : src/MpiManager.cpp.i
+
+src/MpiManager.s: src/MpiManager.cpp.s
+.PHONY : src/MpiManager.s
+
+# target to generate assembly for a file
+src/MpiManager.cpp.s:
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/ramses_lib.dir/build.make CMakeFiles/ramses_lib.dir/src/MpiManager.cpp.s
+.PHONY : src/MpiManager.cpp.s
+
 src/Muscl.o: src/Muscl.cpp.o
 .PHONY : src/Muscl.o
 
@@ -319,6 +357,30 @@ src/Parameters.s: src/Parameters.cpp.s
 src/Parameters.cpp.s:
 	$(MAKE) $(MAKESILENT) -f CMakeFiles/ramses_lib.dir/build.make CMakeFiles/ramses_lib.dir/src/Parameters.cpp.s
 .PHONY : src/Parameters.cpp.s
+
+src/PoissonSolver.o: src/PoissonSolver.cpp.o
+.PHONY : src/PoissonSolver.o
+
+# target to build an object file
+src/PoissonSolver.cpp.o:
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/ramses_lib.dir/build.make CMakeFiles/ramses_lib.dir/src/PoissonSolver.cpp.o
+.PHONY : src/PoissonSolver.cpp.o
+
+src/PoissonSolver.i: src/PoissonSolver.cpp.i
+.PHONY : src/PoissonSolver.i
+
+# target to preprocess a source file
+src/PoissonSolver.cpp.i:
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/ramses_lib.dir/build.make CMakeFiles/ramses_lib.dir/src/PoissonSolver.cpp.i
+.PHONY : src/PoissonSolver.cpp.i
+
+src/PoissonSolver.s: src/PoissonSolver.cpp.s
+.PHONY : src/PoissonSolver.s
+
+# target to generate assembly for a file
+src/PoissonSolver.cpp.s:
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/ramses_lib.dir/build.make CMakeFiles/ramses_lib.dir/src/PoissonSolver.cpp.s
+.PHONY : src/PoissonSolver.cpp.s
 
 src/RamsesReader.o: src/RamsesReader.cpp.o
 .PHONY : src/RamsesReader.o
@@ -472,7 +534,6 @@ help:
 	@echo "... depend"
 	@echo "... edit_cache"
 	@echo "... rebuild_cache"
-	@echo "... test"
 	@echo "... ramses_lib"
 	@echo "... ramses_main"
 	@echo "... src/AmrGrid.o"
@@ -490,12 +551,21 @@ help:
 	@echo "... src/HydroSolver.o"
 	@echo "... src/HydroSolver.i"
 	@echo "... src/HydroSolver.s"
+	@echo "... src/Initializer.o"
+	@echo "... src/Initializer.i"
+	@echo "... src/Initializer.s"
+	@echo "... src/MpiManager.o"
+	@echo "... src/MpiManager.i"
+	@echo "... src/MpiManager.s"
 	@echo "... src/Muscl.o"
 	@echo "... src/Muscl.i"
 	@echo "... src/Muscl.s"
 	@echo "... src/Parameters.o"
 	@echo "... src/Parameters.i"
 	@echo "... src/Parameters.s"
+	@echo "... src/PoissonSolver.o"
+	@echo "... src/PoissonSolver.i"
+	@echo "... src/PoissonSolver.s"
 	@echo "... src/RamsesReader.o"
 	@echo "... src/RamsesReader.i"
 	@echo "... src/RamsesReader.s"

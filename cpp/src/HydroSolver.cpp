@@ -140,6 +140,29 @@ void HydroSolver::gather_stencil(int igrid, int ilevel, LocalStencil& stencil) {
 }
 
 
+real_t HydroSolver::compute_courant_step(int ilevel, real_t dx, real_t gamma, real_t courant_factor) {
+    real_t dt_max = 1e30; // Start large
+    const real_t smallr = 1e-10;
+
+    for (int i = 1; i <= grid_.ncell; ++i) {
+        real_t d = std::max(grid_.uold(i, 1), smallr);
+        real_t u = grid_.uold(i, 2) / d;
+        real_t v = grid_.uold(i, 3) / d;
+        real_t w = grid_.uold(i, 4) / d;
+        
+        real_t e_kin = 0.5 * d * (u*u + v*v + w*w);
+        real_t e_int = grid_.uold(i, 5) - e_kin;
+        real_t p = std::max(e_int * (gamma - 1.0), d * 1e-10);
+        
+        real_t cs = std::sqrt(gamma * p / d);
+        real_t vel_max = std::max({std::abs(u), std::abs(v), std::abs(w)});
+        
+        real_t dt_cell = courant_factor * dx / (vel_max + cs + 1e-20);
+        dt_max = std::min(dt_max, dt_cell);
+    }
+    return dt_max;
+}
+
 void HydroSolver::godfine1(const std::vector<int>& ind_grid, int ilevel) {
     real_t gamma = 1.4;
     real_t dt = 0.01;

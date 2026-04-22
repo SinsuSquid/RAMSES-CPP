@@ -240,6 +240,48 @@ CMakeFiles/ramses_lib.dir/src/Simulation.cpp.s: cmake_force
 	@$(CMAKE_COMMAND) -E cmake_echo_color "--switch=$(COLOR)" --green "Compiling CXX source to assembly CMakeFiles/ramses_lib.dir/src/Simulation.cpp.s"
 	/usr/sbin/c++ $(CXX_DEFINES) $(CXX_INCLUDES) $(CXX_FLAGS) -S /home/bgkang/RAMSES_CPP/cpp/src/Simulation.cpp -o CMakeFiles/ramses_lib.dir/src/Simulation.cpp.s
 
+CMakeFiles/ramses_lib.dir/src/MpiManager.cpp.o: CMakeFiles/ramses_lib.dir/flags.make
+CMakeFiles/ramses_lib.dir/src/MpiManager.cpp.o: /home/bgkang/RAMSES_CPP/cpp/src/MpiManager.cpp
+CMakeFiles/ramses_lib.dir/src/MpiManager.cpp.o: CMakeFiles/ramses_lib.dir/compiler_depend.ts
+	@$(CMAKE_COMMAND) -E cmake_echo_color "--switch=$(COLOR)" --green --progress-dir=/home/bgkang/RAMSES_CPP/cpp/build/CMakeFiles --progress-num=$(CMAKE_PROGRESS_13) "Building CXX object CMakeFiles/ramses_lib.dir/src/MpiManager.cpp.o"
+	/usr/sbin/c++ $(CXX_DEFINES) $(CXX_INCLUDES) $(CXX_FLAGS) -MD -MT CMakeFiles/ramses_lib.dir/src/MpiManager.cpp.o -MF CMakeFiles/ramses_lib.dir/src/MpiManager.cpp.o.d -o CMakeFiles/ramses_lib.dir/src/MpiManager.cpp.o -c /home/bgkang/RAMSES_CPP/cpp/src/MpiManager.cpp
+
+CMakeFiles/ramses_lib.dir/src/MpiManager.cpp.i: cmake_force
+	@$(CMAKE_COMMAND) -E cmake_echo_color "--switch=$(COLOR)" --green "Preprocessing CXX source to CMakeFiles/ramses_lib.dir/src/MpiManager.cpp.i"
+	/usr/sbin/c++ $(CXX_DEFINES) $(CXX_INCLUDES) $(CXX_FLAGS) -E /home/bgkang/RAMSES_CPP/cpp/src/MpiManager.cpp > CMakeFiles/ramses_lib.dir/src/MpiManager.cpp.i
+
+CMakeFiles/ramses_lib.dir/src/MpiManager.cpp.s: cmake_force
+	@$(CMAKE_COMMAND) -E cmake_echo_color "--switch=$(COLOR)" --green "Compiling CXX source to assembly CMakeFiles/ramses_lib.dir/src/MpiManager.cpp.s"
+	/usr/sbin/c++ $(CXX_DEFINES) $(CXX_INCLUDES) $(CXX_FLAGS) -S /home/bgkang/RAMSES_CPP/cpp/src/MpiManager.cpp -o CMakeFiles/ramses_lib.dir/src/MpiManager.cpp.s
+
+CMakeFiles/ramses_lib.dir/src/PoissonSolver.cpp.o: CMakeFiles/ramses_lib.dir/flags.make
+CMakeFiles/ramses_lib.dir/src/PoissonSolver.cpp.o: /home/bgkang/RAMSES_CPP/cpp/src/PoissonSolver.cpp
+CMakeFiles/ramses_lib.dir/src/PoissonSolver.cpp.o: CMakeFiles/ramses_lib.dir/compiler_depend.ts
+	@$(CMAKE_COMMAND) -E cmake_echo_color "--switch=$(COLOR)" --green --progress-dir=/home/bgkang/RAMSES_CPP/cpp/build/CMakeFiles --progress-num=$(CMAKE_PROGRESS_14) "Building CXX object CMakeFiles/ramses_lib.dir/src/PoissonSolver.cpp.o"
+	/usr/sbin/c++ $(CXX_DEFINES) $(CXX_INCLUDES) $(CXX_FLAGS) -MD -MT CMakeFiles/ramses_lib.dir/src/PoissonSolver.cpp.o -MF CMakeFiles/ramses_lib.dir/src/PoissonSolver.cpp.o.d -o CMakeFiles/ramses_lib.dir/src/PoissonSolver.cpp.o -c /home/bgkang/RAMSES_CPP/cpp/src/PoissonSolver.cpp
+
+CMakeFiles/ramses_lib.dir/src/PoissonSolver.cpp.i: cmake_force
+	@$(CMAKE_COMMAND) -E cmake_echo_color "--switch=$(COLOR)" --green "Preprocessing CXX source to CMakeFiles/ramses_lib.dir/src/PoissonSolver.cpp.i"
+	/usr/sbin/c++ $(CXX_DEFINES) $(CXX_INCLUDES) $(CXX_FLAGS) -E /home/bgkang/RAMSES_CPP/cpp/src/PoissonSolver.cpp > CMakeFiles/ramses_lib.dir/src/PoissonSolver.cpp.i
+
+CMakeFiles/ramses_lib.dir/src/PoissonSolver.cpp.s: cmake_force
+	@$(CMAKE_COMMAND) -E cmake_echo_color "--switch=$(COLOR)" --green "Compiling CXX source to assembly CMakeFiles/ramses_lib.dir/src/PoissonSolver.cpp.s"
+	/usr/sbin/c++ $(CXX_DEFINES) $(CXX_INCLUDES) $(CXX_FLAGS) -S /home/bgkang/RAMSES_CPP/cpp/src/PoissonSolver.cpp -o CMakeFiles/ramses_lib.dir/src/PoissonSolver.cpp.s
+
+CMakeFiles/ramses_lib.dir/src/Initializer.cpp.o: CMakeFiles/ramses_lib.dir/flags.make
+CMakeFiles/ramses_lib.dir/src/Initializer.cpp.o: /home/bgkang/RAMSES_CPP/cpp/src/Initializer.cpp
+CMakeFiles/ramses_lib.dir/src/Initializer.cpp.o: CMakeFiles/ramses_lib.dir/compiler_depend.ts
+	@$(CMAKE_COMMAND) -E cmake_echo_color "--switch=$(COLOR)" --green --progress-dir=/home/bgkang/RAMSES_CPP/cpp/build/CMakeFiles --progress-num=$(CMAKE_PROGRESS_15) "Building CXX object CMakeFiles/ramses_lib.dir/src/Initializer.cpp.o"
+	/usr/sbin/c++ $(CXX_DEFINES) $(CXX_INCLUDES) $(CXX_FLAGS) -MD -MT CMakeFiles/ramses_lib.dir/src/Initializer.cpp.o -MF CMakeFiles/ramses_lib.dir/src/Initializer.cpp.o.d -o CMakeFiles/ramses_lib.dir/src/Initializer.cpp.o -c /home/bgkang/RAMSES_CPP/cpp/src/Initializer.cpp
+
+CMakeFiles/ramses_lib.dir/src/Initializer.cpp.i: cmake_force
+	@$(CMAKE_COMMAND) -E cmake_echo_color "--switch=$(COLOR)" --green "Preprocessing CXX source to CMakeFiles/ramses_lib.dir/src/Initializer.cpp.i"
+	/usr/sbin/c++ $(CXX_DEFINES) $(CXX_INCLUDES) $(CXX_FLAGS) -E /home/bgkang/RAMSES_CPP/cpp/src/Initializer.cpp > CMakeFiles/ramses_lib.dir/src/Initializer.cpp.i
+
+CMakeFiles/ramses_lib.dir/src/Initializer.cpp.s: cmake_force
+	@$(CMAKE_COMMAND) -E cmake_echo_color "--switch=$(COLOR)" --green "Compiling CXX source to assembly CMakeFiles/ramses_lib.dir/src/Initializer.cpp.s"
+	/usr/sbin/c++ $(CXX_DEFINES) $(CXX_INCLUDES) $(CXX_FLAGS) -S /home/bgkang/RAMSES_CPP/cpp/src/Initializer.cpp -o CMakeFiles/ramses_lib.dir/src/Initializer.cpp.s
+
 # Object files for target ramses_lib
 ramses_lib_OBJECTS = \
 "CMakeFiles/ramses_lib.dir/src/Constants.cpp.o" \
@@ -253,7 +295,10 @@ ramses_lib_OBJECTS = \
 "CMakeFiles/ramses_lib.dir/src/RiemannSolver.cpp.o" \
 "CMakeFiles/ramses_lib.dir/src/SlopeLimiter.cpp.o" \
 "CMakeFiles/ramses_lib.dir/src/Muscl.cpp.o" \
-"CMakeFiles/ramses_lib.dir/src/Simulation.cpp.o"
+"CMakeFiles/ramses_lib.dir/src/Simulation.cpp.o" \
+"CMakeFiles/ramses_lib.dir/src/MpiManager.cpp.o" \
+"CMakeFiles/ramses_lib.dir/src/PoissonSolver.cpp.o" \
+"CMakeFiles/ramses_lib.dir/src/Initializer.cpp.o"
 
 # External object files for target ramses_lib
 ramses_lib_EXTERNAL_OBJECTS =
@@ -270,9 +315,12 @@ libramses_lib.a: CMakeFiles/ramses_lib.dir/src/RiemannSolver.cpp.o
 libramses_lib.a: CMakeFiles/ramses_lib.dir/src/SlopeLimiter.cpp.o
 libramses_lib.a: CMakeFiles/ramses_lib.dir/src/Muscl.cpp.o
 libramses_lib.a: CMakeFiles/ramses_lib.dir/src/Simulation.cpp.o
+libramses_lib.a: CMakeFiles/ramses_lib.dir/src/MpiManager.cpp.o
+libramses_lib.a: CMakeFiles/ramses_lib.dir/src/PoissonSolver.cpp.o
+libramses_lib.a: CMakeFiles/ramses_lib.dir/src/Initializer.cpp.o
 libramses_lib.a: CMakeFiles/ramses_lib.dir/build.make
 libramses_lib.a: CMakeFiles/ramses_lib.dir/link.txt
-	@$(CMAKE_COMMAND) -E cmake_echo_color "--switch=$(COLOR)" --green --bold --progress-dir=/home/bgkang/RAMSES_CPP/cpp/build/CMakeFiles --progress-num=$(CMAKE_PROGRESS_13) "Linking CXX static library libramses_lib.a"
+	@$(CMAKE_COMMAND) -E cmake_echo_color "--switch=$(COLOR)" --green --bold --progress-dir=/home/bgkang/RAMSES_CPP/cpp/build/CMakeFiles --progress-num=$(CMAKE_PROGRESS_16) "Linking CXX static library libramses_lib.a"
 	$(CMAKE_COMMAND) -P CMakeFiles/ramses_lib.dir/cmake_clean_target.cmake
 	$(CMAKE_COMMAND) -E cmake_link_script CMakeFiles/ramses_lib.dir/link.txt --verbose=$(VERBOSE)
 

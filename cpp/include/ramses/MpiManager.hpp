@@ -1,7 +1,6 @@
 #ifndef RAMSES_MPI_MANAGER_HPP
 #define RAMSES_MPI_MANAGER_HPP
 
-#include <mpi.h>
 #include <string>
 
 namespace ramses {
@@ -25,7 +24,7 @@ public:
     int size() const { return size_; }
     bool is_master() const { return rank_ == 0; }
 
-    void barrier() { MPI_Barrier(MPI_COMM_WORLD); }
+    void barrier();
 
 private:
     MpiManager() : rank_(0), size_(1) {}

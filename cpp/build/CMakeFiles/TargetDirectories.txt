@@ -1,5 +1,4 @@
 /home/bgkang/RAMSES_CPP/cpp/build/CMakeFiles/ramses_lib.dir
 /home/bgkang/RAMSES_CPP/cpp/build/CMakeFiles/ramses_main.dir
-/home/bgkang/RAMSES_CPP/cpp/build/CMakeFiles/test.dir
 /home/bgkang/RAMSES_CPP/cpp/build/CMakeFiles/edit_cache.dir
 /home/bgkang/RAMSES_CPP/cpp/build/CMakeFiles/rebuild_cache.dir
