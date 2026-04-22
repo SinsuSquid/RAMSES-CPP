@@ -9,28 +9,26 @@ namespace ramses {
 
 /**
  * @brief Handles MPI domain decomposition and load balancing.
- * 
- * Replicates logic from amr/load_balance.f90.
  */
 class LoadBalancer {
 public:
     LoadBalancer(AmrGrid& grid, ParticleSystem& ps) : grid_(grid), ps_(ps) {}
 
-    /**
-     * @brief Performs full load balancing across all MPI ranks.
-     */
     void balance();
 
-private:
-    /**
-     * @brief Computes a new CPU map based on Hilbert curve ordering.
-     */
-    void compute_new_cpu_map(std::vector<int>& cpu_map_new);
+    struct OctPacket {
+        int ilevel;
+        real_t xg[3];
+        int father;
+        int nbor[6];
+        real_t uold[8][5];
+    };
 
-    /**
-     * @brief Physically moves grids between MPI ranks.
-     */
+private:
+    void compute_new_cpu_map(std::vector<int>& cpu_map_new);
     void move_grids(const std::vector<int>& cpu_map_new);
+    
+    void remove_grid_from_list(int igrid, int ilevel, int icpu);
 
     AmrGrid& grid_;
     ParticleSystem& ps_;

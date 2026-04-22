@@ -25,11 +25,13 @@ void AmrGrid::allocate(int nx_val, int ny_val, int nz_val, int ngridmax_val, int
     prev.assign(ngridmax, 0);
 
     // Allocate cell-based arrays
-    son.assign(static_cast<size_t>(ncell) + 1, 0);
+     son.assign(static_cast<size_t>(ncell) + 1, 0);
     flag1.assign(static_cast<size_t>(ncell) + 1, 0);
     flag2.assign(static_cast<size_t>(ncell) + 1, 0);
     cpu_map.assign(static_cast<size_t>(ncell) + 1, 1); // Default to rank 1
     divu.assign(static_cast<size_t>(ncell) + 1, 0.0);
+    phi.assign(static_cast<size_t>(ncell) + 1, 0.0);
+    rho.assign(static_cast<size_t>(ncell) + 1, 0.0);
 
     // Allocate physical fields
     uold.allocate(ncell, nvar);

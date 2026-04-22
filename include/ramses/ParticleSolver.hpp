@@ -14,6 +14,11 @@ public:
     ParticleSolver(AmrGrid& grid, ParticleSystem& ps) : grid_(grid), ps_(ps) {}
 
     /**
+     * @brief Assigns particle mass to the grid density field (Cloud-In-Cell).
+     */
+    void assign_mass(int ilevel);
+
+    /**
      * @brief Moves particles at a specific level.
      */
     void move_fine(int ilevel, real_t dt);

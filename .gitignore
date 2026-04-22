@@ -1,3 +1,6 @@
+# Build
+build/
+
 # GitHub
 .github
 
@@ -44,4 +47,4 @@
 *.dwo
 
 # Legacy RAMSES .f90 files
-legacy/
+legacy/*

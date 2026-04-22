@@ -39,6 +39,8 @@ public:
     Field<real_t> uold;           // State vector [ncell, nvar]
     Field<real_t> unew;           // Updated state vector [ncell, nvar]
     std::vector<real_t> divu;     // Velocity divergence [ncell]
+    std::vector<real_t> phi;      // Gravitational potential [ncell]
+    std::vector<real_t> rho;      // Density (gravity source) [ncell]
 
     // Linked list pointers (1-based level indexing)
     Field<int> headl;             // Head grid in level list [ncpu, nlevelmax]
