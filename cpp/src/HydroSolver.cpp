@@ -181,7 +181,11 @@ void HydroSolver::godfine1(const std::vector<int>& ind_grid, int ilevel) {
                     qr_interface[4] = qp_tmp[4];
 
                     real_t f_tmp[5];
-                    RiemannSolver::solve_llf(ql_interface, qr_interface, f_tmp, gamma);
+                    if (params::iriemann == 2) {
+                        RiemannSolver::solve_hllc(ql_interface, qr_interface, f_tmp, gamma);
+                    } else {
+                        RiemannSolver::solve_llf(ql_interface, qr_interface, f_tmp, gamma);
+                    }
                     
                     flux[i][j][k][idim][0] = f_tmp[0];
                     flux[i][j][k][idim][1+idim] = f_tmp[1];

@@ -13,14 +13,8 @@ namespace ramses {
  */
 class RiemannSolver {
 public:
-    /**
-     * @brief Computes flux across an interface given left and right states.
-     * @param ql Left primitive state (density, velocity_normal, v_trans1, v_trans2, pressure)
-     * @param qr Right primitive state
-     * @param flux Output conservative flux
-     * @param gamma Polytropic index
-     */
     static void solve_llf(const real_t ql[], const real_t qr[], real_t flux[], real_t gamma);
+    static void solve_hllc(const real_t ql[], const real_t qr[], real_t flux[], real_t gamma);
 
 private:
     /**

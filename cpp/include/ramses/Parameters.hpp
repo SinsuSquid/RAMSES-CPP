@@ -21,6 +21,7 @@ namespace params {
     extern int nlevelmax;
     extern int ngridmax;
     extern real_t boxlen;
+    extern int iriemann; // 1=llf, 2=hllc
 
     // Time step parameters
     extern int nstepmax;

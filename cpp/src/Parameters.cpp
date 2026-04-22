@@ -14,6 +14,7 @@ namespace params {
     int nlevelmax = 1;
     int ngridmax = 0;
     real_t boxlen = 1.0;
+    int iriemann = 1; // Default to LLF
 
     int nstepmax = 1000000;
     real_t trestart = 0.0;

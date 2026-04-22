@@ -27,6 +27,10 @@ void Simulation::initialize(const std::string& nml_path) {
     if (nlevelmax < 20) nlevelmax = 20; // Ensure headroom for ilevel+1 access
     nstepmax_ = config_.get_int("run_params", "nstepmax", 10);
 
+    std::string riemann_name = config_.get("hydro_params", "riemann", "llf");
+    if (riemann_name == "hllc") p::iriemann = 2;
+    else p::iriemann = 1;
+
     grid_.allocate(p::nx, p::ny, p::nz, ngridmax, nvar, 1, nlevelmax);
     
     // Build initial tree up to levelmin
