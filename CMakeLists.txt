@@ -8,12 +8,19 @@ set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(RAMSES_NDIM 3 CACHE STRING "Number of dimensions")
 set(RAMSES_PRECISION 8 CACHE STRING "Floating point precision")
 option(RAMSES_LONGINT "Use 64-bit integers for particle IDs" ON)
+option(RAMSES_USE_MPI "Enable MPI support" OFF)
 
 # Add definitions
 add_compile_definitions(NDIM=${RAMSES_NDIM})
 add_compile_definitions(RAMSES_PRECISION=${RAMSES_PRECISION})
 if(RAMSES_LONGINT)
     add_compile_definitions(LONGINT)
+endif()
+
+if(RAMSES_USE_MPI)
+    find_package(MPI REQUIRED)
+    include_directories(${MPI_CXX_INCLUDE_PATH})
+    add_compile_definitions(RAMSES_USE_MPI)
 endif()
 
 # Include directories
@@ -44,10 +51,10 @@ set(RAMSES_SOURCES
 
 # Main library
 add_library(ramses_lib STATIC ${RAMSES_SOURCES})
+if(RAMSES_USE_MPI)
+    target_link_libraries(ramses_lib PUBLIC MPI::MPI_CXX)
+endif()
 
 # Main executable
 add_executable(ramses_main src/main.cpp)
 target_link_libraries(ramses_main ramses_lib)
-
-add_executable(verify_ref src/verify_ref.cpp)
-target_link_libraries(verify_ref ramses_lib)

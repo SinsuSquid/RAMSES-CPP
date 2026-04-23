@@ -18,17 +18,17 @@ void AmrGrid::allocate(int nx_val, int ny_val, int nz_val, int ngridmax_val, int
               << " ncell=" << ncell << std::endl;
 
     // Allocate tree arrays (oct-based)
-    xg.assign(static_cast<size_t>(ngridmax) * ndim, 0.0);
+    xg.assign(static_cast<size_t>(ngridmax) * NDIM, 0.0);
     father.assign(ngridmax, 0);
     nbor.assign(static_cast<size_t>(ngridmax) * 2 * NDIM, 0);
     next.assign(ngridmax, 0);
     prev.assign(ngridmax, 0);
 
     // Allocate cell-based arrays
-     son.assign(static_cast<size_t>(ncell) + 1, 0);
+    son.assign(static_cast<size_t>(ncell) + 1, 0);
     flag1.assign(static_cast<size_t>(ncell) + 1, 0);
     flag2.assign(static_cast<size_t>(ncell) + 1, 0);
-    cpu_map.assign(static_cast<size_t>(ncell) + 1, 1); // Default to rank 1
+    cpu_map.assign(static_cast<size_t>(ncell) + 1, 1);
     divu.assign(static_cast<size_t>(ncell) + 1, 0.0);
     phi.assign(static_cast<size_t>(ncell) + 1, 0.0);
     rho.assign(static_cast<size_t>(ncell) + 1, 0.0);
@@ -36,7 +36,6 @@ void AmrGrid::allocate(int nx_val, int ny_val, int nz_val, int ngridmax_val, int
     // Allocate physical fields
     uold.allocate(ncell, nvar);
     unew.allocate(ncell, nvar);
-    divu.assign(ncell + 1, 0.0);
 
     // Allocate linked list pointers
     headl.allocate(ncpu, nlevelmax);
@@ -51,16 +50,15 @@ void AmrGrid::allocate(int nx_val, int ny_val, int nz_val, int ngridmax_val, int
     for (int i = 1; i < ngridmax; ++i) {
         next[i - 1] = i + 1;
     }
+    next[ngridmax - 1] = 0;
     for (int i = 2; i <= ngridmax; ++i) {
         prev[i - 1] = i - 1;
     }
+    prev[0] = 0;
     
     headf = 1;
     tailf = ngridmax;
     numbf = ngridmax;
-    
-    prev[headf - 1] = 0;
-    next[tailf - 1] = 0;
 }
 
 void AmrGrid::get_nbor_grids(int igrid, int igridn[7]) const {
@@ -95,21 +93,27 @@ void AmrGrid::get_3x3x3_father(int igrid, int nbors_father[27]) const {
     
     // Level 1 (Coarse) logic
     if (ifather <= ncoarse) {
-        int nxny = ncpu > 1 ? 0 : (params::nx * params::ny); // Just use global params for now
-        if (nxny == 0) nxny = params::nx * params::ny;
-
+        int nxny = params::nx * params::ny;
         int iz = (ifather - 1) / nxny;
         int iy = (ifather - 1 - iz * nxny) / params::nx;
         int ix = (ifather - 1 - iy * params::nx - iz * nxny);
 
         for (int k1 = 0; k1 < 3; ++k1) {
             int iiz = iz + k1 - 1;
-            if (iiz < 0) iiz = params::nz - 1;
-            if (iiz > params::nz - 1) iiz = 0;
+            if (NDIM > 2) {
+                if (iiz < 0) iiz = params::nz - 1;
+                if (iiz > params::nz - 1) iiz = 0;
+            } else {
+                iiz = 0;
+            }
             for (int j1 = 0; j1 < 3; ++j1) {
                 int iiy = iy + j1 - 1;
-                if (iiy < 0) iiy = params::ny - 1;
-                if (iiy > params::ny - 1) iiy = 0;
+                if (NDIM > 1) {
+                    if (iiy < 0) iiy = params::ny - 1;
+                    if (iiy > params::ny - 1) iiy = 0;
+                } else {
+                    iiy = 0;
+                }
                 for (int i1 = 0; i1 < 3; ++i1) {
                     int iix = ix + i1 - 1;
                     if (iix < 0) iix = params::nx - 1;
@@ -122,40 +126,44 @@ void AmrGrid::get_3x3x3_father(int igrid, int nbors_father[27]) const {
         return;
     }
 
-    // Refined level logic (get3cubepos)
+    // Refined level logic
     int pos = (ifather - ncoarse - 1) / ngridmax + 1;
     int igrid_father = ifather - ncoarse - (pos - 1) * ngridmax;
 
-    // kkk, jjj, iii from get3cubepos
     static const int kkk[8] = {5,5,5,5,6,6,6,6};
     static const int jjj[8] = {3,3,4,4,3,3,4,4};
     static const int iii[8] = {1,2,1,2,1,2,1,2};
 
-    int nbors_grids[8]; // 2x2x2 cube of grids
+    int nbors_grids[8] = {0}; 
     for (int kk = 0; kk < 2; ++kk) {
         int ig1 = igrid_father;
-        if (kk > 0) {
-            int n_cell = nbor[(kkk[pos-1] - 1) * ngridmax + (igrid_father - 1)];
+        if (kk > 0 && NDIM > 2 && ig1 > 0) {
+            int n_cell = nbor[(kkk[pos-1] - 1) * ngridmax + (ig1 - 1)];
             ig1 = (n_cell > 0) ? son[n_cell] : 0;
+        } else if (kk > 0) {
+            ig1 = 0;
         }
         for (int jj = 0; jj < 2; ++jj) {
             int ig2 = ig1;
-            if (jj > 0 && ig1 > 0) {
+            if (jj > 0 && NDIM > 1 && ig1 > 0) {
                 int n_cell = nbor[(jjj[pos-1] - 1) * ngridmax + (ig1 - 1)];
                 ig2 = (n_cell > 0) ? son[n_cell] : 0;
+            } else if (jj > 0) {
+                ig2 = 0;
             }
             for (int ii = 0; ii < 2; ++ii) {
                 int ig3 = ig2;
                 if (ii > 0 && ig2 > 0) {
                     int n_cell = nbor[(iii[pos-1] - 1) * ngridmax + (ig2 - 1)];
                     ig3 = (n_cell > 0) ? son[n_cell] : 0;
+                } else if (ii > 0) {
+                    ig3 = 0;
                 }
                 nbors_grids[ii + 2*jj + 4*kk] = ig3;
             }
         }
     }
 
-    // Map 2x2x2 grids to 3x3x3 cells using lll and mmm
     for (int j = 0; j < 27; ++j) {
         int ig = constants::lll[pos-1][j];
         int ic = constants::mmm[pos-1][j];
@@ -163,12 +171,9 @@ void AmrGrid::get_3x3x3_father(int igrid, int nbors_father[27]) const {
         if (ig_idx > 0) {
             nbors_father[j] = ncoarse + (ic - 1) * ngridmax + ig_idx;
         } else {
-            nbors_father[j] = 0; // Should not happen in valid RAMSES tree
+            nbors_father[j] = 0;
         }
     }
 }
-
-
-
 
 } // namespace ramses

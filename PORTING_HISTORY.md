@@ -67,3 +67,19 @@ The RAMSES-2025 C++ port is now a **fully functional, production-ready, and test
 - [x] **Production Physics:** Strict 3D conservation, MUSCL-Hancock, and Multigrid Poisson solver.
 - [x] **AMR Engine:** Fully functional octree traversal and sub-cycling.
 - [x] **End-to-End Pipeline:** Fully automated setup, execution, and output generation.
+
+## Phase 11: Test Suite & Tooling Alignment
+
+### [2026-04-23] - Full Test Environment Compatibility
+- **Script Refactoring:** Converted legacy `run_test_suite.sh` and `daily_test.sh` to leverage CMake and C++ specific binary naming (`test_exe_{ndim}d`).
+- **Path Portability:** Updated scripts to use relative base directories, enabling execution from any project root location.
+- **Python Plotter Patching:** Optimized `visu_ramses.py` to correctly handle 4-byte record markers and fixed offset calculation logic for modern RAMSES output schemas.
+- **MPI Integration:** Ensured `run_test_suite.sh` dynamically detects and uses `mpirun` only when `RAMSES_USE_MPI` is enabled in the C++ build.
+
+## Phase 12: Advanced Physics Driver
+
+### [2026-04-23] - Physical Continuity & Parity
+- **Adaptive Time-stepping:** Implemented CFL-constrained `dt` calculation in `Simulation::run`, replacing constant increments with physically derived constraints.
+- **Namelist Integration:** Restored full `tout` and `noutput` array handling to ensure snapshots are dumped at the exact user-specified physical times.
+- **Binary Parity:** Refined `RamsesWriter` to match the exact sequence of 21+ unformatted Fortran records (headers, time variables, and level pointers), ensuring zero-mod modification for legacy analysis tools.
+- **AMR Safety:** Patched indexing logic in `get_3x3x3_father` and `gather_stencil` to support lower-dimensional simulations (1D/2D) within the 3D-optimized AMR architecture.

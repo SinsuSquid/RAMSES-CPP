@@ -1,107 +1,81 @@
 #include "ramses/RamsesWriter.hpp"
 #include "ramses/Parameters.hpp"
+#include "ramses/Constants.hpp"
 #include <iostream>
-#include <algorithm>
-#include <cmath>
+#include <vector>
 
 namespace ramses {
 
-void RamsesWriter::write_amr(const AmrGrid& grid) {
-    if (!file_.is_open()) return;
-    write_single<int>(grid.ncpu);
-    uint32_t header_tag = 9 * 4 + sizeof(real_t);
-    write_tag(header_tag);
-    file_.write(reinterpret_cast<const char*>(&grid.ncpu), 4);
-    int ndim = NDIM; file_.write(reinterpret_cast<const char*>(&ndim), 4);
-    file_.write(reinterpret_cast<const char*>(&params::nx), 4);
-    file_.write(reinterpret_cast<const char*>(&params::ny), 4);
-    file_.write(reinterpret_cast<const char*>(&params::nz), 4);
-    file_.write(reinterpret_cast<const char*>(&grid.nlevelmax), 4);
-    file_.write(reinterpret_cast<const char*>(&grid.ngridmax), 4);
-    int nboundary = 0; file_.write(reinterpret_cast<const char*>(&nboundary), 4);
-    int ngrid_current = 0; file_.write(reinterpret_cast<const char*>(&ngrid_current), 4);
-    real_t boxlen = 1.0; file_.write(reinterpret_cast<const char*>(&boxlen), sizeof(real_t));
-    write_tag(header_tag);
-    for(int i=0; i<11; ++i) write_single<int>(0);
-    std::vector<int> buf(grid.ncpu * grid.nlevelmax);
-    for(size_t i=0; i<buf.size(); ++i) buf[i] = grid.headl.data()[i];
-    write_record(buf);
-    for(size_t i=0; i<buf.size(); ++i) buf[i] = grid.taill.data()[i];
-    write_record(buf);
-    for(size_t i=0; i<buf.size(); ++i) buf[i] = grid.numbl.data()[i];
-    write_record(buf);
-    write_single<int>(0);
-    write_single<int>(0); write_single<int>(0); write_single<int>(0);
-    std::vector<int> c_buf(grid.ncoarse);
-    for(int i=0; i<grid.ncoarse; ++i) c_buf[i] = grid.son[i+1];
-    write_record(c_buf);
-    for(int i=0; i<grid.ncoarse; ++i) c_buf[i] = grid.flag1[i+1];
-    write_record(c_buf);
-    for(int i=0; i<grid.ncoarse; ++i) c_buf[i] = grid.cpu_map[i+1];
-    write_record(c_buf);
+RamsesWriter::RamsesWriter(const std::string& filename) {
+    file_.open(filename, std::ios::binary);
 }
 
-void RamsesWriter::write_hydro(const AmrGrid& grid, int ilevel_max) {
+bool RamsesWriter::is_open() const {
+    return file_.is_open();
+}
+
+template <typename T>
+void RamsesWriter::write_record(const T* data, size_t count) {
     if (!file_.is_open()) return;
+    int32_t size_bytes = static_cast<int32_t>(count * sizeof(T));
+    file_.write(reinterpret_cast<const char*>(&size_bytes), sizeof(int32_t));
+    file_.write(reinterpret_cast<const char*>(data), size_bytes);
+    file_.write(reinterpret_cast<const char*>(&size_bytes), sizeof(int32_t));
+}
 
-    // 1. Header
-    uint32_t header_tag = 5 * 4;
-    write_tag(header_tag);
-    file_.write(reinterpret_cast<const char*>(&grid.ncpu), 4);
-    file_.write(reinterpret_cast<const char*>(&grid.nvar), 4);
-    int ndim = NDIM; file_.write(reinterpret_cast<const char*>(&ndim), 4);
-    file_.write(reinterpret_cast<const char*>(&grid.nlevelmax), 4);
-    int nboundary = 0; file_.write(reinterpret_cast<const char*>(&nboundary), 4);
-    write_tag(header_tag);
+template void RamsesWriter::write_record<int>(const int*, size_t);
+template void RamsesWriter::write_record<real_t>(const real_t*, size_t);
+template void RamsesWriter::write_record<char>(const char*, size_t);
 
-    write_single<real_t>(1.4); // gamma dummy
-
-    for (int ilevel = 1; ilevel <= grid.nlevelmax; ++ilevel) {
-        for (int icpu = 1; icpu <= grid.ncpu; ++icpu) {
-            int ncache = grid.numbl(icpu, ilevel);
-            write_single<int>(ilevel);
-            write_single<int>(ncache);
-
-            if (ncache > 0) {
-                std::vector<int> ind_grid;
-                int curr = grid.headl(icpu, ilevel);
-                while(curr > 0) {
-                    ind_grid.push_back(curr);
-                    curr = grid.next[curr-1];
-                }
-
-                write_record(ind_grid);
-
-                for (int ind = 1; ind <= constants::twotondim; ++ind) {
-                    int iskip = grid.ncoarse + (ind - 1) * grid.ngridmax;
-                    
-                    // RAMSES expects PRIMITIVE: density, velocity, pressure
-                    std::vector<real_t> dens(ncache);
-                    for(int i=0; i<ncache; ++i) dens[i] = grid.uold(ind_grid[i] + iskip, 1);
-                    write_record(dens);
-
-                    for (int idim = 1; idim <= NDIM; ++idim) {
-                        std::vector<real_t> vel(ncache);
-                        for(int i=0; i<ncache; ++i) vel[i] = grid.uold(ind_grid[i] + iskip, idim + 1) / std::max(dens[i], static_cast<real_t>(1e-10));
-                        write_record(vel);
-                    }
-
-                    std::vector<real_t> pres(ncache);
-                    for(int i=0; i<ncache; ++i) {
-                        real_t d = dens[i];
-                        real_t e_kin = 0;
-                        for(int idim=1; idim<=NDIM; ++idim) {
-                            real_t mom = grid.uold(ind_grid[i] + iskip, idim + 1);
-                            e_kin += 0.5 * mom * mom / std::max(d, static_cast<real_t>(1e-10));
-                        }
-                        real_t e_int = grid.uold(ind_grid[i] + iskip, NDIM + 2) - e_kin;
-                        pres[i] = e_int * (1.4 - 1.0); // gamma=1.4 dummy
-                    }
-                    write_record(pres);
-                }
-            }
+void RamsesWriter::write_amr(const AmrGrid& grid) {
+    int32_t val;
+    val = grid.ncpu; write_record(&val, 1);
+    val = NDIM; write_record(&val, 1);
+    int32_t nxnyz[3] = {params::nx, params::ny, params::nz}; write_record(nxnyz, 3);
+    val = grid.nlevelmax; write_record(&val, 1);
+    val = grid.ngridmax; write_record(&val, 1);
+    val = 0; write_record(&val, 1); 
+    val = 0; write_record(&val, 1); 
+    double boxlen = params::boxlen; write_record(&boxlen, 1);
+    int32_t nout_vars[3] = {1, 1, 1}; write_record(nout_vars, 3);
+    double tout = 0.0; write_record(&tout, 1);
+    double aout = 0.0; write_record(&aout, 1);
+    double t = 0.0; write_record(&t, 1);
+    std::vector<double> dtold(grid.nlevelmax, 0.0); write_record(dtold.data(), grid.nlevelmax);
+    std::vector<double> dtnew(grid.nlevelmax, 0.0); write_record(dtnew.data(), grid.nlevelmax);
+    int32_t steps[2] = {0, 0}; write_record(steps, 2);
+    double einit[3] = {0.0, 0.0, 0.0}; write_record(einit, 3);
+    double cosmo[7] = {0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0}; write_record(cosmo, 7);
+    double aexp_hexp[5] = {1.0, 0.0, 1.0, 0.0, 0.0}; write_record(aexp_hexp, 5);
+    double msph = 0.0; write_record(&msph, 1);
+    std::vector<int32_t> headl(grid.ncpu * grid.nlevelmax, 0);
+    std::vector<int32_t> taill(grid.ncpu * grid.nlevelmax, 0);
+    std::vector<int32_t> numbl(grid.ncpu * grid.nlevelmax, 0);
+    for(int ilevel=0; ilevel<grid.nlevelmax; ++ilevel) {
+        for(int icpu=0; icpu<grid.ncpu; ++icpu) {
+            numbl[ilevel * grid.ncpu + icpu] = grid.numbl(icpu+1, ilevel+1);
+            headl[ilevel * grid.ncpu + icpu] = grid.headl(icpu+1, ilevel+1);
+            taill[ilevel * grid.ncpu + icpu] = grid.taill(icpu+1, ilevel+1);
         }
     }
+    write_record(headl.data(), headl.size());
+    write_record(taill.data(), taill.size());
+    write_record(numbl.data(), numbl.size());
+    std::vector<int32_t> numbtot(10 * grid.nlevelmax, 0); write_record(numbtot.data(), numbtot.size());
+    int32_t free_mem[5] = {grid.headf, grid.tailf, grid.numbf, 0, 0}; write_record(free_mem, 5);
+    char ordering[128] = "hilbert"; write_record(ordering, 128);
+    int32_t key_size = 8; write_record(&key_size, 1);
+    file_.close();
+}
+
+void RamsesWriter::write_hydro(const AmrGrid& grid, int nlevelmax) {
+    int32_t val;
+    val = grid.ncpu; write_record(&val, 1);
+    val = grid.nvar; write_record(&val, 1);
+    val = NDIM; write_record(&val, 1);
+    val = nlevelmax; write_record(&val, 1);
+    val = 0; write_record(&val, 1); 
+    file_.close();
 }
 
 } // namespace ramses

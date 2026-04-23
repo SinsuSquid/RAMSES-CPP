@@ -1,0 +1,13 @@
+ncpu         = 1
+ndim         = 1
+nx           = 1
+ny           = 1
+nz           = 1
+levelmin     = 3
+levelmax     = 20
+ngridmax     = 2000
+boxlen       = 1
+time         = 0
+unit_l       = 1
+unit_d       = 1
+unit_t       = 1
