@@ -6,11 +6,12 @@ RAMSES-CPP provides a functional, physically consistent alternative to the origi
 
 ## 🚀 Status: Production-Ready
 The code now supports:
+- **Full Multi-Dimensional Support:** Seamlessly build for 1D, 2D, or 3D using CMake flags.
 - **3D Unsplit Godunov Hydrodynamics:** HLLC/LLF Riemann solvers with MUSCL-Hancock reconstruction.
 - **Multigrid Poisson Solver:** Iterative Gauss-Seidel for self-gravity.
 - **N-Body Dynamics:** Full Particle-Mesh (CIC) assignment and advection.
-- **AMR Engine:** Recursive sub-cycling with dynamic 3D tree traversal.
-- **Ecosystem Parity:** Compatible with legacy RAMSES tools (`visu_ramses.py`) and standard `.nml` namelists.
+- **AMR Engine:** Recursive sub-cycling with dynamic tree traversal.
+- **Ecosystem Parity:** Strict unformatted Fortran binary parity, compatible with legacy RAMSES tools (`visu_ramses.py`).
 
 ---
 
@@ -23,18 +24,36 @@ The code now supports:
 
 ### Build Instructions:
 
-1. **Clean build from source:**
+1. **Standard Build (3D):**
 ```bash
-# Create and enter build directory
 mkdir build && cd build
-
-# Configure and compile
 cmake ..
 make -j$(nproc)
 ```
 
-2. **Parallel Build:**
-If you have MPI installed, CMake will automatically detect it and define `RAMSES_USE_MPI`, enabling the `LoadBalancer` for parallel execution.
+2. **Multi-Dimensional Build:**
+To build for specific dimensions, use the `RAMSES_NDIM` flag:
+```bash
+cmake .. -DRAMSES_NDIM=1  # For 1D
+cmake .. -DRAMSES_NDIM=2  # For 2D
+```
+
+---
+
+## 🧪 Testing
+
+The repository includes a comprehensive automated test suite to ensure physical consistency and binary parity with the legacy code.
+
+```bash
+# Run the full suite
+cd tests
+./run_test_suite.sh -t hydro
+```
+
+Verified tests include:
+- `hydro/sod-tube`: Classic shock tube benchmark.
+- `hydro/sod-tube-nener`: Advanced test with multiple passive energy variables.
+- `hydro/barotrop`: Self-gravitating collapsing sphere.
 
 ---
 
