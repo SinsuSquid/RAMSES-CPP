@@ -51,6 +51,7 @@ def load_snapshot(nout, read_hydro=True, read_grav=False):
     # Read the number of variables from the hydro_file_descriptor.txt
     hydrofile = infile+"/hydro_file_descriptor.txt"
     list_vars, _ = read_descriptor(hydrofile)
+    print("DEBUG: list_vars from descriptor: ", list_vars)
 
     # Store the total number of hydro variables
     info["nvar"] = len(list_vars)
@@ -418,6 +419,8 @@ def load_snapshot(nout, read_hydro=True, read_grav=False):
     data["data"]["boxlen"] = info["boxlen"]
     data["data"]["ncells"] = ncells_tot
     data["data"]["time"  ] = info["time"]
+    
+    print("DEBUG: data['data'].keys(): ", sorted(data["data"].keys()))
 
     # Read sink particles if present
     sinkfile = infile+"/sink_"+infile.split("_")[-1]+".csv"
@@ -578,6 +581,8 @@ def check_solution(data,test_name,tolerance=None,threshold=2.0e-14,norm_min=1.0e
     # Checking for errors
     if ref.keys() != sol.keys():
         print("The current and reference solutions do not have the same variables")
+        print("Ref keys: ", sorted(ref.keys()))
+        print("Sol keys: ", sorted(sol.keys()))
         ok = False
 
     # Write error table to tex file

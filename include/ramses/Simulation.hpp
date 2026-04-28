@@ -3,6 +3,7 @@
 
 #include "AmrGrid.hpp"
 #include "HydroSolver.hpp"
+#include "MhdSolver.hpp"
 #include "PoissonSolver.hpp"
 #include "TreeUpdater.hpp"
 #include "Config.hpp"
@@ -17,7 +18,7 @@ namespace ramses {
  */
 class Simulation {
 public:
-    Simulation() : hydro_(grid_), poisson_(grid_), updater_(grid_), ptcl_solver_(grid_, ps_), balancer_(grid_, ps_) {}
+    Simulation() : hydro_(grid_), mhd_(grid_, config_), poisson_(grid_, config_), updater_(grid_), ptcl_solver_(grid_, ps_), balancer_(grid_, ps_) {}
 
     void initialize(const std::string& nml_path);
     void run();
@@ -28,6 +29,7 @@ private:
 
     AmrGrid grid_;
     HydroSolver hydro_;
+    MhdSolver mhd_;
     PoissonSolver poisson_;
     TreeUpdater updater_;
     Config config_;
@@ -40,6 +42,7 @@ private:
     int nstep_ = 0;
     int nstepmax_ = 10;
     int noutput_ = 0;
+    int nener_ = 0;
     std::vector<double> tout_;
 };
 

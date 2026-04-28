@@ -7,23 +7,21 @@
 namespace ramses {
 
 /**
- * @brief Implements MUSCL reconstruction and tracing logic.
+ * @brief MUSCL slope limiting and reconstruction.
  */
 class Muscl {
 public:
-    /**
-     * @brief Performs MUSCL prediction (tracing) for a single cell and dimension.
-     * @param q Cell-centered primitive state
-     * @param dq Limited slope for this cell/dimension
-     * @param s0 Source term (predicted change over dt/2)
-     * @param dt_dx dt/dx factor
-     * @param qm Output left-interface state (predicted)
-     * @param qp Output right-interface state (predicted)
-     */
+    // Compute slopes using a specific limiter
+    static void compute_slopes(const real_t* q, real_t* dq, int nx, int nvar, int slope_type);
+
+    // Reconstruct left/right interface states
+    static void reconstruct(const real_t* q, const real_t* dq, real_t* qL, real_t* qR, int nx, int nvar);
+
+    // MUSCL prediction
     static void predict(const real_t q[], const real_t dq[], const real_t s0[], 
                        real_t dt_dx, real_t qm[], real_t qp[], int nvar);
 };
 
 } // namespace ramses
 
-#endif // RAMSES_MUSCL_HPP
+#endif

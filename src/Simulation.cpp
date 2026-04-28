@@ -7,6 +7,7 @@
 #include <sys/stat.h>
 #include <sstream>
 #include <algorithm>
+#include <cmath>
 
 namespace ramses {
 
@@ -17,26 +18,36 @@ void Simulation::initialize(const std::string& nml_path) {
     p::nx = config_.get_int("amr_params", "nx", 1);
     p::ny = config_.get_int("amr_params", "ny", 1);
     p::nz = config_.get_int("amr_params", "nz", 1);
+    p::boxlen = config_.get_double("amr_params", "boxlen", 1.0);
     
     int ngridmax = config_.get_int("amr_params", "ngridmax", 0);
     if (ngridmax == 0) ngridmax = config_.get_int("amr_params", "ngridtot", 1000000);
     
-    int nener = config_.get_int("hydro_params", "nener", 0);
+    nener_ = config_.get_int("hydro_params", "nener", 0);
     // If nener is 0, check if prad_region is present in init_params
-    if (nener == 0) {
+    if (nener_ == 0) {
         for (int i = 1; i <= 10; ++i) {
             std::string key = "prad_region(" + std::to_string(i) + ",1)";
             if (config_.get( "init_params", key, "").length() > 0) {
-                nener = std::max(nener, i);
+                nener_ = std::max(nener_, i);
             }
         }
     }
     // Standard RAMSES: nvar = 2 + NDIM + nener
-    int nvar_default = 2 + NDIM + nener;
+    int nvar_default = 2 + NDIM + nener_;
+#ifdef MHD
+    nvar_default = 5 + 3 + nener_; // nhydro=8 (d,u,v,w,p,B_left)
+#endif
     int nvar = config_.get_int("hydro_params", "nvar", nvar_default);
     
+#ifdef MHD
+    int nvar_all = nvar + 3; // extra 3 for B_right
+    int nlevelmax = config_.get_int("amr_params", "levelmax", 10);
+    grid_.allocate(p::nx, p::ny, p::nz, ngridmax, nvar_all, 1, nlevelmax);
+#else
     int nlevelmax = config_.get_int("amr_params", "levelmax", 10);
     grid_.allocate(p::nx, p::ny, p::nz, ngridmax, nvar, 1, nlevelmax);
+#endif
     
     // Load Outputs
     noutput_ = config_.get_int("output_params", "noutput", 0);
@@ -70,6 +81,13 @@ void Simulation::run() {
     real_t gamma = config_.get_double("hydro_params", "gamma", 1.4);
     real_t courant_factor = config_.get_double("hydro_params", "courant_factor", 0.8);
     
+    if (config_.get_bool("run_params", "poisson", false)) {
+        for (int ilevel = grid_.nlevelmax; ilevel >= 1; --ilevel) {
+            poisson_.solve(ilevel);
+            poisson_.compute_force(ilevel);
+        }
+    }
+
     dump_snapshot(1);
     int iout = 0;
     int snapshot_count = 2;
@@ -79,7 +97,12 @@ void Simulation::run() {
         
         // Compute adaptive dt for level 1
         real_t dx = params::boxlen / static_cast<real_t>(params::nx);
-        real_t dt = hydro_.compute_courant_step(1, dx, gamma, courant_factor);
+        real_t dt;
+#ifdef MHD
+        dt = mhd_.compute_courant_step(1, dx, gamma, courant_factor);
+#else
+        dt = hydro_.compute_courant_step(1, dx, gamma, courant_factor);
+#endif
         
         // Check if we reached next tout
         if (iout < (int)tout_.size()) {
@@ -112,8 +135,11 @@ void Simulation::amr_step(int ilevel, real_t dt) {
     if (ilevel > grid_.nlevelmax) return;
     if (grid_.count_grids_at_level(ilevel) == 0) return;
 
-    real_t dx = params::boxlen / static_cast<real_t>(params::nx * (1 << (ilevel - 1)));
-    hydro_.godunov_fine(ilevel, dt, dx);
+#ifdef MHD
+    mhd_.set_unew(ilevel);
+#else
+    hydro_.set_unew(ilevel);
+#endif
 
     // Sub-cycling
     if (ilevel < grid_.nlevelmax) {
@@ -122,6 +148,48 @@ void Simulation::amr_step(int ilevel, real_t dt) {
             amr_step(ilevel + 1, dt / 2.0);
         }
     }
+
+    real_t dx = params::boxlen / static_cast<real_t>(params::nx * (1 << (ilevel - 1)));
+    
+    if (config_.get_bool("run_params", "poisson", false)) {
+        poisson_.solve(ilevel);
+        poisson_.compute_force(ilevel);
+        hydro_.add_gravity_source_terms(ilevel, dt);
+    }
+    
+#ifdef MHD
+    mhd_.godunov_fine(ilevel, dt, dx);
+#else
+    hydro_.godunov_fine(ilevel, dt, dx);
+#endif
+
+    if (config_.get_bool("run_params", "poisson", false)) {
+        hydro_.add_gravity_source_terms(ilevel, dt);
+    }
+
+#ifdef MHD
+    mhd_.set_uold(ilevel);
+#else
+    hydro_.set_uold(ilevel);
+#endif
+
+    // Debug output
+    real_t min_d = 1e30, max_v = 0.0;
+    for (int icpu = 1; icpu <= grid_.ncpu; ++icpu) {
+        int igrid = grid_.headl(icpu, ilevel);
+        while (igrid > 0) {
+            for (int ic = 1; ic <= constants::twotondim; ++ic) {
+                int ind_cell = grid_.ncoarse + (ic - 1) * grid_.ngridmax + igrid;
+                real_t d = grid_.uold(ind_cell, 1);
+                min_d = std::min(min_d, d);
+                real_t v2 = 0;
+                for (int i=1; i<=NDIM; ++i) v2 += std::pow(grid_.uold(ind_cell, 1+i)/d, 2);
+                max_v = std::max(max_v, std::sqrt(v2));
+            }
+            igrid = grid_.next[igrid - 1];
+        }
+    }
+    std::cout << "  amr_step(" << ilevel << ", dt=" << dt << "): min_d=" << min_d << ", max_v=" << max_v << std::endl;
 }
 
 void Simulation::dump_snapshot(int iout) {
@@ -151,9 +219,16 @@ void Simulation::dump_snapshot(int iout) {
         if (writer.is_open()) writer.write_hydro(grid_, info);
     }
 
+    if (config_.get_bool("run_params", "poisson", false)) {
+        std::string grav_path = dir + "/grav_" + nchar + ".out00001";
+        RamsesWriter writer(grav_path);
+        if (writer.is_open()) writer.write_grav(grid_, info);
+    }
+
     std::string info_file = dir + "/info_" + nchar + ".txt";
     std::ofstream infof(info_file);
     if (infof.is_open()) {
+        infof << std::scientific << std::setprecision(15);
         infof << "ncpu         = " << grid_.ncpu << "\n";
         infof << "ndim         = " << NDIM << "\n";
         infof << "nx           = " << params::nx << "\n";
@@ -174,15 +249,41 @@ void Simulation::dump_snapshot(int iout) {
     if (desc.is_open()) {
         int ivar = 1;
         desc << ivar++ << ", density, double\n";
+#ifdef MHD
+        desc << ivar++ << ", velocity_x, double\n";
+        desc << ivar++ << ", velocity_y, double\n";
+        desc << ivar++ << ", velocity_z, double\n";
+        desc << ivar++ << ", B_x_left, double\n";
+        desc << ivar++ << ", B_y_left, double\n";
+        desc << ivar++ << ", B_z_left, double\n";
+        desc << ivar++ << ", B_x_right, double\n";
+        desc << ivar++ << ", B_y_right, double\n";
+        desc << ivar++ << ", B_z_right, double\n";
+#else
         for (int i = 1; i <= NDIM; ++i) {
             char dim_char = (i == 1) ? 'x' : (i == 2 ? 'y' : 'z');
             desc << ivar++ << ", velocity_" << dim_char << ", double\n";
         }
+#endif
         desc << ivar++ << ", pressure, double\n";
-        int nener = grid_.nvar - (2 + NDIM);
-        for (int i = 1; i <= nener; ++i) {
+        
+        for (int i = 1; i <= nener_; ++i) {
             desc << ivar++ << ", non_thermal_pressure_" << std::setw(2) << std::setfill('0') << i << ", double\n";
         }
+#ifndef MHD
+        int nvar_logical = 2 + NDIM + nener_;
+        int nvar_file = config_.get_int("hydro_params", "nvar", nvar_logical);
+        for (int i = nvar_logical + 1; i <= nvar_file; ++i) {
+            desc << ivar++ << ", scalar_" << std::setw(2) << std::setfill('0') << i - nvar_logical << ", double\n";
+        }
+#else
+        int nhydro = 8;
+        int nvar_logical = nhydro + nener_;
+        int nvar_file = config_.get_int("hydro_params", "nvar", nvar_logical);
+        for (int i = nvar_logical + 1; i <= nvar_file; ++i) {
+            desc << ivar++ << ", scalar_" << std::setw(2) << std::setfill('0') << i - nvar_logical << ", double\n";
+        }
+#endif
         desc.close();
     }
     

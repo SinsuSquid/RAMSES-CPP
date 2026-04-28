@@ -17,7 +17,7 @@ public:
     void godunov_fine(int ilevel, real_t dt, real_t dx);
     void set_unew(int ilevel);
     void set_uold(int ilevel);
-
+    
     void ctoprim(const real_t u[], real_t q[], real_t gamma);
     void interpol_hydro(const real_t u1[7][20], real_t u2[8][20]);
 
@@ -32,6 +32,11 @@ public:
      * @brief Computes the dynamic timestep based on CFL condition.
      */
     real_t compute_courant_step(int ilevel, real_t dx, real_t gamma, real_t courant_factor);
+
+    /**
+     * @brief Adds gravity source terms to unew.
+     */
+    void add_gravity_source_terms(int ilevel, real_t dt);
 
 private:
     AmrGrid& grid_;

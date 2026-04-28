@@ -226,6 +226,8 @@ void RamsesWriter::write_hydro(const AmrGrid& grid, const SnapshotInfo& info) {
     val = 0; write_record(&val, 1); // nboundary
     double gamma = info.gamma; write_record(&gamma, 1);
 
+    real_t smallr = 1e-10;
+
     for(int ilevel=1; ilevel <= grid.nlevelmax; ++ilevel) {
         for(int icpu=1; icpu <= grid.ncpu; ++icpu) {
             int ncache = grid.numbl(icpu, ilevel);
@@ -233,15 +235,106 @@ void RamsesWriter::write_hydro(const AmrGrid& grid, const SnapshotInfo& info) {
             val = ncache; write_record(&val, 1);
             if (ncache > 0) {
                 for(int ison=1; ison<=constants::twotondim; ++ison) {
-                    for(int ivar=1; ivar<=grid.nvar; ++ivar) {
+                    // We need to write variables in the correct order:
+                    // 1. density
+                    // 2-4. velocity
+                    // 5-7. B_left (if MHD)
+                    // 8-10. B_right (if MHD)
+                    // 11. pressure
+                    // ... others ...
+                    
+                    int nvar_out = grid.nvar;
+                    for (int ivar_out = 1; ivar_out <= nvar_out; ++ivar_out) {
                         std::vector<double> data(ncache);
                         int curr = grid.headl(icpu, ilevel);
                         for(int i=0; i<ncache; ++i) {
                             int ind_cell = grid.ncoarse + (ison-1)*grid.ngridmax + curr;
-                            data[i] = grid.unew(ind_cell, ivar);
+                            
+                            // Map ivar_out to physical variable and transform
+#ifndef MHD
+                            if (ivar_out == 1) data[i] = grid.unew(ind_cell, 1); // density
+                            else if (ivar_out <= 1 + NDIM) {
+                                real_t d = std::max(grid.unew(ind_cell, 1), smallr);
+                                data[i] = grid.unew(ind_cell, ivar_out) / d; // velocity
+                            } else if (ivar_out == 2 + NDIM) { // pressure
+                                real_t d = std::max(grid.unew(ind_cell, 1), smallr);
+                                real_t ekin = 0;
+                                for(int id=1; id<=NDIM; ++id) ekin += 0.5 * grid.unew(ind_cell, 1+id)*grid.unew(ind_cell, 1+id)/d;
+                                data[i] = (gamma - 1.0) * (grid.unew(ind_cell, 2+NDIM) - ekin);
+                            } else {
+                                data[i] = grid.unew(ind_cell, ivar_out);
+                            }
+#else
+                            // MHD Mapping (grid.nvar = nhydro + nener + 3)
+                            // nhydro = 8: rho, mx, my, mz, E, BxL, ByL, BzL
+                            int nener = grid.nvar - 11;
+                            if (ivar_out == 1) data[i] = grid.unew(ind_cell, 1); // density
+                            else if (ivar_out <= 4) { // velocity
+                                real_t d = std::max(grid.unew(ind_cell, 1), smallr);
+                                data[i] = grid.unew(ind_cell, ivar_out) / d;
+                            } else if (ivar_out >= 5 && ivar_out <= 7) { // B_left
+                                data[i] = grid.unew(ind_cell, ivar_out + 1); // 6,7,8
+                            } else if (ivar_out >= 8 && ivar_out <= 10) { // B_right
+                                data[i] = grid.unew(ind_cell, grid.nvar - 3 + (ivar_out - 7));
+                            } else if (ivar_out == 11) { // pressure
+                                real_t d = std::max(grid.unew(ind_cell, 1), smallr);
+                                real_t ekin = 0.5*(grid.unew(ind_cell, 2)*grid.unew(ind_cell, 2) + 
+                                                   grid.unew(ind_cell, 3)*grid.unew(ind_cell, 3) + 
+                                                   grid.unew(ind_cell, 4)*grid.unew(ind_cell, 4))/d;
+                                real_t Bx = 0.5*(grid.unew(ind_cell, 6) + grid.unew(ind_cell, grid.nvar-2));
+                                real_t By = 0.5*(grid.unew(ind_cell, 7) + grid.unew(ind_cell, grid.nvar-1));
+                                real_t Bz = 0.5*(grid.unew(ind_cell, 8) + grid.unew(ind_cell, grid.nvar));
+                                real_t emag = 0.5*(Bx*Bx + By*By + Bz*Bz);
+                                data[i] = (gamma - 1.0) * (grid.unew(ind_cell, 5) - ekin - emag);
+                            } else { // nener or scalars
+                                data[i] = grid.unew(ind_cell, ivar_out > 11 ? ivar_out - 3 : ivar_out); // this needs careful mapping if nener > 0
+                                // For now, assume ivar_out > 11 are nener/scalars which were at 9...nvar
+                                if (ivar_out > 11) data[i] = grid.unew(ind_cell, 9 + (ivar_out - 12));
+                            }
+#endif
                             curr = grid.next[curr-1];
                         }
                         write_record(data.data(), ncache);
+                    }
+                }
+            }
+        }
+    }
+    file_.close();
+}
+
+void RamsesWriter::write_grav(const AmrGrid& grid, const SnapshotInfo& info) {
+    int32_t val;
+    val = grid.ncpu; write_record(&val, 1);
+    val = NDIM + 1; write_record(&val, 1);
+    val = grid.nlevelmax; write_record(&val, 1);
+    val = 0; write_record(&val, 1); // nboundary
+
+    for(int ilevel=1; ilevel <= grid.nlevelmax; ++ilevel) {
+        for(int icpu=1; icpu <= grid.ncpu; ++icpu) {
+            int ncache = grid.numbl(icpu, ilevel);
+            val = ilevel; write_record(&val, 1);
+            val = ncache; write_record(&val, 1);
+            if (ncache > 0) {
+                for(int ison=1; ison<=constants::twotondim; ++ison) {
+                    std::vector<double> phi_data(ncache);
+                    int curr = grid.headl(icpu, ilevel);
+                    for(int i=0; i<ncache; ++i) {
+                        int ind_cell = grid.ncoarse + (ison-1)*grid.ngridmax + curr;
+                        phi_data[i] = grid.phi[ind_cell];
+                        curr = grid.next[curr-1];
+                    }
+                    write_record(phi_data.data(), ncache);
+
+                    for(int idim=1; idim<=NDIM; ++idim) {
+                        std::vector<double> f_data(ncache);
+                        curr = grid.headl(icpu, ilevel);
+                        for(int i=0; i<ncache; ++i) {
+                            int ind_cell = grid.ncoarse + (ison-1)*grid.ngridmax + curr;
+                            f_data[i] = grid.f(ind_cell, idim);
+                            curr = grid.next[curr-1];
+                        }
+                        write_record(f_data.data(), ncache);
                     }
                 }
             }

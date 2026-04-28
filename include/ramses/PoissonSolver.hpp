@@ -2,6 +2,7 @@
 #define RAMSES_POISSON_SOLVER_HPP
 
 #include "AmrGrid.hpp"
+#include "Config.hpp"
 
 namespace ramses {
 
@@ -10,9 +11,10 @@ namespace ramses {
  */
 class PoissonSolver {
 public:
-    PoissonSolver(AmrGrid& grid) : grid_(grid) {}
+    PoissonSolver(AmrGrid& grid, Config& config) : grid_(grid), config_(config) {}
 
     void solve(int ilevel);
+    void compute_force(int ilevel);
 
 private:
     void smooth(int ilevel);
@@ -21,6 +23,7 @@ private:
     void vcycle(int ilevel);
 
     AmrGrid& grid_;
+    Config& config_;
     std::vector<real_t> res; // Residual workspace [ncell]
 };
 

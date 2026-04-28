@@ -86,3 +86,10 @@ The RAMSES-2025 C++ port is now a **fully functional, production-ready, and test
 - **Hydro Solver Generalization:** Updated `HydroSolver` to be fully dimension-aware and correctly utilize physical `dt` and `dx` in flux calculations.
 - **Stability and Safety:** Patched multiple 1-based indexing errors and potential out-of-bounds memory accesses in `Initializer`, `TreeUpdater`, and `RamsesWriter`.
 - **Test Suite Progress:** Successfully enabled the execution of the full `hydro` test suite, including complex cases like `sod-tube-nener` with extra passive variables.
+
+## Phase 14: Magnetohydrodynamics (MHD) Porting
+
+### [2026-04-28] - HLLD Riemann Solver Integration
+- **HLLD Porting:** Successfully implemented the HLLD Riemann solver in C++, ensuring it correctly handles magnetic fields and pressure-energy transformations.
+- **Integration:** Verified the HLLD solver within the `MhdSolver::godunov_fine` framework and confirmed data pipeline integrity with the `imhd-tube` test suite.
+- **Status:** Core MHD solver framework is functional; transitioning to high-order reconstruction (MUSCL) and divergence-free transport (CT).

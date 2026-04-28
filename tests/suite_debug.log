@@ -1,0 +1,21 @@
+############################################
+#   Running RAMSES automatic test suite    #
+############################################
+Will perform the following tests:
+ [1] mhd/imhd-tube
+ [2] mhd/imhd-tube-nener
+--------------------------------------------
+Test 1/2: mhd/imhd-tube
+Compiling source (NDIM=1, SOLVER=mhd)
+Running test: 0s
+Plotting and analysing results
+Test mhd/imhd-tube failed! [FAIL]
+--------------------------------------------
+Test 2/2: mhd/imhd-tube-nener
+Compiling source (NDIM=1, SOLVER=mhd)
+Running test: 0s
+Plotting and analysing results
+Test mhd/imhd-tube-nener failed! [FAIL]
+--------------------------------------------
+Total run time: 2s
+There were some failed tests

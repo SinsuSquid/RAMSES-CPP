@@ -94,13 +94,20 @@ for ((i=0;i<$ntests;i++)); do
    echo "Test $(($i+1))/${ntests}: ${testname[n]}" | tee -a $LOGFILE;
    
    rawname=$(basename ${testname[n]})
-   FLAGS=$(grep FLAGS ${TEST_DIRECTORY}/${testname[n]}/config.txt | cut -d ':' -f2);
+   CONFIG_PATH="${TEST_DIRECTORY}/${testname[n]}/config.txt"
+   FLAGS=$(grep FLAGS ${CONFIG_PATH} | cut -d ':' -f2);
    ndim=$(echo $FLAGS | grep -o "NDIM=[0-9]" | cut -d '=' -f2)
+   solver=$(echo $FLAGS | grep -o "SOLVER=[a-z]*" | cut -d '=' -f2)
    
-   echo "Compiling source (NDIM=$ndim)" | tee -a $LOGFILE;
+   echo "Compiling source (NDIM=$ndim, SOLVER=$solver)" | tee -a $LOGFILE;
    cd ${BUILD_DIRECTORY}
    CMAKE_ARGS="-DRAMSES_NDIM=${ndim}"
-   [ $MPI -eq 1 ] && CMAKE_ARGS="${CMAKE_ARGS} -DRAMSES_USE_MPI=ON"
+   if [ $MPI -eq 1 ]; then
+      CMAKE_ARGS="${CMAKE_ARGS} -DRAMSES_USE_MPI=ON"
+   else
+      CMAKE_ARGS="${CMAKE_ARGS} -DRAMSES_USE_MPI=OFF"
+   fi
+   [ "$solver" == "mhd" ] && CMAKE_ARGS="${CMAKE_ARGS} -DRAMSES_USE_MHD=ON"
    
    cmake .. ${CMAKE_ARGS} -DCMAKE_BUILD_TYPE=Release >> $LOGFILE 2>&1
    make ramses_main >> $LOGFILE 2>&1

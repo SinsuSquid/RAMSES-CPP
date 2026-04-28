@@ -26,6 +26,11 @@ private:
      */
     void region_condinit();
 
+    /**
+     * @brief Analytic disk potential initial conditions.
+     */
+    void ana_disk_potential_condinit();
+
     AmrGrid& grid_;
     const Config& config_;
 };

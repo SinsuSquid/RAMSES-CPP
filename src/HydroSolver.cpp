@@ -12,24 +12,36 @@
 namespace ramses {
 
 void HydroSolver::set_unew(int ilevel) {
-    for (int ind_cell = 1; ind_cell <= grid_.ncell; ++ind_cell) {
-        for (int ivar = 1; ivar <= grid_.nvar; ++ivar) {
-            grid_.unew(ind_cell, ivar) = grid_.uold(ind_cell, ivar);
+    for (int icpu = 1; icpu <= grid_.ncpu; ++icpu) {
+        int igrid = grid_.headl(icpu, ilevel);
+        while (igrid > 0) {
+            for (int ind = 1; ind <= constants::twotondim; ++ind) {
+                int ind_cell = grid_.ncoarse + (ind - 1) * grid_.ngridmax + igrid;
+                for (int ivar = 1; ivar <= grid_.nvar; ++ivar) {
+                    grid_.unew(ind_cell, ivar) = grid_.uold(ind_cell, ivar);
+                }
+            }
+            igrid = grid_.next[igrid - 1];
         }
     }
 }
 
 void HydroSolver::set_uold(int ilevel) {
-    for (int ind_cell = 1; ind_cell <= grid_.ncell; ++ind_cell) {
-        for (int ivar = 1; ivar <= grid_.nvar; ++ivar) {
-            grid_.uold(ind_cell, ivar) = grid_.unew(ind_cell, ivar);
+    for (int icpu = 1; icpu <= grid_.ncpu; ++icpu) {
+        int igrid = grid_.headl(icpu, ilevel);
+        while (igrid > 0) {
+            for (int ind = 1; ind <= constants::twotondim; ++ind) {
+                int ind_cell = grid_.ncoarse + (ind - 1) * grid_.ngridmax + igrid;
+                for (int ivar = 1; ivar <= grid_.nvar; ++ivar) {
+                    grid_.uold(ind_cell, ivar) = grid_.unew(ind_cell, ivar);
+                }
+            }
+            igrid = grid_.next[igrid - 1];
         }
     }
 }
 
 void HydroSolver::godunov_fine(int ilevel, real_t dt, real_t dx) {
-    set_unew(ilevel);
-    
     std::vector<int> active_octs;
     for (int icpu = 1; icpu <= grid_.ncpu; ++icpu) {
         int igrid = grid_.headl(icpu, ilevel);
@@ -42,7 +54,6 @@ void HydroSolver::godunov_fine(int ilevel, real_t dt, real_t dx) {
     if (!active_octs.empty()) {
         godfine1(active_octs, ilevel, dt, dx);
     }
-    set_uold(ilevel);
 }
 
 void HydroSolver::ctoprim(const real_t u[], real_t q[], real_t gamma) {
@@ -123,21 +134,53 @@ void HydroSolver::gather_stencil(int igrid, int ilevel, LocalStencil& stencil) {
 
 real_t HydroSolver::compute_courant_step(int ilevel, real_t dx, real_t gamma, real_t courant_factor) {
     real_t dt_max = 1e30; const real_t smallr = 1e-10;
+    
+    // We loop over all cells. For a rigorous Courant condition on AMR, 
+    // the max stable dt for the root level must consider the finest level's constraints.
     for (int i = 1; i <= grid_.ncell; ++i) {
+        if (grid_.son[i] != 0) continue; // Only compute dt on leaf cells
+        
+        // Find which level this cell belongs to
+        int cell_level = 1;
+        if (i > grid_.ncoarse) {
+            int igrid = (i - grid_.ncoarse - 1) % grid_.ngridmax + 1;
+            int ifather = grid_.father[igrid - 1];
+            cell_level = 2;
+            while (ifather > grid_.ncoarse) {
+                cell_level++;
+                int igrid_father = (ifather - grid_.ncoarse - 1) % grid_.ngridmax + 1;
+                ifather = grid_.father[igrid_father - 1];
+            }
+        }
+        
+        real_t cell_dx = params::boxlen / static_cast<real_t>(params::nx * (1 << (cell_level - 1)));
+
         real_t d = std::max(grid_.uold(i, 1), smallr);
         real_t vel2 = 0.0;
         real_t vel_max = 0.0;
+        real_t g_max = 0.0;
         for (int idim = 1; idim <= NDIM; ++idim) {
             real_t v = grid_.uold(i, 1 + idim) / d;
             vel2 += v * v;
             vel_max = std::max(vel_max, std::abs(v));
+            g_max = std::max(g_max, std::abs(grid_.f(i, idim)));
         }
         real_t e_kin = 0.5 * d * vel2;
         real_t e_int = grid_.uold(i, NDIM + 2) - e_kin;
         real_t p = std::max(e_int * (gamma - 1.0), d * 1e-10);
         real_t cs = std::sqrt(gamma * p / d);
-        real_t dt_cell = courant_factor * dx / (vel_max + cs + 1e-20);
-        dt_max = std::min(dt_max, dt_cell);
+        
+        // dt based on hydro
+        real_t dt_hydro = courant_factor * cell_dx / (vel_max + cs + 1e-20);
+        // dt based on gravity
+        real_t dt_grav = 1e30;
+        if (g_max > 0) dt_grav = std::sqrt(cell_dx / g_max);
+        
+        real_t dt_cell = std::min(dt_hydro, dt_grav);
+        
+        // Scale up the cell's dt to the root level dt
+        real_t dt_root = dt_cell * (1 << (cell_level - 1));
+        dt_max = std::min(dt_max, dt_root);
     }
     return dt_max;
 }
@@ -219,6 +262,49 @@ void HydroSolver::godfine1(const std::vector<int>& ind_grid, int ilevel, real_t 
             }
         }
         }
+        }
+    }
+}
+
+void HydroSolver::add_gravity_source_terms(int ilevel, real_t dt) {
+    if (grid_.count_grids_at_level(ilevel) == 0) return;
+
+    real_t fact = 0.5 * dt;
+    const real_t smallr = 1e-10;
+    
+    for (int icpu = 1; icpu <= grid_.ncpu; ++icpu) {
+        int igrid = grid_.headl(icpu, ilevel);
+        while (igrid > 0) {
+            for (int ind = 1; ind <= constants::twotondim; ++ind) {
+                int ind_cell = grid_.ncoarse + (ind - 1) * grid_.ngridmax + igrid;
+                
+                real_t d = std::max(grid_.unew(ind_cell, 1), smallr);
+                real_t u = 0.0, v = 0.0, w = 0.0;
+                
+                if (NDIM > 0) u = grid_.unew(ind_cell, 2) / d;
+                if (NDIM > 1) v = grid_.unew(ind_cell, 3) / d;
+                if (NDIM > 2) w = grid_.unew(ind_cell, 4) / d;
+                
+                real_t e_kin = 0.5 * d * (u*u + v*v + w*w);
+                real_t e_prim = grid_.unew(ind_cell, NDIM + 2) - e_kin; // internal energy + thermal + non-thermal
+                
+                if (NDIM > 0) {
+                    u = u + grid_.f(ind_cell, 1) * fact;
+                    grid_.unew(ind_cell, 2) = d * u;
+                }
+                if (NDIM > 1) {
+                    v = v + grid_.f(ind_cell, 2) * fact;
+                    grid_.unew(ind_cell, 3) = d * v;
+                }
+                if (NDIM > 2) {
+                    w = w + grid_.f(ind_cell, 3) * fact;
+                    grid_.unew(ind_cell, 4) = d * w;
+                }
+                
+                e_kin = 0.5 * d * (u*u + v*v + w*w);
+                grid_.unew(ind_cell, NDIM + 2) = e_prim + e_kin;
+            }
+            igrid = grid_.next[igrid - 1];
         }
     }
 }
