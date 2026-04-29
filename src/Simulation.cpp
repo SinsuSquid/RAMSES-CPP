@@ -126,7 +126,12 @@ void Simulation::run() {
         t_ += dt;
         
         if (nstep_ % 10 == 0) {
-            std::cout << "  Step " << nstep_ << " t=" << t_ << " dt=" << dt << std::endl;
+            std::cout << "  Step " << nstep_ << " t=" << t_ << " dt=" << dt;
+#ifdef MHD
+            real_t dx = params::boxlen / static_cast<real_t>(params::nx);
+            std::cout << " max_div_b=" << mhd_.compute_max_div_b(1, dx);
+#endif
+            std::cout << std::endl;
         }
     }
 }
@@ -173,8 +178,7 @@ void Simulation::amr_step(int ilevel, real_t dt) {
     hydro_.set_uold(ilevel);
 #endif
 
-    // Debug output
-    real_t min_d = 1e30, max_v = 0.0;
+    real_t min_d = 1e30, max_v = 0.0, max_div_b = 0.0;
     for (int icpu = 1; icpu <= grid_.ncpu; ++icpu) {
         int igrid = grid_.headl(icpu, ilevel);
         while (igrid > 0) {
@@ -185,11 +189,22 @@ void Simulation::amr_step(int ilevel, real_t dt) {
                 real_t v2 = 0;
                 for (int i=1; i<=NDIM; ++i) v2 += std::pow(grid_.uold(ind_cell, 1+i)/d, 2);
                 max_v = std::max(max_v, std::sqrt(v2));
+#ifdef MHD
+                int nvar_pure = grid_.nvar - 3;
+                real_t div = (grid_.uold(ind_cell, nvar_pure + 1) - grid_.uold(ind_cell, 6));
+                if (NDIM > 1) div += (grid_.uold(ind_cell, nvar_pure + 2) - grid_.uold(ind_cell, 7));
+                if (NDIM > 2) div += (grid_.uold(ind_cell, nvar_pure + 3) - grid_.uold(ind_cell, 8));
+                max_div_b = std::max(max_div_b, std::abs(div) / dx);
+#endif
             }
             igrid = grid_.next[igrid - 1];
         }
     }
-    std::cout << "  amr_step(" << ilevel << ", dt=" << dt << "): min_d=" << min_d << ", max_v=" << max_v << std::endl;
+    std::cout << "  amr_step(" << ilevel << ", dt=" << dt << "): min_d=" << min_d << ", max_v=" << max_v;
+#ifdef MHD
+    std::cout << ", max_div_b=" << max_div_b;
+#endif
+    std::cout << std::endl;
 }
 
 void Simulation::dump_snapshot(int iout) {

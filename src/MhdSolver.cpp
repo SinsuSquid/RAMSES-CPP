@@ -10,6 +10,29 @@
 
 namespace ramses {
 
+real_t MhdSolver::compute_max_div_b(int ilevel, real_t dx) {
+    real_t max_div = 0.0;
+    int nvar_pure = grid_.nvar - 3;
+    
+    for (int icpu = 1; icpu <= grid_.ncpu; ++icpu) {
+        int igrid = grid_.headl(icpu, ilevel);
+        while (igrid > 0) {
+            for (int ic = 1; ic <= constants::twotondim; ++ic) {
+                int ind_cell = grid_.ncoarse + (ic - 1) * grid_.ngridmax + igrid;
+                
+                // Div B = (Bx_r - Bx_l) / dx + (By_r - By_l) / dy + (Bz_r - Bz_l) / dz
+                real_t div = (grid_.uold(ind_cell, nvar_pure + 1) - grid_.uold(ind_cell, 6));
+                if (NDIM > 1) div += (grid_.uold(ind_cell, nvar_pure + 2) - grid_.uold(ind_cell, 7));
+                if (NDIM > 2) div += (grid_.uold(ind_cell, nvar_pure + 3) - grid_.uold(ind_cell, 8));
+                
+                max_div = std::max(max_div, std::abs(div) / dx);
+            }
+            igrid = grid_.next[igrid - 1];
+        }
+    }
+    return max_div;
+}
+
 void MhdSolver::set_unew(int ilevel) {
     for (int icpu = 1; icpu <= grid_.ncpu; ++icpu) {
         int igrid = grid_.headl(icpu, ilevel);
@@ -50,17 +73,31 @@ real_t MhdSolver::compute_courant_step(int ilevel, real_t dx, real_t gamma, real
             for (int ic = 1; ic <= constants::twotondim; ++ic) {
                 int ind_cell = grid_.ncoarse + (ic - 1) * grid_.ngridmax + igrid;
                 real_t q[8];
-                for(int i=0; i<8; ++i) q[i] = grid_.uold(ind_cell, i+1);
-                
-                real_t vel_fast;
-                find_speed_fast(q, vel_fast, gamma);
-
+                // Map conservative to primitives for Courant check
                 real_t d = std::max(grid_.uold(ind_cell, 1), smallr);
+                q[0] = d;
+                q[1] = grid_.uold(ind_cell, 5); // Total energy? No, find_speed_fast expects P at index 1
+                // Wait, find_speed_fast(q, vel_info, gamma) expects:
+                // q[0]=d, q[1]=P, q[2]=u, q[3]=A, q[4]=v, q[5]=B, q[6]=w, q[7]=C
+                
                 real_t u = grid_.uold(ind_cell, 2) / d;
                 real_t v = grid_.uold(ind_cell, 3) / d;
                 real_t w = grid_.uold(ind_cell, 4) / d;
-                real_t vel = std::sqrt(u*u + v*v + w*w);
+                real_t A = grid_.uold(ind_cell, 6);
+                real_t B = grid_.uold(ind_cell, 7);
+                real_t C = grid_.uold(ind_cell, 8);
                 
+                // Total energy is index 5 (1-based)
+                real_t etot = grid_.uold(ind_cell, 5);
+                real_t ekin = 0.5 * d * (u*u + v*v + w*w);
+                real_t emag = 0.5 * (A*A + B*B + C*C);
+                real_t p = std::max((etot - ekin - emag) * (gamma - 1.0), d * 1e-10);
+                
+                real_t q_mhd[8] = {d, p, u, A, v, B, w, C};
+                real_t vel_fast;
+                find_speed_fast(q_mhd, vel_fast, gamma);
+
+                real_t vel = std::sqrt(u*u + v*v + w*w);
                 real_t dt_cell = dx / (vel + vel_fast);
                 dt_max = std::min(dt_max, dt_cell);
             }
@@ -111,6 +148,18 @@ void MhdSolver::gather_stencil(int igrid, int ilevel, LocalStencil& stencil) {
                                 if (ind_cell > 0 && ind_cell <= grid_.ncell) {
                                     for (int iv = 1; iv <= nvar; ++iv) stencil.uloc[i3][j3][k3][iv - 1] = grid_.uold(ind_cell, iv);
                                     stencil.refined[i3][j3][k3] = (grid_.son[ind_cell] > 0);
+                                }
+                            } else {
+                                // Fill dummy directions with active cell data for NDIM < 3
+                                int active_i2 = i2;
+                                int active_j2 = (NDIM > 1) ? j2 : 0;
+                                int active_k2 = (NDIM > 2) ? k2 : 0;
+                                int active_icell_pos = 1 + active_i2 + 2*active_j2 + 4*active_k2;
+                                if (ison > 0 && active_icell_pos <= constants::twotondim) {
+                                    int ind_cell = grid_.ncoarse + (active_icell_pos - 1) * grid_.ngridmax + ison;
+                                    if (ind_cell > 0 && ind_cell <= grid_.ncell) {
+                                        for (int iv = 1; iv <= nvar; ++iv) stencil.uloc[i3][j3][k3][iv - 1] = grid_.uold(ind_cell, iv);
+                                    }
                                 }
                             }
                         }
@@ -174,7 +223,6 @@ void MhdSolver::trace(const real_t qloc[6][6][6][20], const real_t bfloc[6][6][6
                     real_t svt2 = -vn * dvt2 + (Bn * dBt2) / r;
                     real_t sBt1 = -vn * dBt1 + Bn * dvt1 - Bt1 * dvn;
                     real_t sBt2 = -vn * dBt2 + Bn * dvt2 - Bt2 * dvn;
-                    // dBn/dt = 0 in 1D source term if using CT
 
                     // Update states with time prediction
                     real_t r_pred = r + sr * dtdx;
@@ -247,6 +295,7 @@ void MhdSolver::ctoprim(const real_t u[20], real_t q[20], real_t bf[3][2], real_
 }
 
 void MhdSolver::cmpflxm(const real_t qm[6][6][6][3][20], const real_t qp[6][6][6][3][20],
+                        const real_t bfloc[6][6][6][3][2],
                         int idim, real_t gamma, real_t flux[6][6][6][20]) {
     int nvar_pure = grid_.nvar - 3;
     for (int k = 1; k < 5; ++k) {
@@ -262,7 +311,7 @@ void MhdSolver::cmpflxm(const real_t qm[6][6][6][3][20], const real_t qp[6][6][6
                 qL_mhd[0] = qm[i][j][k][idim][0];
                 qL_mhd[1] = qm[i][j][k][idim][4];
                 qL_mhd[2] = qm[i][j][k][idim][1 + idim];
-                qL_mhd[3] = qm[i][j][k][idim][5 + idim]; // Bn
+                qL_mhd[3] = bfloc[i][j][k][idim][1]; // Bn (staggered)
                 qL_mhd[4] = qm[i][j][k][idim][1 + (idim + 1) % 3];
                 qL_mhd[5] = qm[i][j][k][idim][5 + (idim + 1) % 3];
                 qL_mhd[6] = qm[i][j][k][idim][1 + (idim + 2) % 3];
@@ -271,7 +320,7 @@ void MhdSolver::cmpflxm(const real_t qm[6][6][6][3][20], const real_t qp[6][6][6
                 qR_mhd[0] = qp[ni][nj][nk][idim][0];
                 qR_mhd[1] = qp[ni][nj][nk][idim][4];
                 qR_mhd[2] = qp[ni][nj][nk][idim][1 + idim];
-                qR_mhd[3] = qp[ni][nj][nk][idim][5 + idim];
+                qR_mhd[3] = bfloc[ni][nj][nk][idim][0]; // Bn (staggered)
                 qR_mhd[4] = qp[ni][nj][nk][idim][1 + (idim + 1) % 3];
                 qR_mhd[5] = qp[ni][nj][nk][idim][5 + (idim + 1) % 3];
                 qR_mhd[6] = qp[ni][nj][nk][idim][1 + (idim + 2) % 3];
@@ -316,7 +365,7 @@ void MhdSolver::godfine1(const std::vector<int>& ind_grid, int ilevel, real_t dt
         for(int k=1; k<5; ++k) for(int j=1; j<5; ++j) for(int i=1; i<5; ++i) {
             for(int iv=0; iv<nvar_pure; ++iv) {
                 dq[i][j][k][0][iv] = SlopeLimiter::compute_slope(qloc[i-1][j][k][iv], qloc[i][j][k][iv], qloc[i+1][j][k][iv], 1);
-                if (NDIM > 1) dq[i][j][k][1][iv] = SlopeLimiter::compute_slope(qloc[i][j-1][k][iv], qloc[i][j][k][iv], qloc[i][j+1][k][iv], 1);
+                if (NDIM > 1) dq[i][j][k][1][iv] = SlopeLimiter::compute_slope(qloc[i][j-1][k][iv], qloc[i][j][k][iv], qloc[i+1][j][k][iv], 1);
                 if (NDIM > 2) dq[i][j][k][2][iv] = SlopeLimiter::compute_slope(qloc[i][j][k-1][iv], qloc[i][j][k][iv], qloc[i][j][k+1][iv], 1);
             }
         }
@@ -328,15 +377,12 @@ void MhdSolver::godfine1(const std::vector<int>& ind_grid, int ilevel, real_t dt
         // 3. Compute fluxes
         real_t fluxes[3][6][6][6][20] = {0.0};
         for (int idim = 0; idim < NDIM; ++idim) {
-            cmpflxm(qm, qp, idim, gamma, fluxes[idim]);
+            cmpflxm(qm, qp, bfloc, idim, gamma, fluxes[idim]);
         }
 
         // 4. Constrained Transport (EMF)
         real_t emfx[6][6][6] = {0.0}, emfy[6][6][6] = {0.0}, emfz[6][6][6] = {0.0};
         for(int k=1; k<5; ++k) for(int j=1; j<5; ++j) for(int i=1; i<5; ++i) {
-            // Ez = u*By - v*Bx
-            // This is a very simplified arithmetic average for EMF
-            // In a real code, we use Upwind or a more complex average
             auto get_ez = [&](int ii, int jj, int kk) {
                 real_t u_avg = 0.25*(qloc[ii-1][jj-1][kk][1] + qloc[ii-1][jj][kk][1] + qloc[ii][jj-1][kk][1] + qloc[ii][jj][kk][1]);
                 real_t v_avg = 0.25*(qloc[ii-1][jj-1][kk][2] + qloc[ii-1][jj][kk][2] + qloc[ii][jj-1][kk][2] + qloc[ii][jj][kk][2]);
@@ -347,7 +393,6 @@ void MhdSolver::godfine1(const std::vector<int>& ind_grid, int ilevel, real_t dt
             emfz[i][j][k] = get_ez(i, j, k);
 
             if (NDIM > 2) {
-                // Ey = w*Bx - u*Bz
                 auto get_ey = [&](int ii, int jj, int kk) {
                     real_t u_avg = 0.25*(qloc[ii-1][jj][kk-1][1] + qloc[ii-1][jj][kk][1] + qloc[ii][jj][kk-1][1] + qloc[ii][jj][kk][1]);
                     real_t w_avg = 0.25*(qloc[ii-1][jj][kk-1][3] + qloc[ii-1][jj][kk][3] + qloc[ii][jj][kk-1][3] + qloc[ii][jj][kk][3]);
@@ -357,11 +402,10 @@ void MhdSolver::godfine1(const std::vector<int>& ind_grid, int ilevel, real_t dt
                 };
                 emfy[i][j][k] = get_ey(i, j, k);
 
-                // Ex = v*Bz - w*By
                 auto get_ex = [&](int ii, int jj, int kk) {
-                    real_t v_avg = 0.25*(qloc[ii][jj-1][kk-1][2] + qloc[ii][jj-1][kk][2] + qloc[ii][jj][kk-1][2] + qloc[ii][jj][kk][2]);
-                    real_t w_avg = 0.25*(qloc[ii][jj-1][kk-1][3] + qloc[ii][jj-1][kk][3] + qloc[ii][jj][kk-1][3] + qloc[ii][jj][kk][3]);
-                    real_t Ay_avg = 0.5*(bfloc[ii][jj][kk-1][1][0] + bfloc[ii][jj][kk][0][0]);
+                    real_t v_avg = 0.25*(qloc[ii][jj-1][kk-1][2] + qloc[ii][jj-1][kk][2] + qloc[ii][jj-1][kk-1][2] + qloc[ii][jj-1][kk][2]);
+                    real_t w_avg = 0.25*(qloc[ii][jj-1][kk-1][3] + qloc[ii][jj-1][kk][3] + qloc[ii][jj-1][kk-1][3] + qloc[ii][jj-1][kk][3]);
+                    real_t Ay_avg = 0.5*(bfloc[ii][jj-1][kk-1][1][0] + bfloc[ii][jj][kk][1][0]);
                     real_t Az_avg = 0.5*(bfloc[ii][jj-1][kk][2][0] + bfloc[ii][jj][kk][2][0]);
                     return v_avg * Az_avg - w_avg * Ay_avg;
                 };
@@ -369,7 +413,7 @@ void MhdSolver::godfine1(const std::vector<int>& ind_grid, int ilevel, real_t dt
             }
         }
 
-        // 4. Update unew
+        // 5. Update unew
         for (int k2 = 0; k2 < (NDIM > 2 ? 2 : 1); ++k2) {
         for (int j2 = 0; j2 < (NDIM > 1 ? 2 : 1); ++j2) {
         for (int i2 = 0; i2 < 2; ++i2) {
@@ -386,11 +430,15 @@ void MhdSolver::godfine1(const std::vector<int>& ind_grid, int ilevel, real_t dt
                 }
 
                 // CT update for B-left faces (unew 6,7,8)
-                // dBx = dt/dz (Ey(k) - Ey(k+1)) - dt/dy (Ez(j) - Ez(j+1))
-                real_t dBx_l = (emfy[i][j][k] - emfy[i][j][k+1]) * dt_dx - (emfz[i][j][k] - emfz[i][j+1][k]) * dt_dx;
-                grid_.unew(ind_cell, 6) += dBx_l;
                 if (NDIM > 1) {
-                    real_t dBy_l = (emfz[i][j][k] - emfz[i+1][j][k]) * dt_dx - (emfx[i][j][k] - emfx[i][j][k+1]) * dt_dx;
+                    real_t dBx_l = 0.0;
+                    if (NDIM > 2) dBx_l += (emfy[i][j][k] - emfy[i][j][k+1]) * dt_dx;
+                    dBx_l -= (emfz[i][j][k] - emfz[i][j+1][k]) * dt_dx;
+                    grid_.unew(ind_cell, 6) += dBx_l;
+                }
+                if (NDIM > 1) {
+                    real_t dBy_l = (emfz[i][j][k] - emfz[i+1][j][k]) * dt_dx;
+                    if (NDIM > 2) dBy_l -= (emfx[i][j][k] - emfx[i][j][k+1]) * dt_dx;
                     grid_.unew(ind_cell, 7) += dBy_l;
                 }
                 if (NDIM > 2) {
@@ -398,15 +446,20 @@ void MhdSolver::godfine1(const std::vector<int>& ind_grid, int ilevel, real_t dt
                     grid_.unew(ind_cell, 8) += dBz_l;
                 }
 
-                // CT update for B-right faces (unew nvar-2, nvar-1, nvar)
-                real_t dBx_r = (emfy[i+1][j][k] - emfy[i+1][j][k+1]) * dt_dx - (emfz[i+1][j][k] - emfz[i+1][j+1][k]) * dt_dx;
-                grid_.unew(ind_cell, nvar_pure + 1) += dBx_r;
+                // CT update for B-right faces (unew nvar_pure + 1, 2, 3)
                 if (NDIM > 1) {
-                    real_t dBy_r = (emfz[i][j+1][k] - emfz[i+1][j+1][k]) * dt_dx - (emfx[i][j+1][k] - emfx[i][j+1][k+1]) * dt_dx;
+                    real_t dBx_r = 0.0;
+                    if (NDIM > 2) dBx_r += (emfy[i+1][j][k] - emfy[i+1][j][k+1]) * dt_dx;
+                    dBx_r -= (emfz[i+1][j][k] - emfz[i+1][j+1][k]) * dt_dx;
+                    grid_.unew(ind_cell, nvar_pure + 1) += dBx_r;
+                }
+                if (NDIM > 1) {
+                    real_t dBy_r = (emfz[i+1][j][k] - emfz[i+1][j+1][k]) * dt_dx;
+                    if (NDIM > 2) dBy_r -= (emfx[i+1][j][k] - emfx[i+1][j][k+1]) * dt_dx;
                     grid_.unew(ind_cell, nvar_pure + 2) += dBy_r;
                 }
                 if (NDIM > 2) {
-                    real_t dBz_r = (emfx[i][j][k+1] - emfx[i][j+1][k+1]) * dt_dx - (emfy[i][j][k+1] - emfy[i+1][j][k+1]) * dt_dx;
+                    real_t dBz_r = (emfx[i][j][k+1] - emfx[i+1][j][k+1]) * dt_dx - (emfy[i][j+1][k+1] - emfy[i+1][j+1][k+1]) * dt_dx;
                     grid_.unew(ind_cell, nvar_pure + 3) += dBz_r;
                 }
             }

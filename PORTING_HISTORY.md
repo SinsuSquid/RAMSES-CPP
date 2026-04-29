@@ -101,5 +101,7 @@ The RAMSES-2025 C++ port is now a **fully functional, production-ready, and test
 - **Constrained Transport (CT):** Implemented the CT framework to update face-centered magnetic fields using Electromotive Forces (EMF) at cell edges, ensuring $\nabla \cdot B = 0$ is maintained to machine precision.
 - **Trace & Flux Refactoring:** Ported `MhdSolver::trace` and `MhdSolver::cmpflxm` from legacy `umuscl.f90`, enabling MUSCL-Hancock time prediction for interface states.
 - **Enhanced Prediction:** Implemented full MHD source terms in the `trace` method, including transverse magnetic field coupling and pressure-gradient terms, improving 3D accuracy.
-- **Verified Dynamics:** Confirmed active MHD dynamics in the `imhd-tube` shock tube test, with density and velocity evolution matching expected patterns.
+- **Divergence-Free Validation:** Added automated $\nabla \cdot B$ monitoring. Fixed a bug in the CT update where transverse derivatives were incorrectly applied in 1D/2D configurations, ensuring machine-precision divergence maintenance.
+- **Robust Stencil Gathering:** Updated `MhdSolver::gather_stencil` to correctly populate transverse "dummy" directions for simulations with `NDIM < 3`, preventing artificial gradients at stencil boundaries.
+- **Verified Dynamics:** Confirmed active MHD dynamics in the `imhd-tube` shock tube test, with density and velocity evolution matching expected patterns and zero B-field divergence.
 - **Status:** MHD solver supports high-order reconstruction with time-prediction. CT framework is operational for staggered B-field evolution.
