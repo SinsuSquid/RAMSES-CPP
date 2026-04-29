@@ -137,6 +137,9 @@ void MhdSolver::trace(const real_t qloc[6][6][6][20], const real_t bfloc[6][6][6
                 real_t v = qloc[i][j][k][2];
                 real_t w = qloc[i][j][k][3];
                 real_t p = qloc[i][j][k][4];
+                real_t A = qloc[i][j][k][5];
+                real_t B = qloc[i][j][k][6];
+                real_t C = qloc[i][j][k][7];
 
                 for (int idim = 0; idim < NDIM; ++idim) {
                     real_t dr_d = 0.5 * dq[i][j][k][idim][0];
@@ -144,31 +147,62 @@ void MhdSolver::trace(const real_t qloc[6][6][6][20], const real_t bfloc[6][6][6
                     real_t dv_d = 0.5 * dq[i][j][k][idim][2];
                     real_t dw_d = 0.5 * dq[i][j][k][idim][3];
                     real_t dp_d = 0.5 * dq[i][j][k][idim][4];
+                    real_t dA_d = 0.5 * dq[i][j][k][idim][5];
+                    real_t dB_d = 0.5 * dq[i][j][k][idim][6];
+                    real_t dC_d = 0.5 * dq[i][j][k][idim][7];
 
-                    // Source terms (simplified)
-                    real_t vel_n = (idim == 0) ? u : (idim == 1 ? v : w);
-                    real_t sn = (idim == 0) ? du_d : (idim == 1 ? dv_d : dw_d);
-                    
-                    real_t sr = -vel_n * dr_d - r * sn;
-                    real_t sp = -vel_n * dp_d - gamma * p * sn;
-                    
+                    // Map variables to normal/transverse
+                    real_t vn, vt1, vt2, Bn, Bt1, Bt2;
+                    real_t dvn, dvt1, dvt2, dBn, dBt1, dBt2;
+
+                    if (idim == 0) {
+                        vn = u; vt1 = v; vt2 = w; Bn = A; Bt1 = B; Bt2 = C;
+                        dvn = du_d; dvt1 = dv_d; dvt2 = dw_d; dBn = dA_d; dBt1 = dB_d; dBt2 = dC_d;
+                    } else if (idim == 1) {
+                        vn = v; vt1 = w; vt2 = u; Bn = B; Bt1 = C; Bt2 = A;
+                        dvn = dv_d; dvt1 = dw_d; dvt2 = du_d; dBn = dB_d; dBt1 = dC_d; dBt2 = dA_d;
+                    } else {
+                        vn = w; vt1 = u; vt2 = v; Bn = C; Bt1 = A; Bt2 = B;
+                        dvn = dw_d; dvt1 = du_d; dvt2 = dv_d; dBn = dC_d; dBt1 = dA_d; dBt2 = dB_d;
+                    }
+
+                    // MHD Source terms (1D part of the prediction)
+                    real_t sr = -vn * dr_d - r * dvn;
+                    real_t sp = -vn * dp_d - gamma * p * dvn;
+                    real_t svn = -vn * dvn - (dp_d + Bt1 * dBt1 + Bt2 * dBt2) / r;
+                    real_t svt1 = -vn * dvt1 + (Bn * dBt1) / r;
+                    real_t svt2 = -vn * dvt2 + (Bn * dBt2) / r;
+                    real_t sBt1 = -vn * dBt1 + Bn * dvt1 - Bt1 * dvn;
+                    real_t sBt2 = -vn * dBt2 + Bn * dvt2 - Bt2 * dvn;
+                    // dBn/dt = 0 in 1D source term if using CT
+
+                    // Update states with time prediction
                     real_t r_pred = r + sr * dtdx;
                     real_t p_pred = p + sp * dtdx;
+                    real_t vn_pred = vn + svn * dtdx;
+                    real_t vt1_pred = vt1 + svt1 * dtdx;
+                    real_t vt2_pred = vt2 + svt2 * dtdx;
+                    real_t Bt1_pred = Bt1 + sBt1 * dtdx;
+                    real_t Bt2_pred = Bt2 + sBt2 * dtdx;
 
-                    qm[i][j][k][idim][0] = r_pred + dr_d;
-                    qp[i][j][k][idim][0] = r_pred - dr_d;
-                    qm[i][j][k][idim][4] = p_pred + dp_d;
-                    qp[i][j][k][idim][4] = p_pred - dp_d;
+                    // Map back to global qm/qp
+                    auto set_qmqp = [&](int iv, real_t val, real_t slope) {
+                        qm[i][j][k][idim][iv] = val + slope;
+                        qp[i][j][k][idim][iv] = val - slope;
+                    };
 
-                    for (int iv = 1; iv < 4; ++iv) {
-                        real_t dv_pred = qloc[i][j][k][iv];
-                        qm[i][j][k][idim][iv] = dv_pred + 0.5 * dq[i][j][k][idim][iv];
-                        qp[i][j][k][idim][iv] = dv_pred - 0.5 * dq[i][j][k][idim][iv];
-                    }
-                    for (int iv = 5; iv < nvar_pure; ++iv) {
-                        real_t dB_pred = qloc[i][j][k][iv];
-                        qm[i][j][k][idim][iv] = dB_pred + 0.5 * dq[i][j][k][idim][iv];
-                        qp[i][j][k][idim][iv] = dB_pred - 0.5 * dq[i][j][k][idim][iv];
+                    set_qmqp(0, r_pred, dr_d);
+                    set_qmqp(4, p_pred, dp_d);
+                    
+                    if (idim == 0) {
+                        set_qmqp(1, vn_pred, du_d); set_qmqp(2, vt1_pred, dv_d); set_qmqp(3, vt2_pred, dw_d);
+                        set_qmqp(5, Bn, dA_d); set_qmqp(6, Bt1_pred, dB_d); set_qmqp(7, Bt2_pred, dC_d);
+                    } else if (idim == 1) {
+                        set_qmqp(2, vn_pred, dv_d); set_qmqp(3, vt1_pred, dw_d); set_qmqp(1, vt2_pred, du_d);
+                        set_qmqp(6, Bn, dB_d); set_qmqp(7, Bt1_pred, dC_d); set_qmqp(5, Bt2_pred, dA_d);
+                    } else {
+                        set_qmqp(3, vn_pred, dw_d); set_qmqp(1, vt1_pred, du_d); set_qmqp(2, vt2_pred, dv_d);
+                        set_qmqp(7, Bn, dC_d); set_qmqp(5, Bt1_pred, dA_d); set_qmqp(6, Bt2_pred, dB_d);
                     }
                 }
             }
