@@ -1,4 +1,8 @@
-# RAMSES-CPP
+<img src="logo/Sia-chan_logo.png" style="width: 900px; height: auto;">
+
+Sia(_See-ah_)-chan, our mascot.
+
+# RAMSES::CPP
 
 A high-performance, modern C++17 port of the [**RAMSES-2025**](https://github.com/ramses-organisation/ramses/releases/tag/2025.05) Adaptive Mesh Refinement (AMR) code. 
 
