@@ -49,6 +49,8 @@ bool Config::parse(const std::string& filename) {
             std::string key = to_lower(trim(line.substr(0, eq_pos)));
             std::string val = trim(line.substr(eq_pos + 1));
             if (!val.empty() && val.back() == ',') val.pop_back();
+            if (!val.empty() && (val.front() == '\'' || val.front() == '"')) val = val.substr(1);
+            if (!val.empty() && (val.back() == '\'' || val.back() == '"')) val.pop_back();
             blocks_[current_block][key] = val;
             std::cout << "[Config] Loaded " << current_block << ":" << key << " = " << val << std::endl;
         }

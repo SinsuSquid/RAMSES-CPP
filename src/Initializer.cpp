@@ -9,11 +9,96 @@ namespace ramses {
 
 void Initializer::apply_all() {
     std::string condinit_kind = config_.get("init_params", "condinit_kind", "");
+    std::cout << "[Initializer] condinit_kind=\"" << condinit_kind << "\"" << std::endl;
     if (condinit_kind == "ana_disk_potential" || condinit_kind == "'ana_disk_potential'") {
         ana_disk_potential_condinit();
+    } else if (condinit_kind == "orzag_tang" || condinit_kind == "'orzag_tang'") {
+        orzag_tang_condinit();
     } else {
         region_condinit();
     }
+}
+
+void Initializer::orzag_tang_condinit() {
+    real_t gamma = config_.get_double("hydro_params", "gamma", 1.6666667);
+    real_t pi = std::acos(-1.0);
+    real_t B0 = 1.0 / std::sqrt(4.0 * pi);
+    int nvar_pure = grid_.nvar - 3;
+
+    for (int i = 1; i <= grid_.ncell; ++i) {
+        real_t x_cell[3];
+        grid_.get_cell_center(i, x_cell);
+        
+        // Find level of this cell
+        int ilevel = 1;
+        if (i > grid_.ncoarse) {
+            int igrid = (i - grid_.ncoarse - 1) % grid_.ngridmax + 1;
+            int ifather = grid_.father[igrid - 1];
+            ilevel = 2;
+            while (ifather > grid_.ncoarse) {
+                ilevel++;
+                int igrid_father = (ifather - grid_.ncoarse - 1) % grid_.ngridmax + 1;
+                ifather = grid_.father[igrid_father - 1];
+            }
+        }
+        real_t dx = 1.0 / static_cast<real_t>(1 << (ilevel - 1));
+
+        real_t xc = x_cell[0], yc = x_cell[1];
+        real_t xl = xc - 0.5 * dx, xr = xc + 0.5 * dx;
+        real_t yl = yc - 0.5 * dx, yr = yc + 0.5 * dx;
+
+        real_t d = 25.0 / (36.0 * pi);
+        real_t u = -std::sin(2.0 * pi * yc);
+        real_t v = std::sin(2.0 * pi * xc);
+        real_t w = 0.0;
+        real_t p = 5.0 / (12.0 * pi);
+
+        auto get_Ar = [&](real_t xx, real_t yy) {
+            return B0 * (std::cos(4.0 * pi * xx) / (4.0 * pi) + std::cos(2.0 * pi * yy) / (2.0 * pi));
+        };
+
+        real_t Bx_l = (get_Ar(xl, yr) - get_Ar(xl, yl)) / dx;
+        real_t Bx_r = (get_Ar(xr, yr) - get_Ar(xr, yl)) / dx;
+        real_t By_l = (get_Ar(xl, yl) - get_Ar(xr, yl)) / dx;
+        real_t By_r = (get_Ar(xl, yr) - get_Ar(xr, yr)) / dx;
+
+        grid_.uold(i, 1) = d;
+        grid_.uold(i, 2) = d * u;
+        grid_.uold(i, 3) = d * v;
+        grid_.uold(i, 4) = d * w;
+        
+        real_t Bx_avg = 0.5 * (Bx_l + Bx_r);
+        real_t By_avg = 0.5 * (By_l + By_r);
+        real_t Bz_avg = 0.0;
+
+        real_t e_kin = 0.5 * d * (u*u + v*v + w*w);
+        real_t e_mag = 0.5 * (Bx_avg*Bx_avg + By_avg*By_avg + Bz_avg*Bz_avg);
+        grid_.uold(i, 5) = p / (gamma - 1.0) + e_kin + e_mag;
+
+#ifdef MHD
+        grid_.uold(i, 6) = Bx_l;
+        grid_.uold(i, 7) = By_l;
+        grid_.uold(i, 8) = 0.0;
+        grid_.uold(i, nvar_pure + 1) = Bx_r;
+        grid_.uold(i, nvar_pure + 2) = By_r;
+        grid_.uold(i, nvar_pure + 3) = 0.0;
+#endif
+        grid_.cpu_map[i] = 1;
+    }
+    std::cout << "[Initializer] Applied Orszag-Tang ICs." << std::endl;
+#ifdef MHD
+    int ilevel = 1;
+    real_t dx = params::boxlen / static_cast<real_t>(params::nx);
+    real_t max_div = 0.0;
+    int nvar_pure_all = grid_.nvar - 3;
+    for (int i = 1; i <= grid_.ncell; ++i) {
+        real_t div = (grid_.uold(i, nvar_pure_all + 1) - grid_.uold(i, 6));
+        if (NDIM > 1) div += (grid_.uold(i, nvar_pure_all + 2) - grid_.uold(i, 7));
+        if (NDIM > 2) div += (grid_.uold(i, nvar_pure_all + 3) - grid_.uold(i, 8));
+        max_div = std::max(max_div, std::abs(div) / dx);
+    }
+    std::cout << "[Initializer] Max Div B = " << max_div << std::endl;
+#endif
 }
 
 void Initializer::ana_disk_potential_condinit() {

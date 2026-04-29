@@ -31,6 +31,11 @@ private:
      */
     void ana_disk_potential_condinit();
 
+    /**
+     * @brief Orszag-Tang initial conditions.
+     */
+    void orzag_tang_condinit();
+
     AmrGrid& grid_;
     const Config& config_;
 };
