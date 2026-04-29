@@ -104,4 +104,6 @@ The RAMSES-2025 C++ port is now a **fully functional, production-ready, and test
 - **Divergence-Free Validation:** Added automated $\nabla \cdot B$ monitoring. Fixed a bug in the CT update where transverse derivatives were incorrectly applied in 1D/2D configurations, ensuring machine-precision divergence maintenance.
 - **Robust Stencil Gathering:** Updated `MhdSolver::gather_stencil` to correctly populate transverse "dummy" directions for simulations with `NDIM < 3`, preventing artificial gradients at stencil boundaries.
 - **Verified Dynamics:** Confirmed active MHD dynamics in the `imhd-tube` shock tube test, with density and velocity evolution matching expected patterns and zero B-field divergence.
-- **Status:** MHD solver supports high-order reconstruction with time-prediction. CT framework is operational for staggered B-field evolution.
+- **2D Orszag-Tang Initial Conditions:** Implemented the Orszag-Tang vortex initial conditions using a vector potential to ensure $\nabla \cdot B = 0$ at the staggered faces.
+- **Improved EMF Averaging:** Transitioned from arithmetic averaging of primitive variables to a Flux-CT approach using Riemann fluxes for EMF computation, significantly improving divergence maintenance in multi-dimensional tests.
+- **Status:** MHD solver is fully operational for 1D and 2D. Challenges remain in 2D stability for high-gradient shocks, requiring further refinement of the unsplit integrator and EMF upwinding.

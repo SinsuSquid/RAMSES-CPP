@@ -326,7 +326,12 @@ void MhdSolver::cmpflxm(const real_t qm[6][6][6][3][20], const real_t qp[6][6][6
                 qR_mhd[6] = qp[ni][nj][nk][idim][1 + (idim + 2) % 3];
                 qR_mhd[7] = qp[ni][nj][nk][idim][5 + (idim + 2) % 3];
 
-                hlld(qL_mhd, qR_mhd, f_mhd, gamma);
+                std::string riemann = config_.get("hydro_params", "riemann", "hlld");
+                if (riemann == "llf") {
+                    llf(qL_mhd, qR_mhd, f_mhd, gamma);
+                } else {
+                    hlld(qL_mhd, qR_mhd, f_mhd, gamma);
+                }
 
                 flux[i][j][k][0] = f_mhd[0];
                 flux[i][j][k][4] = f_mhd[1];
@@ -383,33 +388,17 @@ void MhdSolver::godfine1(const std::vector<int>& ind_grid, int ilevel, real_t dt
         // 4. Constrained Transport (EMF)
         real_t emfx[6][6][6] = {0.0}, emfy[6][6][6] = {0.0}, emfz[6][6][6] = {0.0};
         for(int k=1; k<5; ++k) for(int j=1; j<5; ++j) for(int i=1; i<5; ++i) {
-            auto get_ez = [&](int ii, int jj, int kk) {
-                real_t u_avg = 0.25*(qloc[ii-1][jj-1][kk][1] + qloc[ii-1][jj][kk][1] + qloc[ii][jj-1][kk][1] + qloc[ii][jj][kk][1]);
-                real_t v_avg = 0.25*(qloc[ii-1][jj-1][kk][2] + qloc[ii-1][jj][kk][2] + qloc[ii][jj-1][kk][2] + qloc[ii][jj][kk][2]);
-                real_t Ax_avg = 0.5*(bfloc[ii][jj-1][kk][0][0] + bfloc[ii][jj][kk][0][0]);
-                real_t Ay_avg = 0.5*(bfloc[ii-1][jj][kk][1][0] + bfloc[ii][jj][kk][1][0]);
-                return u_avg * Ay_avg - v_avg * Ax_avg;
-            };
-            emfz[i][j][k] = get_ez(i, j, k);
+            // emfz at (i-1/2, j-1/2, k)
+            emfz[i][j][k] = 0.25 * (fluxes[0][i-1][j][k][6] + fluxes[0][i-1][j-1][k][6]
+                                   - fluxes[1][i][j-1][k][5] - fluxes[1][i-1][j-1][k][5]);
 
             if (NDIM > 2) {
-                auto get_ey = [&](int ii, int jj, int kk) {
-                    real_t u_avg = 0.25*(qloc[ii-1][jj][kk-1][1] + qloc[ii-1][jj][kk][1] + qloc[ii][jj][kk-1][1] + qloc[ii][jj][kk][1]);
-                    real_t w_avg = 0.25*(qloc[ii-1][jj][kk-1][3] + qloc[ii-1][jj][kk][3] + qloc[ii][jj][kk-1][3] + qloc[ii][jj][kk][3]);
-                    real_t Ax_avg = 0.5*(bfloc[ii][jj][kk-1][0][0] + bfloc[ii][jj][kk][0][0]);
-                    real_t Az_avg = 0.5*(bfloc[ii-1][jj][kk][2][0] + bfloc[ii][jj][kk][2][0]);
-                    return w_avg * Ax_avg - u_avg * Az_avg;
-                };
-                emfy[i][j][k] = get_ey(i, j, k);
-
-                auto get_ex = [&](int ii, int jj, int kk) {
-                    real_t v_avg = 0.25*(qloc[ii][jj-1][kk-1][2] + qloc[ii][jj-1][kk][2] + qloc[ii][jj-1][kk-1][2] + qloc[ii][jj-1][kk][2]);
-                    real_t w_avg = 0.25*(qloc[ii][jj-1][kk-1][3] + qloc[ii][jj-1][kk][3] + qloc[ii][jj-1][kk-1][3] + qloc[ii][jj-1][kk][3]);
-                    real_t Ay_avg = 0.5*(bfloc[ii][jj-1][kk-1][1][0] + bfloc[ii][jj][kk][1][0]);
-                    real_t Az_avg = 0.5*(bfloc[ii][jj-1][kk][2][0] + bfloc[ii][jj][kk][2][0]);
-                    return v_avg * Az_avg - w_avg * Ay_avg;
-                };
-                emfx[i][j][k] = get_ex(i, j, k);
+                // emfy at (i-1/2, j, k-1/2)
+                emfy[i][j][k] = 0.25 * (fluxes[2][i][j][k-1][5] + fluxes[2][i-1][j][k-1][5]
+                                       - fluxes[0][i-1][j][k][7] - fluxes[0][i-1][j][k-1][7]);
+                // emfx at (i, j-1/2, k-1/2)
+                emfx[i][j][k] = 0.25 * (fluxes[1][i][j-1][k][7] + fluxes[1][i][j-1][k-1][7]
+                                       - fluxes[2][i][j][k-1][6] - fluxes[2][i][j-1][k-1][6]);
             }
         }
 
@@ -422,7 +411,15 @@ void MhdSolver::godfine1(const std::vector<int>& ind_grid, int ilevel, real_t dt
             if (icell_pos <= constants::twotondim) {
                 int ind_cell = grid_.ncoarse + (icell_pos - 1) * grid_.ngridmax + igrid;
                 
-                for (int iv = 1; iv <= nvar_pure; ++iv) {
+                // Update hydro variables (1-5)
+                for (int iv = 1; iv <= 5; ++iv) {
+                    for (int idim = 0; idim < NDIM; ++idim) {
+                        int ni = i - (idim==0?1:0); int nj = j - (idim==1?1:0); int nk = k - (idim==2?1:0);
+                        grid_.unew(ind_cell, iv) += (fluxes[idim][ni][nj][nk][iv-1] - fluxes[idim][i][j][k][iv-1]) * dt_dx;
+                    }
+                }
+                // Update passive scalars (9 to nvar_pure)
+                for (int iv = 9; iv <= nvar_pure; ++iv) {
                     for (int idim = 0; idim < NDIM; ++idim) {
                         int ni = i - (idim==0?1:0); int nj = j - (idim==1?1:0); int nk = k - (idim==2?1:0);
                         grid_.unew(ind_cell, iv) += (fluxes[idim][ni][nj][nk][iv-1] - fluxes[idim][i][j][k][iv-1]) * dt_dx;
@@ -468,6 +465,34 @@ void MhdSolver::godfine1(const std::vector<int>& ind_grid, int ilevel, real_t dt
         }
     }
 }
+void MhdSolver::llf(const real_t* ql, const real_t* qr, real_t* fgdnv, real_t gamma) {
+    real_t fl[9], fr[9], cl, cr;
+    find_mhd_flux(ql, nullptr, fl, gamma);
+    find_mhd_flux(qr, nullptr, fr, gamma);
+    find_speed_fast(ql, cl, gamma);
+    find_speed_fast(qr, cr, gamma);
+    
+    real_t s_max = std::max(std::abs(ql[2]) + cl, std::abs(qr[2]) + cr);
+    
+    real_t entho = 1.0 / (gamma - 1.0);
+    auto get_cons = [&](const real_t* q, real_t* c) {
+        real_t d = q[0], p = q[1], u = q[2], A = q[3], v = q[4], B = q[5], w = q[6], C = q[7];
+        c[0] = d; c[1] = d * u; c[2] = d * v; c[3] = d * w;
+        real_t ekin = 0.5 * d * (u*u + v*v + w*w);
+        real_t emag = 0.5 * (A*A + B*B + C*C);
+        c[4] = p * entho + ekin + emag;
+        c[5] = A; c[6] = B; c[7] = C;
+        c[8] = p * entho;
+    };
+    
+    real_t cll[9], crr[9];
+    get_cons(ql, cll); get_cons(qr, crr);
+    
+    for (int i = 0; i < 9; ++i) {
+        fgdnv[i] = 0.5 * (fl[i] + fr[i] - s_max * (crr[i] - cll[i]));
+    }
+}
+
 void MhdSolver::hlld(const real_t* qleft, const real_t* qright, real_t* fgdnv, real_t gamma) {
     // Ported HLLD implementation...
     real_t entho = 1.0 / (gamma - 1.0);
