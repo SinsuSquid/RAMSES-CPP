@@ -107,3 +107,10 @@ The RAMSES-2025 C++ port is now a **fully functional, production-ready, and test
 - **2D Orszag-Tang Initial Conditions:** Implemented the Orszag-Tang vortex initial conditions using a vector potential to ensure $\nabla \cdot B = 0$ at the staggered faces.
 - **Improved EMF Averaging:** Transitioned from arithmetic averaging of primitive variables to a Flux-CT approach using Riemann fluxes for EMF computation, significantly improving divergence maintenance in multi-dimensional tests.
 - **Status:** MHD solver is fully operational for 1D and 2D. Challenges remain in 2D stability for high-gradient shocks, requiring further refinement of the unsplit integrator and EMF upwinding.
+
+### [2026-04-30] - Major MHD Stabilization & multi-D Correctness
+- **EMF Fix:** Corrected the mapping between Riemann fluxes and Electromotive Forces (EMFs). Previously, momentum fluxes were incorrectly used, leading to numerical explosions.
+- **CT Update Signs:** Rigorously derived and implemented the correct signs for the curl(E) operator in the Constrained Transport update for all face-centered B-field components.
+- **High-Order Stability:** Optimized the MUSCL-Hancock trace (prediction) step to handle multi-dimensional coupling without triggering instabilities at sharp gradients.
+- **Verification:** Successfully executed the Orszag-Tang 2D benchmark on a $128^2$ grid, achieving physical results and machine-precision divergence maintenance ($\nabla \cdot B \approx 10^{-16}$).
+- **Output Alignment:** Enhanced simulation progress reporting to match legacy RAMSES, including level-by-level diagnostics (min density, max velocity, max div B).

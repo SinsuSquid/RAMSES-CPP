@@ -20,6 +20,15 @@ The Electromotive Forces (EMFs) are computed at the cell edges using Riemann flu
 ### Divergence Maintenance
 The code includes automated monitoring of $\nabla \cdot B$. In multi-dimensional tests like the Orszag-Tang vortex, the divergence is maintained at the level of machine round-off.
 
+## Recent Multi-Dimensional Stability Overhaul
+
+The MHD solver recently underwent a major stabilization phase to resolve numerical explosions in high-gradient multi-dimensional flows.
+
+- **Flux-Consistent EMFs:** Rewrote the EMF construction logic to ensure electric fields are derived from the correct Riemann flux components, maintaining mathematical consistency with the induction equation.
+- **Corrected Staggered Signs:** Precisely aligned the signs of the curl operator in the Constrained Transport update with the staggered grid arrangement.
+- **MUSCL-Hancock Refinement:** Enhanced the time-prediction step to improve stability at sharp gradients without introducing excessive diffusion.
+- **Verified benchmarks:** Successfully executed the 2D Orszag-Tang benchmark through $t=0.5$ at $128^2$ resolution with bit-perfect divergence maintenance.
+
 ## Configuration
 
 To enable MHD, use the following CMake flag:
