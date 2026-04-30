@@ -51,6 +51,7 @@ void Simulation::initialize(const std::string& nml_path) {
     
     // Load Outputs
     noutput_ = config_.get_int("output_params", "noutput", 0);
+    ncontrol_ = config_.get_int("run_params", "ncontrol", 1);
     std::string tout_str = config_.get("output_params", "tout", "");
     if (!tout_str.empty()) {
         std::stringstream ss(tout_str);
@@ -93,6 +94,19 @@ void Simulation::run() {
     int snapshot_count = 2;
 
     while (t_ < tend_) {
+        // Output Mesh Structure and Main Step info every ncontrol steps
+        if (nstep_ % ncontrol_ == 0) {
+            std::cout << "Mesh structure" << std::endl;
+            for (int i = 1; i <= grid_.nlevelmax; ++i) {
+                int ngrids = grid_.count_grids_at_level(i);
+                if (ngrids > 0) {
+                    printf(" Level %2d has %10d grids\n", i, ngrids);
+                }
+            }
+            // Simplified conservation output
+            printf(" Main step=%7d t=%12.5e dt=%10.3e\n", nstep_, t_, 0.0); // dt is for fine steps
+        }
+
         nstep_++;
         
         // Compute adaptive dt for level 1
@@ -166,6 +180,18 @@ void Simulation::amr_step(int ilevel, real_t dt) {
     mhd_.godunov_fine(ilevel, dt, dx);
 #else
     hydro_.godunov_fine(ilevel, dt, dx);
+#endif
+
+    // Diagnostics
+    real_t mind = 1e30, maxv = 0, maxdivb = 0;
+#ifdef MHD
+    mhd_.get_diagnostics(ilevel, dx, mind, maxv, maxdivb);
+    printf(" Fine step=%7d t=%12.5e dt=%10.3e level=%2d min_d=%9.2e max_v=%9.2e max_div_b=%9.2e\n", 
+           nstep_, t_ + dt, dt, ilevel, mind, maxv, maxdivb);
+#else
+    hydro_.get_diagnostics(ilevel, dx, mind, maxv);
+    printf(" Fine step=%7d t=%12.5e dt=%10.3e level=%2d min_d=%9.2e max_v=%9.2e\n", 
+           nstep_, t_ + dt, dt, ilevel, mind, maxv);
 #endif
 
     if (config_.get_bool("run_params", "poisson", false)) {

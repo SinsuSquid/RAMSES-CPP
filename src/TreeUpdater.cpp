@@ -68,6 +68,11 @@ void TreeUpdater::make_grid_coarse(int ind_cell, int ibound, bool boundary_regio
         int cell_idx = grid_.ncoarse + (j - 1) * grid_.ngridmax + igrid;
         check(grid_.cpu_map, cell_idx, "cpu_map");
         grid_.cpu_map[cell_idx] = icpu;
+        // Copy physical data from father (level 0) to level 1 children
+        for (int iv = 1; iv <= grid_.nvar; ++iv) {
+            grid_.uold(cell_idx, iv) = grid_.uold(ind_cell, iv);
+            grid_.unew(cell_idx, iv) = grid_.uold(ind_cell, iv);
+        }
     }
 
     if (!boundary_region) {
@@ -141,6 +146,11 @@ void TreeUpdater::make_grid_fine(int ind_grid_father, int icell_pos, int ilevel,
         int cell_idx = grid_.ncoarse + (j - 1) * grid_.ngridmax + igrid;
         check(grid_.cpu_map, cell_idx, "cpu_map");
         grid_.cpu_map[cell_idx] = icpu;
+        // Copy physical data from father to children (piecewise constant)
+        for (int iv = 1; iv <= grid_.nvar; ++iv) {
+            grid_.uold(cell_idx, iv) = grid_.uold(ind_cell_father, iv);
+            grid_.unew(cell_idx, iv) = grid_.uold(ind_cell_father, iv);
+        }
     }
 
     int n_ilevel = ilevel + 1;

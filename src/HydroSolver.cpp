@@ -123,6 +123,10 @@ void HydroSolver::gather_stencil(int igrid, int ilevel, LocalStencil& stencil) {
                                     for (int iv = 1; iv <= nvar; ++iv) stencil.uloc[i3][j3][k3][iv - 1] = grid_.uold(ind_cell, iv);
                                     stencil.refined[i3][j3][k3] = (grid_.son[ind_cell] > 0);
                                 }
+                            } else if (ifather > 0 && ifather <= grid_.ncell) {
+                                // Neighbor is not refined, use father's data
+                                for (int iv = 1; iv <= nvar; ++iv) stencil.uloc[i3][j3][k3][iv - 1] = grid_.uold(ifather, iv);
+                                stencil.refined[i3][j3][k3] = false;
                             }
                         }
                     }
@@ -303,6 +307,27 @@ void HydroSolver::add_gravity_source_terms(int ilevel, real_t dt) {
                 
                 e_kin = 0.5 * d * (u*u + v*v + w*w);
                 grid_.unew(ind_cell, NDIM + 2) = e_prim + e_kin;
+            }
+            igrid = grid_.next[igrid - 1];
+        }
+    }
+}
+
+void HydroSolver::get_diagnostics(int ilevel, real_t dx, real_t& mind, real_t& maxv) {
+    mind = 1e30; maxv = 0.0;
+    for (int icpu = 1; icpu <= grid_.ncpu; ++icpu) {
+        int igrid = grid_.headl(icpu, ilevel);
+        while (igrid > 0) {
+            for (int ic = 1; ic <= constants::twotondim; ++ic) {
+                int ind_cell = grid_.ncoarse + (ic - 1) * grid_.ngridmax + igrid;
+                if (grid_.son[ind_cell] != 0) continue; // Only leaf cells
+
+                real_t d = grid_.unew(ind_cell, 1);
+                mind = std::min(mind, d);
+                real_t u = grid_.unew(ind_cell, 2) / std::max(1e-10, d);
+                real_t v = grid_.unew(ind_cell, 3) / std::max(1e-10, d);
+                real_t w = grid_.unew(ind_cell, 4) / std::max(1e-10, d);
+                maxv = std::max(maxv, std::sqrt(u*u + v*v + w*w));
             }
             igrid = grid_.next[igrid - 1];
         }

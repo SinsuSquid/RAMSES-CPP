@@ -45,6 +45,8 @@ public:
      */
     real_t compute_max_div_b(int ilevel, real_t dx);
 
+    void get_diagnostics(int ilevel, real_t dx, real_t& mind, real_t& maxv, real_t& maxdivb);
+
 private:
     AmrGrid& grid_;
     Config& config_;

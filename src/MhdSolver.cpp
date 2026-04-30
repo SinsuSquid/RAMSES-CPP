@@ -149,6 +149,10 @@ void MhdSolver::gather_stencil(int igrid, int ilevel, LocalStencil& stencil) {
                                     for (int iv = 1; iv <= nvar; ++iv) stencil.uloc[i3][j3][k3][iv - 1] = grid_.uold(ind_cell, iv);
                                     stencil.refined[i3][j3][k3] = (grid_.son[ind_cell] > 0);
                                 }
+                            } else if (ifather > 0 && ifather <= grid_.ncell) {
+                                // Neighbor is not refined, use father's data
+                                for (int iv = 1; iv <= nvar; ++iv) stencil.uloc[i3][j3][k3][iv - 1] = grid_.uold(ifather, iv);
+                                stencil.refined[i3][j3][k3] = false;
                             } else {
                                 // Fill dummy directions with active cell data for NDIM < 3
                                 int active_i2 = i2;
@@ -515,8 +519,7 @@ void MhdSolver::godfine1(const std::vector<int>& ind_grid, int ilevel, real_t dt
                     if (NDIM > 2) dBx_l += (emfy[i][j][k] - emfy[i][j][k+1]) * dt_dx;
                     dBx_l -= (emfz[i][j][k] - emfz[i][j+1][k]) * dt_dx;
                     grid_.unew(ind_cell, 6) += dBx_l;
-                }
-                if (NDIM > 1) {
+
                     real_t dBy_l = (emfz[i][j][k] - emfz[i+1][j][k]) * dt_dx;
                     if (NDIM > 2) dBy_l -= (emfx[i][j][k] - emfx[i][j][k+1]) * dt_dx;
                     grid_.unew(ind_cell, 7) += dBy_l;
@@ -532,14 +535,13 @@ void MhdSolver::godfine1(const std::vector<int>& ind_grid, int ilevel, real_t dt
                     if (NDIM > 2) dBx_r += (emfy[i+1][j][k] - emfy[i+1][j][k+1]) * dt_dx;
                     dBx_r -= (emfz[i+1][j][k] - emfz[i+1][j+1][k]) * dt_dx;
                     grid_.unew(ind_cell, nvar_pure + 1) += dBx_r;
-                }
-                if (NDIM > 1) {
-                    real_t dBy_r = (emfz[i+1][j][k] - emfz[i+1][j+1][k]) * dt_dx;
-                    if (NDIM > 2) dBy_r -= (emfx[i+1][j][k] - emfx[i+1][j][k+1]) * dt_dx;
+
+                    real_t dBy_r = (emfz[i][j+1][k] - emfz[i+1][j+1][k]) * dt_dx;
+                    if (NDIM > 2) dBy_r -= (emfx[i][j+1][k] - emfx[i][j+1][k+1]) * dt_dx;
                     grid_.unew(ind_cell, nvar_pure + 2) += dBy_r;
                 }
                 if (NDIM > 2) {
-                    real_t dBz_r = (emfx[i][j][k+1] - emfx[i+1][j][k+1]) * dt_dx - (emfy[i][j+1][k+1] - emfy[i+1][j+1][k+1]) * dt_dx;
+                    real_t dBz_r = (emfx[i][j][k+1] - emfx[i][j+1][k+1]) * dt_dx - (emfy[i][j][k+1] - emfy[i+1][j][k+1]) * dt_dx;
                     grid_.unew(ind_cell, nvar_pure + 3) += dBz_r;
                 }
             }
@@ -717,6 +719,28 @@ void MhdSolver::find_speed_fast(const real_t* qvar, real_t& vel_info, real_t gam
     real_t c2 = gamma * P / d;
     real_t d2 = 0.5 * (B2 / d + c2);
     vel_info = std::sqrt(d2 + std::sqrt(std::max(0.0, d2 * d2 - c2 * A * A / d)));
+}
+
+void MhdSolver::get_diagnostics(int ilevel, real_t dx, real_t& mind, real_t& maxv, real_t& maxdivb) {
+    mind = 1e30; maxv = 0.0;
+    for (int icpu = 1; icpu <= grid_.ncpu; ++icpu) {
+        int igrid = grid_.headl(icpu, ilevel);
+        while (igrid > 0) {
+            for (int ic = 1; ic <= constants::twotondim; ++ic) {
+                int ind_cell = grid_.ncoarse + (ic - 1) * grid_.ngridmax + igrid;
+                if (grid_.son[ind_cell] != 0) continue; // Only leaf cells
+
+                real_t d = grid_.unew(ind_cell, 1);
+                mind = std::min(mind, d);
+                real_t u = grid_.unew(ind_cell, 2) / std::max(1e-10, d);
+                real_t v = grid_.unew(ind_cell, 3) / std::max(1e-10, d);
+                real_t w = grid_.unew(ind_cell, 4) / std::max(1e-10, d);
+                maxv = std::max(maxv, std::sqrt(u*u + v*v + w*w));
+            }
+            igrid = grid_.next[igrid - 1];
+        }
+    }
+    maxdivb = compute_max_div_b(ilevel, dx);
 }
 
 } // namespace ramses

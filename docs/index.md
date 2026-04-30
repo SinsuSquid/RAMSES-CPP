@@ -3,6 +3,8 @@ layout: default
 title: Home
 ---
 
+<img src="../logo/Sia-chan.png" style="width: 300px; height: auto; float: right; margin-left: 20px;">
+
 # RAMSES-CPP Documentation
 
 Welcome to the documentation for **RAMSES-CPP**, a high-performance, modern C++17 port of the renowned **RAMSES-2025** Adaptive Mesh Refinement (AMR) code.
