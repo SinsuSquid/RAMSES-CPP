@@ -19,6 +19,7 @@ The project has reached a production-ready milestone for its core hydrodynamics 
 - **Core AMR Engine:** Bit-perfect port of the linked-list octree structure.
 - **3D Unsplit Godunov Solver:** Full directional flux integration with strict conservation.
 - **Advanced Hydrodynamics:** HLLC and LLF Riemann solvers with MUSCL-Hancock 2nd-order reconstruction and TVD slope limiters (MinMod, MonCen).
+- **Magnetohydrodynamics (MHD):** Ported HLLD and LLF Riemann solvers with Flux-CT for $\nabla \cdot B = 0$ maintenance.
 - **Self-Gravity:** Multigrid Poisson solver with iterative Gauss-Seidel smoothing.
 - **N-Body Dynamics:** Full Particle-Mesh (CIC) mass assignment and advection logic.
 - **MPI Parallelization:** Domain decomposition using Hilbert curve repartitioning.

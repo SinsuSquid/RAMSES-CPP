@@ -12,6 +12,7 @@ RAMSES-CPP provides a functional, physically consistent alternative to the origi
 The code now supports:
 - **Full Multi-Dimensional Support:** Seamlessly build for 1D, 2D, or 3D using CMake flags.
 - **3D Unsplit Godunov Hydrodynamics:** HLLC/LLF Riemann solvers with MUSCL-Hancock reconstruction.
+- **Magnetohydrodynamics (MHD):** Ported HLLD/LLF solvers with Flux-CT for divergence-free evolution.
 - **Multigrid Poisson Solver:** Iterative Gauss-Seidel for self-gravity.
 - **N-Body Dynamics:** Full Particle-Mesh (CIC) assignment and advection.
 - **AMR Engine:** Recursive sub-cycling with dynamic tree traversal.
@@ -35,7 +36,13 @@ cmake ..
 make -j$(nproc)
 ```
 
-2. **Multi-Dimensional Build:**
+2. **MHD Build:**
+To enable MHD modules, use the `RAMSES_USE_MHD` flag:
+```bash
+cmake .. -DRAMSES_USE_MHD=ON
+```
+
+3. **Multi-Dimensional Build:**
 To build for specific dimensions, use the `RAMSES_NDIM` flag:
 ```bash
 cmake .. -DRAMSES_NDIM=1  # For 1D
@@ -49,15 +56,20 @@ cmake .. -DRAMSES_NDIM=2  # For 2D
 The repository includes a comprehensive automated test suite to ensure physical consistency and binary parity with the legacy code.
 
 ```bash
-# Run the full suite
+# Run the hydro suite
 cd tests
 ./run_test_suite.sh -t hydro
+
+# Run the MHD suite
+./run_test_suite.sh -t mhd
 ```
 
 Verified tests include:
 - `hydro/sod-tube`: Classic shock tube benchmark.
 - `hydro/sod-tube-nener`: Advanced test with multiple passive energy variables.
 - `hydro/barotrop`: Self-gravitating collapsing sphere.
+- `mhd/imhd-tube`: 1D MHD shock tube (Brio-Wu).
+- `mhd/orszag-tang`: 2D MHD vortex evolution.
 
 ---
 
@@ -76,7 +88,7 @@ Results are saved to `output_XXXXX/`, which is fully compatible with legacy RAMS
 
 ## 🗺 Roadmap
 - [ ] Implement full MPI grid migration (octree re-partitioning).
-- [ ] Port MHD (Magnetohydrodynamics) modules.
+- [x] Port MHD (Magnetohydrodynamics) modules.
 - [ ] Implement full Radiative Transfer (RT) support.
 
 ---
