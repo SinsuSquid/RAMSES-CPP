@@ -114,3 +114,9 @@ The RAMSES-2025 C++ port is now a **fully functional, production-ready, and test
 - **High-Order Stability:** Optimized the MUSCL-Hancock trace (prediction) step to handle multi-dimensional coupling without triggering instabilities at sharp gradients.
 - **Verification:** Successfully executed the Orszag-Tang 2D benchmark on a $128^2$ grid, achieving physical results and machine-precision divergence maintenance ($\nabla \cdot B \approx 10^{-16}$).
 - **Output Alignment:** Enhanced simulation progress reporting to match legacy RAMSES, including level-by-level diagnostics (min density, max velocity, max div B).
+
+### [2026-04-30] - Hilbert Load Balancing & Grid Migration
+- **Hilbert Keys:** Implemented recursive Hilbert key calculation for all grid cells at nlevelmax resolution.
+- **Hilbert Partitioning:** Replaced simple linear splitting with Hilbert-curve-based domain decomposition, ensuring optimal spatial locality and load balance.
+- **Full State Migration:** Enhanced move_grids and OctPacket to migrate the complete physical state (up to 20 variables) and metadata between ranks.
+- **Simulation Integration:** Integrated initial load balancing into the simulation setup phase.

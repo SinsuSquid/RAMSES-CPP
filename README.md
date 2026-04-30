@@ -96,7 +96,8 @@ Results are saved to `output_XXXXX/`, which is fully compatible with legacy RAMS
 ---
 
 ## 🗺 Roadmap
-- [ ] Implement full MPI grid migration (octree re-partitioning).
+- [x] Implement Hilbert-based domain decomposition and full state grid migration.
+- [ ] Implement dynamic MPI load balancing during simulation.
 - [x] Port MHD (Magnetohydrodynamics) modules.
 - [ ] Implement full Radiative Transfer (RT) support.
 

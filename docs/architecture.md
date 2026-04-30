@@ -50,7 +50,7 @@ Implements self-gravity using a Multigrid approach.
 
 ### 6. `MpiManager` and `LoadBalancer` (Parallelism)
 - **`MpiManager`**: A singleton that handles MPI initialization and provides wrappers for common collective operations.
-- **`LoadBalancer`**: Implements domain decomposition using the Hilbert Space-Filling Curve.
+- **`LoadBalancer`**: Implements domain decomposition using the Hilbert Space-Filling Curve. It ensures spatial locality and provides full physical state migration (including Hydro/MHD variables) between MPI ranks.
 
 ## Data Flow
 
