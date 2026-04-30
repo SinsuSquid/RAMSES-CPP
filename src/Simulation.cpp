@@ -192,13 +192,13 @@ void Simulation::amr_step(int ilevel, real_t dt) {
         updater_.refine_fine(ilevel);
     }
 
-    real_t mind, maxv, maxdb = 0;
+    real_t mind, maxv, mint, maxt, maxdb = 0;
 #ifdef MHD
     mhd_.get_diagnostics(ilevel, dx, mind, maxv, maxdb);
     printf(" Fine step=%7d t=%12.5e dt=%10.3e level=%2d min_d=%9.2e max_v=%9.2e max_div_b=%9.2e\n", nstep_, t_ + dt, dt, ilevel, mind, maxv, maxdb);
 #else
-    hydro_.get_diagnostics(ilevel, dx, mind, maxv);
-    printf(" Fine step=%7d t=%12.5e dt=%10.3e level=%2d min_d=%9.2e max_v=%9.2e\n", nstep_, t_ + dt, dt, ilevel, mind, maxv);
+    hydro_.get_diagnostics(ilevel, dx, mind, maxv, mint, maxt);
+    printf(" Fine step=%7d t=%12.5e dt=%10.3e level=%2d min_d=%9.2e max_v=%9.2e min_T=%9.2e max_T=%9.2e\n", nstep_, t_ + dt, dt, ilevel, mind, maxv, mint, maxt);
 #endif
 }
 
