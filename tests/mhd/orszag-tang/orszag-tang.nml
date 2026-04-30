@@ -10,7 +10,8 @@ nsubcycle=1*1,2
 
 &AMR_PARAMS
 levelmin=5
-levelmax=9
+levelmax=7
+
 ngridmax=100000
 nexpand=1
 boxlen=1.0
@@ -29,7 +30,7 @@ tout=0.5
 
 &HYDRO_PARAMS
 gamma=1.6666667
-courant_factor=0.8
+courant_factor=0.4
 slope_type=2
 riemann='hlld'
 riemann2d='hlld'
