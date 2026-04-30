@@ -70,8 +70,8 @@ if(RAMSES_USE_MPI)
 endif()
 
 # Main executable
-add_executable(ramses_main src/main.cpp)
-target_link_libraries(ramses_main ramses_lib)
+add_executable(ramses_${RAMSES_NDIM}d src/main.cpp)
+target_link_libraries(ramses_${RAMSES_NDIM}d ramses_lib)
 
 # Verification tool
 add_executable(verify_ref src/verify_ref.cpp)

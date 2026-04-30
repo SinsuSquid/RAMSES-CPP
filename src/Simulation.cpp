@@ -9,20 +9,26 @@
 #include <sstream>
 #include <cmath>
 #include <sys/stat.h>
+#include <algorithm>
+
+#ifdef RAMSES_USE_MPI
+#include <mpi.h>
+#endif
 
 namespace ramses {
 namespace p = params;
 
+// ... (existing initialize and run methods) ...
 void Simulation::initialize(const std::string& nml_path) {
     config_.parse(nml_path);
-    
+
     p::nx = config_.get_int("amr_params", "nx", 1);
     p::ny = config_.get_int("amr_params", "ny", 1);
     p::nz = config_.get_int("amr_params", "nz", 1);
-    
+
     int ngridmax = config_.get_int("amr_params", "ngridmax", 0);
     if (ngridmax == 0) ngridmax = config_.get_int("amr_params", "ngridtot", 1000000);
-    
+
     nener_ = config_.get_int("hydro_params", "nener", 0);
     if (nener_ == 0) {
         for (int i = 1; i <= 10; ++i) {
@@ -30,17 +36,17 @@ void Simulation::initialize(const std::string& nml_path) {
                 nener_ = std::max(nener_, i);
         }
     }
-    
-    int nvar_default = 8 + nener_;
+
+    int nvar_default = 5 + nener_; // Base (rho, vx, vy, vz, P) + nener
 #ifdef MHD
-    nvar_default = 8 + nener_;
+    nvar_default = 8 + nener_;     // Base (rho, vx, vy, vz, Bx, By, Bz, P) + nener
 #endif
 #ifdef RT
     int nGroups = config_.get_int("rt_params", "nGroups", 0);
     nvar_default += nGroups * (1 + NDIM);
 #endif
     int nvar = config_.get_int("hydro_params", "nvar", nvar_default);
-    
+
     int ncpu = MpiManager::instance().size();
 #ifdef MHD
     int nvar_all = nvar + 3;
@@ -50,7 +56,7 @@ void Simulation::initialize(const std::string& nml_path) {
     int nlevelmax = config_.get_int("amr_params", "levelmax", 10);
     grid_.allocate(p::nx, p::ny, p::nz, ngridmax, nvar, ncpu, nlevelmax);
 #endif
-    
+
     noutput_ = config_.get_int("output_params", "noutput", 0);
     ncontrol_ = config_.get_int("run_params", "ncontrol", 1);
 
@@ -62,7 +68,7 @@ void Simulation::initialize(const std::string& nml_path) {
     p::units_energy = p::units_mass * std::pow(p::units_velocity, 2);
     p::units_pressure = p::units_density * std::pow(p::units_velocity, 2);
     p::units_number_density = p::units_density / (1.67e-24);
-    
+
     grid_.gamma = config_.get_double("hydro_params", "gamma", 1.4);
     grid_.err_grad_d = config_.get_double("refine_params", "err_grad_d", 0.05);
     grid_.err_grad_u = config_.get_double("refine_params", "err_grad_u", 0.05);
@@ -83,7 +89,7 @@ void Simulation::initialize(const std::string& nml_path) {
     // 2. Initial coarse level refinement
     updater_.mark_all(0);
     updater_.refine_coarse();
-    
+
     // 3. Dynamic partition of Level 1
     balancer_.calculate_hilbert_keys();
     balancer_.balance();
@@ -94,7 +100,7 @@ void Simulation::initialize(const std::string& nml_path) {
         updater_.mark_all(il);
         updater_.refine_fine(il);
     }
-    
+
     Initializer init(grid_, config_);
     init.apply_all();
     rt_.initialize();
@@ -170,7 +176,7 @@ void Simulation::amr_step(int ilevel, real_t dt) {
         poisson_.compute_force(ilevel);
         hydro_.add_gravity_source_terms(ilevel, dt);
     }
-    
+
 #ifdef MHD
     mhd_.godunov_fine(ilevel, dt, dx);
 #else
@@ -195,35 +201,107 @@ void Simulation::amr_step(int ilevel, real_t dt) {
     real_t mind, maxv, mint, maxt, maxdb = 0;
 #ifdef MHD
     mhd_.get_diagnostics(ilevel, dx, mind, maxv, maxdb);
-    printf(" Fine step=%7d t=%12.5e dt=%10.3e level=%2d min_d=%9.2e max_v=%9.2e max_div_b=%9.2e\n", nstep_, t_ + dt, dt, ilevel, mind, maxv, maxdb);
+    if (nstep_ % ncontrol_ == 0 && ilevel == 1)
+        printf(" Fine step=%7d t=%12.5e dt=%10.3e level=%2d min_d=%9.2e max_v=%9.2e max_div_b=%9.2e\n", nstep_, t_ + dt, dt, ilevel, mind, maxv, maxdb);
 #else
     hydro_.get_diagnostics(ilevel, dx, mind, maxv, mint, maxt);
-    printf(" Fine step=%7d t=%12.5e dt=%10.3e level=%2d min_d=%9.2e max_v=%9.2e min_T=%9.2e max_T=%9.2e\n", nstep_, t_ + dt, dt, ilevel, mind, maxv, mint, maxt);
+    if (nstep_ % ncontrol_ == 0 && ilevel == 1)
+        printf(" Fine step=%7d t=%12.5e dt=%10.3e level=%2d min_d=%9.2e max_v=%9.2e min_T=%9.2e max_T=%9.2e\n", nstep_, t_ + dt, dt, ilevel, mind, maxv, mint, maxt);
 #endif
 }
+
+real_t Simulation::compute_total_mass() {
+    real_t mass = 0.0;
+    for (int ic = 1; ic <= grid_.ncell; ++ic) mass += grid_.uold(ic, 1);
+    real_t total_mass = mass;
+#ifdef RAMSES_USE_MPI
+    MPI_Allreduce(&mass, &total_mass, 1, MPI_DOUBLE, MPI_SUM, MPI_COMM_WORLD);
+#endif
+    return total_mass;
+}
+
+real_t Simulation::compute_total_energy() {
+    real_t energy = 0.0;
+    for (int ic = 1; ic <= grid_.ncell; ++ic) energy += grid_.uold(ic, 5);
+    real_t total_energy = energy;
+#ifdef RAMSES_USE_MPI
+    MPI_Allreduce(&energy, &total_energy, 1, MPI_DOUBLE, MPI_SUM, MPI_COMM_WORLD);
+#endif
+    return total_energy;
+}
+
+real_t Simulation::compute_potential_energy() {
+    real_t epot = 0.0;
+    for (int ic = 1; ic <= grid_.ncell; ++ic) epot += grid_.uold(ic, 1) * grid_.phi[ic];
+    real_t total_epot = epot;
+#ifdef RAMSES_USE_MPI
+    MPI_Allreduce(&epot, &total_epot, 1, MPI_DOUBLE, MPI_SUM, MPI_COMM_WORLD);
+#endif
+    return total_epot * 0.5;
+}
+
 
 void Simulation::dump_snapshot(int iout) {
     std::stringstream ss; ss << "output_" << std::setw(5) << std::setfill('0') << iout;
     std::string dir = ss.str(); mkdir(dir.c_str(), 0777);
     std::string nchar = ss.str().substr(7);
-    
-    SnapshotInfo info;
-    info.t = t_; info.nstep = nstep_; info.noutput = noutput_;
-    info.tout = tout_; info.iout = iout; info.gamma = grid_.gamma;
-    info.nener = nener_;
 
-    RamsesWriter amr_w(dir + "/amr_" + nchar + ".out00001"); amr_w.write_amr(grid_, info);
-    RamsesWriter hydro_w(dir + "/hydro_" + nchar + ".out00001"); hydro_w.write_hydro(grid_, info);
+    SnapshotInfo info;
+    info.t = t_; info.nstep = nstep_; info.nstep_coarse = nstep_;
+    info.noutput = noutput_;
+
+    info.tout = tout_;
+
+    info.iout = iout; info.gamma = grid_.gamma;
+    info.nener = nener_;
+    info.einit = compute_total_energy(); info.mass_tot_0 = compute_total_mass(); info.rho_tot = compute_total_mass();
+    info.omega_m = config_.get_double("cosmo_params", "omega_m", 0.0);
+    info.omega_l = config_.get_double("cosmo_params", "omega_l", 0.0);
+    info.omega_k = config_.get_double("cosmo_params", "omega_k", 0.0);
+    info.omega_b = config_.get_double("cosmo_params", "omega_b", 0.0);
+    info.h0 = config_.get_double("cosmo_params", "h0", 0.0);
+    info.aexp_ini = 1.0; info.boxlen_ini = p::boxlen;
+    info.aexp = 1.0; info.hexp = 0.0; info.aexp_old = 1.0;
+    info.epot_tot_int = 0.0; info.epot_tot_old = compute_potential_energy();
+    info.mass_sph = 0.0;
+
+    RamsesWriter amr_w(dir + "/amr_" + nchar + ".out00001"); 
+    amr_w.write_amr(grid_, info);
+
+    RamsesWriter hydro_w(dir + "/hydro_" + nchar + ".out00001"); 
+    hydro_w.write_hydro(grid_, info);
+
+    RamsesWriter header_w(dir + "/header_" + nchar + ".txt"); 
+    header_w.write_header(info);
+
     if (config_.get_bool("run_params", "poisson", false)) {
-        RamsesWriter grav_w(dir + "/grav_" + nchar + ".out00001"); grav_w.write_grav(grid_, info);
+        RamsesWriter grav_w(dir + "/grav_" + nchar + ".out00001"); 
+        grav_w.write_grav(grid_, info);
     }
 
     std::ofstream infof(dir + "/info_" + nchar + ".txt");
     if (infof.is_open()) {
         infof << std::scientific << std::setprecision(15);
-        infof << "ncpu         = " << grid_.ncpu << "\nndim         = " << NDIM << "\nnx           = " << p::nx << "\nny           = " << p::ny << "\nnz           = " << p::nz << "\n";
-        infof << "levelmin     = 1\nlevelmax     = " << grid_.nlevelmax << "\nngridmax     = " << grid_.ngridmax << "\nboxlen       = " << p::boxlen << "\ntime         = " << t_ << "\n";
-        infof << "unit_l       = " << p::units_length << "\nunit_d       = " << p::units_density << "\nunit_t       = " << p::units_time << "\n";
+        infof << "ncpu        = " << std::setw(10) << grid_.ncpu << "\n";
+        infof << "ndim        = " << std::setw(10) << NDIM << "\n";
+        infof << "levelmin    = " << std::setw(10) << 1 << "\n";
+        infof << "levelmax    = " << std::setw(10) << grid_.nlevelmax << "\n";
+        infof << "ngridmax    = " << std::setw(10) << grid_.ngridmax << "\n";
+        infof << "nstep_coarse= " << std::setw(10) << nstep_ << "\n\n";
+        infof << "boxlen      = " << std::setw(23) << p::boxlen << "\n";
+        infof << "time        = " << std::setw(23) << t_ << "\n";
+        infof << "aexp        = " << std::setw(23) << 1.0 << "\n";
+        infof << "H0          = " << std::setw(23) << 1.0 << "\n";
+        infof << "omega_m     = " << std::setw(23) << config_.get_double("cosmo_params", "omega_m", 1.0) << "\n";
+        infof << "omega_l     = " << std::setw(23) << config_.get_double("cosmo_params", "omega_l", 0.0) << "\n";
+        infof << "omega_k     = " << std::setw(23) << config_.get_double("cosmo_params", "omega_k", 0.0) << "\n";
+        infof << "omega_b     = " << std::setw(23) << config_.get_double("cosmo_params", "omega_b", 0.045) << "\n";
+        infof << "unit_l      = " << std::setw(23) << p::units_length << "\n";
+        infof << "unit_d      = " << std::setw(23) << p::units_density << "\n";
+        infof << "unit_t      = " << std::setw(23) << p::units_time << "\n\n";
+        infof << "ordering type=hilbert                                                                         \n";
+        infof << "   DOMAIN   ind_min                 ind_max\n";
+        infof << "       1   0.000000000000000E+00   0.167772160000000E+08\n";
         infof.close();
     }
 
@@ -247,6 +325,15 @@ void Simulation::dump_snapshot(int iout) {
 #endif
         desc.close();
     }
+    std::ofstream desc_part(dir + "/part_file_descriptor.txt");
+    if (desc_part.is_open()) {
+        desc_part << "1, particle_identifier, integer\n";
+        desc_part << "2, particle_family, integer\n";
+        desc_part << "3, particle_tag, integer\n";
+        desc_part.close();
+    }
+    std::cout << "[Simulation] Finished dump_snapshot." << std::endl;
 }
 
 } // namespace ramses
+

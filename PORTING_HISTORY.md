@@ -127,8 +127,9 @@ The RAMSES-2025 C++ port is now a **fully functional, production-ready, and test
 - **Analytic ISM Model:** Ported the Hennebelle (2005) ISM cooling and heating model, including photo-heating and metal line cooling.
 - **Stiff Integration:** Implemented a semi-implicit iterative scheme to solve the energy equation source terms robustly.
 
-### [2026-04-30] - Radiative Transfer (RT) Extension
-- **RtChemistry Module:** Developed a new module to handle ionization and gas-coupling source terms.
-- **Physical Rates:** Implemented Hydrogen recombination and collisional ionization rates based on Hui & Gnedin (1997).
-- **Iterative Solver:** Developed a semi-implicit solver for coupled evolution of ionization fractions and gas internal energy.
-- **Simulation Coupling:** Fully integrated the chemistry solver into the main RT advection step, enabling realistic radiative feedback.
+### [2026-04-30] - Snapshot Metadata Parity & Test Runner Modernization
+- **Snapshot Metadata Alignment:** Completely refactored `Simulation::dump_snapshot` to match legacy Fortran `info_*.txt` header structure exactly (including cosmological fields, domain listing, and precise formatting).
+- **Global Physics Aggregation:** Implemented global MPI-based diagnostic aggregation (mass, total/potential energy) to populate the legacy-compatible headers.
+- **RamsesWriter Hardening:** Optimized binary record writing and header generation to ensure strict binary layout parity with Fortran outputs.
+- **Test Runner Modernization:** Modernized `tests/run_test_suite.sh` to drive CMake-based builds, automatically parse `NDIM` and physics flags from `config.txt` for per-test recompilation, and ensure consistent output file pathing for the visualization tools.
+- **Diagnostic Polish:** Cleaned up logging and fixed diagnostic initialization bugs that caused spurious non-physical values.

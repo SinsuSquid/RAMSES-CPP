@@ -187,11 +187,15 @@ void HydroSolver::get_diagnostics(int ilevel, real_t dx, real_t& min_d, real_t& 
     real_t kB = 1.3806e-16;
     real_t mH = 1.67e-24;
     
+    bool found_grid = false;
+    int scanned_cells = 0;
     int igrid = grid_.headl(myid, ilevel);
     while (igrid > 0) {
         for (int ic = 1; ic <= constants::twotondim; ++ic) {
             int id = grid_.ncoarse + (ic - 1) * grid_.ngridmax + igrid;
             if (grid_.son[id] != 0) continue;
+            found_grid = true;
+            scanned_cells++;
             
             real_t d = grid_.uold(id, 1); 
             min_d = std::min(min_d, d);
@@ -207,6 +211,11 @@ void HydroSolver::get_diagnostics(int ilevel, real_t dx, real_t& min_d, real_t& 
         }
         igrid = grid_.next[igrid - 1];
     }
+    
+    if (!found_grid) {
+        min_d = 1e30; max_v = 0.0; min_t = 1e30; max_t = 0.0;
+    }
+    
 #ifdef RAMSES_USE_MPI
     real_t g_min_d, g_max_v, g_min_t, g_max_t;
     MPI_Allreduce(&min_d, &g_min_d, 1, MPI_DOUBLE, MPI_MIN, MPI_COMM_WORLD);

@@ -31,6 +31,11 @@ public:
 private:
     void amr_step(int ilevel, real_t dt);
     void dump_snapshot(int iout);
+    
+    // Global diagnostics
+    real_t compute_total_mass();
+    real_t compute_total_energy();
+    real_t compute_potential_energy();
 
     Config config_;
     AmrGrid grid_;

@@ -3,8 +3,11 @@
 #include <sstream>
 #include <algorithm>
 #include <iostream>
+#include <set>
 
 namespace ramses {
+
+static std::set<std::string> warned_keys;
 
 std::string Config::trim(const std::string& s) const {
     auto start = s.find_first_not_of(" \t\r\n");
@@ -64,7 +67,13 @@ std::string Config::get(const std::string& block, const std::string& key, const 
         auto k_it = b_it->second.find(to_lower(key));
         if (k_it != b_it->second.end()) return k_it->second;
     }
-    std::cerr << "[Config] Warning: Key " << key << " not found in block " << block << ". Using default: " << default_val << std::endl;
+    
+    std::string warning_id = block + ":" + key;
+    if (warned_keys.find(warning_id) == warned_keys.end()) {
+        std::cerr << "[Config] Warning: Key " << key << " not found in block " << block << ". Using default: " << default_val << std::endl;
+        warned_keys.insert(warning_id);
+    }
+    
     return default_val;
 }
 

@@ -86,11 +86,11 @@ Verified tests include:
 
 ## 🏃 Running a Simulation
 
-Use the standard RAMSES namelist format. The executable is located in your build directory:
+Use the standard RAMSES namelist format. The executable is located in your build directory (named `ramses_Nd` where N is the dimension):
 
 ```bash
 # Example Sedov 3D test
-./ramses_main ../namelist/sedov3d.nml
+./ramses_3d ../namelist/sedov3d.nml
 ```
 
 Results are saved to `output_XXXXX/`, which is fully compatible with legacy RAMSES visualization tools.
