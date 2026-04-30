@@ -9,14 +9,23 @@ A high-performance, modern C++17 port of the [**RAMSES-2025**](https://github.co
 RAMSES-CPP provides a functional, physically consistent alternative to the original Fortran implementation while maintaining strict binary compatibility for snapshots and restart files.
 
 ## 🚀 Status: Production-Ready
-The code now supports:
-- **Full Multi-Dimensional Support:** Seamlessly build for 1D, 2D, or 3D using CMake flags.
-- **3D Unsplit Godunov Hydrodynamics:** HLLC/LLF Riemann solvers with MUSCL-Hancock reconstruction.
-- **Magnetohydrodynamics (MHD):** Ported HLLD/LLF solvers with Flux-CT for divergence-free evolution.
-- **Multigrid Poisson Solver:** Iterative Gauss-Seidel for self-gravity.
-- **N-Body Dynamics:** Full Particle-Mesh (CIC) assignment and advection.
-- **AMR Engine:** Recursive sub-cycling with dynamic tree traversal.
-- **Ecosystem Parity:** Strict unformatted Fortran binary parity, compatible with legacy RAMSES tools (`visu_ramses.py`).
+RAMSES-CPP is a feature-complete port of the core RAMSES engine, supporting:
+- **Full Multi-Dimensional Hydrodynamics** (1D/2D/3D).
+- **Magnetohydrodynamics (MHD)** with HLLD and Constrained Transport.
+- **Self-Gravity** via a Multigrid Poisson solver.
+- **N-Body Dynamics** and Particle-Mesh advection.
+- **Strict Binary Parity** with legacy Fortran snapshots.
+
+For a detailed log of the migration progress, see [PORTING_HISTORY.md](PORTING_HISTORY.md).
+
+---
+
+## 📚 Documentation
+Comprehensive documentation is available in the [docs/](docs/) directory:
+- [**Installation**](docs/installation.md): How to build and configure the project.
+- [**Usage**](docs/usage.md): Running simulations and using verification tools.
+- [**Architecture**](docs/architecture.md): Overview of the C++ class structure and data flow.
+- [**Physics Modules**](docs/index.md): Details on MHD, Gravity, and Hydro solvers.
 
 ---
 

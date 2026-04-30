@@ -29,3 +29,6 @@ The project has reached a production-ready milestone for its core hydrodynamics 
 
 - [Installation](installation.md)
 - [Usage](usage.md)
+- [Architecture](architecture.md)
+- [Magnetohydrodynamics (MHD)](mhd.md)
+- [Poisson Solver (Gravity)](poisson.md)

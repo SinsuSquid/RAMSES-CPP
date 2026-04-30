@@ -36,6 +36,20 @@ To build RAMSES-CPP from source, ensure you have the following installed on your
 
    This will generate the main executable `ramses_main` and the reference verification tool `verify_ref` in the `build/` directory.
 
+## CMake Configuration Options
+
+You can customize the build using the following CMake flags:
+
+- `-DRAMSES_NDIM=[1|2|3]`: Set the number of dimensions (default is 3).
+- `-DRAMSES_USE_MHD=[ON|OFF]`: Enable or disable the Magnetohydrodynamics module (default is OFF).
+- `-DRAMSES_USE_MPI=[ON|OFF]`: Force enable/disable MPI support (usually auto-detected).
+
+Example: Building for 2D MHD
+```bash
+cmake .. -DRAMSES_NDIM=2 -DRAMSES_USE_MHD=ON
+make -j
+```
+
 ## Parallel Support (MPI)
 
 If an MPI implementation is installed and detected by CMake, the build system will automatically define `RAMSES_USE_MPI`. This enables the `LoadBalancer` class for distributed execution and compiles the code to run across multiple MPI ranks. If MPI is not found, the code safely falls back to a sequential build.

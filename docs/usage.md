@@ -49,6 +49,19 @@ You can use existing Python visualization tools to parse and plot these results 
 python3 ../tests/hydro/implosion/plot-implosion.py
 ```
 
+## Automated Testing
+
+The repository includes a comprehensive test suite to verify the physics and AMR logic.
+
+To run the tests:
+```bash
+cd tests
+./run_test_suite.sh -t hydro  # Run hydrodynamics tests
+./run_test_suite.sh -t mhd    # Run MHD tests (requires MHD build)
+```
+
+The test suite automatically compares the C++ output against reference data and reports any discrepancies.
+
 ## Verification Tool
 
 The repository includes a `verify_ref` utility to compare C++ snapshots against reference Fortran results to ensure bit-perfect structural parity.
