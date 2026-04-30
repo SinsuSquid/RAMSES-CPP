@@ -19,5 +19,14 @@ namespace params {
     int nstepmax = 1000000;
     real_t trestart = 0.0;
 
+    real_t units_length = 1.0;
+    real_t units_density = 1.0;
+    real_t units_time = 1.0;
+    real_t units_velocity = 1.0;
+    real_t units_mass = 1.0;
+    real_t units_energy = 1.0;
+    real_t units_pressure = 1.0;
+    real_t units_number_density = 1.0;
+
 } // namespace params
 } // namespace ramses

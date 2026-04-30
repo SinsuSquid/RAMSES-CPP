@@ -27,6 +27,16 @@ namespace params {
     extern int nstepmax;
     extern real_t trestart;
 
+    // Physical units (cgs)
+    extern real_t units_length;
+    extern real_t units_density;
+    extern real_t units_time;
+    extern real_t units_velocity;
+    extern real_t units_mass;
+    extern real_t units_energy;
+    extern real_t units_pressure;
+    extern real_t units_number_density;
+
     // Constants derived from NDIM
     constexpr int twotondim = (1 << NDIM);
     constexpr int threetondim = 1; // Needs to be calculated based on NDIM

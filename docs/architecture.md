@@ -48,7 +48,15 @@ Implements self-gravity using a Multigrid approach.
     - Iterative Gauss-Seidel smoothing with Red-Black ordering.
     - V-Cycle execution (Restriction/Prolongation).
 
-### 6. `MpiManager` and `LoadBalancer` (Parallelism)
+### 6. `CoolingSolver` (Thermal Physics)
+Handles gas cooling and heating processes.
+- **Path:** `src/CoolingSolver.cpp`, `include/ramses/CoolingSolver.hpp`
+- **Key Responsibilities:**
+    - Conversion between code units and physical cgs units.
+    - Implementation of analytic and tabular cooling models (e.g., ISM model).
+    - Semi-implicit integration of the stiff energy equation.
+
+### 7. `MpiManager` and `LoadBalancer` (Parallelism)
 - **`MpiManager`**: A singleton that handles MPI initialization and provides wrappers for common collective operations.
 - **`LoadBalancer`**: Implements domain decomposition using the Hilbert Space-Filling Curve. It ensures spatial locality and provides full physical state migration (including Hydro/MHD variables) between MPI ranks.
 

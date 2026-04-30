@@ -52,6 +52,17 @@ void Simulation::initialize(const std::string& nml_path) {
     // Load Outputs
     noutput_ = config_.get_int("output_params", "noutput", 0);
     ncontrol_ = config_.get_int("run_params", "ncontrol", 1);
+
+    // Units
+    p::units_length = config_.get_double("units_params", "units_length", 1.0);
+    p::units_density = config_.get_double("units_params", "units_density", 1.0);
+    p::units_time = config_.get_double("units_params", "units_time", 1.0);
+    p::units_velocity = p::units_length / p::units_time;
+    p::units_mass = p::units_density * std::pow(p::units_length, 3);
+    p::units_energy = p::units_mass * std::pow(p::units_velocity, 2);
+    p::units_pressure = p::units_density * std::pow(p::units_velocity, 2);
+    p::units_number_density = p::units_density / (1.67e-24); // approx mH
+    
     std::string tout_str = config_.get("output_params", "tout", "");
     if (!tout_str.empty()) {
         std::stringstream ss(tout_str);
@@ -185,6 +196,9 @@ void Simulation::amr_step(int ilevel, real_t dt) {
 #else
     hydro_.godunov_fine(ilevel, dt, dx);
 #endif
+
+    // Cooling
+    cooling_.apply_cooling(ilevel, dt);
 
     // Diagnostics
     real_t mind = 1e30, maxv = 0, maxdivb = 0;

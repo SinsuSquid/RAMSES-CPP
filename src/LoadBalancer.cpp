@@ -1,8 +1,10 @@
 #include "ramses/LoadBalancer.hpp"
 #include "ramses/MpiManager.hpp"
+#include "ramses/Hilbert.hpp"
 #include <iostream>
 #include <algorithm>
 #include <map>
+#include <cmath>
 
 #ifdef RAMSES_USE_MPI
 #include <mpi.h>

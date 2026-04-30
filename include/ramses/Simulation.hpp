@@ -10,6 +10,7 @@
 #include "ParticleSystem.hpp"
 #include "ParticleSolver.hpp"
 #include "LoadBalancer.hpp"
+#include "CoolingSolver.hpp"
 
 namespace ramses {
 
@@ -18,7 +19,7 @@ namespace ramses {
  */
 class Simulation {
 public:
-    Simulation() : hydro_(grid_), mhd_(grid_, config_), poisson_(grid_, config_), updater_(grid_), ptcl_solver_(grid_, ps_), balancer_(grid_, ps_) {}
+    Simulation() : hydro_(grid_), mhd_(grid_, config_), poisson_(grid_, config_), updater_(grid_), ptcl_solver_(grid_, ps_), balancer_(grid_, ps_), cooling_(grid_, config_) {}
 
     void initialize(const std::string& nml_path);
     void run();
@@ -36,6 +37,7 @@ private:
     ParticleSystem ps_;
     ParticleSolver ptcl_solver_;
     LoadBalancer balancer_;
+    CoolingSolver cooling_;
 
     real_t t_ = 0.0;
     real_t tend_ = 1.0;

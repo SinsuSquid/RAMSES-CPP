@@ -11,7 +11,8 @@ RAMSES-CPP provides a functional, physically consistent alternative to the origi
 ## 🚀 Status: Production-Ready
 RAMSES-CPP is a feature-complete port of the core RAMSES engine, supporting:
 - **Full Multi-Dimensional Hydrodynamics** (1D/2D/3D).
-- **Verified Magnetohydrodynamics (MHD)** stability in 2D/3D with HLLD and Constrained Transport.
+- **Verified Magnetohydrodynamics (MHD)** stability in 2D/3D.
+- **Gas Cooling and Heating** via an analytic ISM model.
 - **Self-Gravity** via a Multigrid Poisson solver.
 - **N-Body Dynamics** and Particle-Mesh advection.
 - **Strict Binary Parity** with legacy Fortran snapshots.
@@ -99,6 +100,7 @@ Results are saved to `output_XXXXX/`, which is fully compatible with legacy RAMS
 - [x] Implement Hilbert-based domain decomposition and full state grid migration.
 - [ ] Implement dynamic MPI load balancing during simulation.
 - [x] Port MHD (Magnetohydrodynamics) modules.
+- [x] Implement gas cooling and heating (ISM model).
 - [ ] Implement full Radiative Transfer (RT) support.
 
 ---

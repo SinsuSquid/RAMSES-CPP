@@ -53,6 +53,7 @@ set(RAMSES_SOURCES
     src/ParticleSolver.cpp
     src/LoadBalancer.cpp
     src/MhdSolver.cpp
+    src/CoolingSolver.cpp
 )
 
 # Main library

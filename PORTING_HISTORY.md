@@ -120,3 +120,9 @@ The RAMSES-2025 C++ port is now a **fully functional, production-ready, and test
 - **Hilbert Partitioning:** Replaced simple linear splitting with Hilbert-curve-based domain decomposition, ensuring optimal spatial locality and load balance.
 - **Full State Migration:** Enhanced move_grids and OctPacket to migrate the complete physical state (up to 20 variables) and metadata between ranks.
 - **Simulation Integration:** Integrated initial load balancing into the simulation setup phase.
+
+### [2026-04-30] - Cooling and Chemistry Module
+- **CoolingSolver Class:** Created a new module to handle gas thermal physics.
+- **Unit Scaling:** Implemented full conversion between dimensionless code units and physical cgs units (length, density, time, velocity, pressure, energy).
+- **Analytic ISM Model:** Ported the Hennebelle (2005) ISM cooling and heating model, including photo-heating and metal line cooling.
+- **Stiff Integration:** Implemented a semi-implicit iterative scheme to solve the energy equation source terms robustly.
