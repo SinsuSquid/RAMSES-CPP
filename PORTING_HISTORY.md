@@ -126,3 +126,9 @@ The RAMSES-2025 C++ port is now a **fully functional, production-ready, and test
 - **Unit Scaling:** Implemented full conversion between dimensionless code units and physical cgs units (length, density, time, velocity, pressure, energy).
 - **Analytic ISM Model:** Ported the Hennebelle (2005) ISM cooling and heating model, including photo-heating and metal line cooling.
 - **Stiff Integration:** Implemented a semi-implicit iterative scheme to solve the energy equation source terms robustly.
+
+### [2026-04-30] - Radiative Transfer (RT) Module
+- **RtSolver Class:** Created a new module to implement the M1 closure scheme for photon transport.
+- **HLL-M1 Solver:** Implemented the HLL-based photon advection scheme, including eigenvalue interpolation from standard tables.
+- **Variable Allocation:** Updated the simulation driver to dynamically allocate extra grid variables for photon number density and fluxes across multiple groups.
+- **Integration:** Integrated the RT update step into the main simulation time-stepping loop.

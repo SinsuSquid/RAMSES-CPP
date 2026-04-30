@@ -38,6 +38,10 @@ void Simulation::initialize(const std::string& nml_path) {
 #ifdef MHD
     nvar_default = 5 + 3 + nener_; // nhydro=8 (d,u,v,w,p,B_left)
 #endif
+#ifdef RT
+    int nGroups = config_.get_int("rt_params", "nGroups", 0);
+    nvar_default += nGroups * (1 + NDIM);
+#endif
     int nvar = config_.get_int("hydro_params", "nvar", nvar_default);
     
 #ifdef MHD
@@ -90,6 +94,9 @@ void Simulation::initialize(const std::string& nml_path) {
     // Initial load balance
     balancer_.calculate_hilbert_keys();
     balancer_.balance();
+
+    // RT initialization
+    rt_.initialize();
 }
 
 void Simulation::run() {
@@ -174,6 +181,7 @@ void Simulation::amr_step(int ilevel, real_t dt) {
 #else
     hydro_.set_unew(ilevel);
 #endif
+    rt_.set_unew(ilevel);
 
     // Sub-cycling
     if (ilevel < grid_.nlevelmax) {
@@ -200,6 +208,9 @@ void Simulation::amr_step(int ilevel, real_t dt) {
     // Cooling
     cooling_.apply_cooling(ilevel, dt);
 
+    // RT
+    rt_.godunov_fine(ilevel, dt, dx);
+
     // Diagnostics
     real_t mind = 1e30, maxv = 0, maxdivb = 0;
 #ifdef MHD
@@ -221,6 +232,7 @@ void Simulation::amr_step(int ilevel, real_t dt) {
 #else
     hydro_.set_uold(ilevel);
 #endif
+    rt_.set_uold(ilevel);
 
     real_t min_d = 1e30, max_v = 0.0, max_div_b = 0.0;
     for (int icpu = 1; icpu <= grid_.ncpu; ++icpu) {

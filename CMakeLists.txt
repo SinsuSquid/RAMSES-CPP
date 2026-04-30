@@ -10,6 +10,7 @@ set(RAMSES_PRECISION 8 CACHE STRING "Floating point precision")
 option(RAMSES_LONGINT "Use 64-bit integers for particle IDs" ON)
 option(RAMSES_USE_MPI "Enable MPI support" OFF)
 option(RAMSES_USE_MHD "Enable MHD support" OFF)
+option(RAMSES_USE_RT "Enable Radiative Transfer support" OFF)
 
 # Add definitions
 add_compile_definitions(NDIM=${RAMSES_NDIM})
@@ -20,6 +21,10 @@ endif()
 
 if(RAMSES_USE_MHD)
     add_compile_definitions(MHD)
+endif()
+
+if(RAMSES_USE_RT)
+    add_compile_definitions(RT)
 endif()
 
 if(RAMSES_USE_MPI)
@@ -54,6 +59,7 @@ set(RAMSES_SOURCES
     src/LoadBalancer.cpp
     src/MhdSolver.cpp
     src/CoolingSolver.cpp
+    src/RtSolver.cpp
 )
 
 # Main library

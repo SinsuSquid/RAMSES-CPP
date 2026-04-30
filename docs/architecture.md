@@ -56,7 +56,15 @@ Handles gas cooling and heating processes.
     - Implementation of analytic and tabular cooling models (e.g., ISM model).
     - Semi-implicit integration of the stiff energy equation.
 
-### 7. `MpiManager` and `LoadBalancer` (Parallelism)
+### 7. `RtSolver` (Radiation)
+Implements Radiative Transfer using the M1 closure scheme.
+- **Path:** `src/RtSolver.cpp`, `include/ramses/RtSolver.hpp`
+- **Key Responsibilities:**
+    - Advection of photon number density and fluxes for multiple groups.
+    - Interpolation of HLL eigenvalues from pre-computed tables.
+    - (Future) Coupling with gas via ionization and heating.
+
+### 8. `MpiManager` and `LoadBalancer` (Parallelism)
 - **`MpiManager`**: A singleton that handles MPI initialization and provides wrappers for common collective operations.
 - **`LoadBalancer`**: Implements domain decomposition using the Hilbert Space-Filling Curve. It ensures spatial locality and provides full physical state migration (including Hydro/MHD variables) between MPI ranks.
 
