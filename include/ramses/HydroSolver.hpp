@@ -38,7 +38,7 @@ public:
      */
     void add_gravity_source_terms(int ilevel, real_t dt);
 
-    void get_diagnostics(int ilevel, real_t dx, real_t& mind, real_t& maxv);
+    void get_diagnostics(int ilevel, real_t dx, real_t& mind, real_t& maxv, real_t& mint, real_t& maxt);
 
 private:
     AmrGrid& grid_;

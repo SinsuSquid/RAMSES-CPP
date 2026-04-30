@@ -8,10 +8,10 @@
 namespace ramses {
 
 void CoolingSolver::apply_cooling(int ilevel, real_t dt) {
-    if (!config_.get_bool("run_params", "cooling", false)) return;
+    if (!config_.get_bool("cooling_params", "cooling", false)) return;
 
     real_t gamma = config_.get_double("hydro_params", "gamma", 1.6666667);
-    real_t mu = config_.get_double("hydro_params", "mu_gas", 1.4);
+    real_t mu = config_.get_double("cooling_params", "mu_gas", 1.4);
     real_t kB = 1.3806e-16;
     real_t mH = 1.67e-24;
     real_t dt_sec = dt * params::units_time;
