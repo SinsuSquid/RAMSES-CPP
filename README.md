@@ -99,10 +99,21 @@ Results are saved to `output_XXXXX/`, which is fully compatible with legacy RAMS
 
 ## 🗺 Roadmap
 - [x] Implement Hilbert-based domain decomposition and full state grid migration.
-- [ ] Implement dynamic MPI load balancing during simulation.
+- [x] Implement dynamic MPI load balancing during simulation.
 - [x] Port MHD (Magnetohydrodynamics) modules.
 - [x] Implement gas cooling and heating (ISM model).
 - [x] Implement basic Radiative Transfer (RT) support (M1 scheme).
+- [x] Extend RT module with ionization and gas-coupling source terms.
+
+## 🛡️ Verification and Parity
+
+We ensure high-precision parity with legacy RAMSES using a dedicated C++ utility:
+
+```bash
+cd build
+# Compare local snapshot with reference benchmark
+./verify_ref ../tests/hydro/sod-tube/output_00001/amr_00001.out00001 output_00001/amr_00001.out00001
+```
 
 ---
 *Developed as part of the RAMSES-2025 Migration Task.*

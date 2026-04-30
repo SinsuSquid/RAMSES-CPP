@@ -3,33 +3,23 @@
 
 #include "AmrGrid.hpp"
 #include "Config.hpp"
+#include "RtChemistry.hpp"
 #include <vector>
 #include <string>
+#include <memory>
 
 namespace ramses {
 
 /**
  * @brief Implements Radiative Transfer (RT) using the M1 closure scheme.
- * 
- * Replicates logic from rt/rt_godunov_fine.f90 and rt_flux_module.f90.
  */
 class RtSolver {
 public:
     RtSolver(AmrGrid& grid, Config& config) : grid_(grid), config_(config) {}
 
-    /**
-     * @brief Initializes RT parameters and loads eigenvalue tables.
-     */
     void initialize();
-
-    /**
-     * @brief Performs the RT update step on a specific AMR level.
-     */
     void godunov_fine(int ilevel, real_t dt, real_t dx);
-
-    /**
-     * @brief Synchronizes unew and uold for RT variables.
-     */
+    void apply_source_terms(int ilevel, real_t dt);
     void set_uold(int ilevel);
     void set_unew(int ilevel);
 
@@ -39,6 +29,7 @@ private:
 
     AmrGrid& grid_;
     Config& config_;
+    std::unique_ptr<RtChemistry> chem_;
 
     // HLL Eigenvalue tables [101][101]
     std::vector<std::vector<real_t>> lambda1;

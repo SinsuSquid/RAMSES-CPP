@@ -12,6 +12,7 @@
 #include "LoadBalancer.hpp"
 #include "CoolingSolver.hpp"
 #include "RtSolver.hpp"
+#include <vector>
 
 namespace ramses {
 
@@ -20,7 +21,9 @@ namespace ramses {
  */
 class Simulation {
 public:
-    Simulation() : hydro_(grid_), mhd_(grid_, config_), poisson_(grid_, config_), updater_(grid_), ptcl_solver_(grid_, ps_), balancer_(grid_, ps_), cooling_(grid_, config_), rt_(grid_, config_) {}
+    Simulation() : grid_(config_), hydro_(grid_), mhd_(grid_, config_), poisson_(grid_, config_), 
+                   updater_(grid_), ptcl_solver_(grid_, ps_), balancer_(grid_, ps_), 
+                   cooling_(grid_, config_), rt_(grid_, config_) {}
 
     void initialize(const std::string& nml_path);
     void run();
@@ -29,12 +32,12 @@ private:
     void amr_step(int ilevel, real_t dt);
     void dump_snapshot(int iout);
 
+    Config config_;
     AmrGrid grid_;
     HydroSolver hydro_;
     MhdSolver mhd_;
     PoissonSolver poisson_;
     TreeUpdater updater_;
-    Config config_;
     ParticleSystem ps_;
     ParticleSolver ptcl_solver_;
     LoadBalancer balancer_;

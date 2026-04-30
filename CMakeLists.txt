@@ -60,6 +60,7 @@ set(RAMSES_SOURCES
     src/MhdSolver.cpp
     src/CoolingSolver.cpp
     src/RtSolver.cpp
+    src/RtChemistry.cpp
 )
 
 # Main library
@@ -71,3 +72,7 @@ endif()
 # Main executable
 add_executable(ramses_main src/main.cpp)
 target_link_libraries(ramses_main ramses_lib)
+
+# Verification tool
+add_executable(verify_ref src/verify_ref.cpp)
+target_link_libraries(verify_ref ramses_lib)

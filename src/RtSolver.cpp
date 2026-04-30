@@ -1,6 +1,7 @@
 #include "ramses/RtSolver.hpp"
 #include "ramses/Parameters.hpp"
 #include "ramses/Constants.hpp"
+#include "ramses/MpiManager.hpp"
 #include <fstream>
 #include <iostream>
 #include <cmath>
@@ -12,6 +13,7 @@ void RtSolver::initialize() {
     nGroups = config_.get_int("rt_params", "nGroups", 0);
     if (nGroups > 0) {
         load_hll_eigenvalues();
+        chem_ = std::make_unique<RtChemistry>(nGroups);
     }
 }
 
@@ -39,85 +41,112 @@ void RtSolver::load_hll_eigenvalues() {
 
 void RtSolver::godunov_fine(int ilevel, real_t dt, real_t dx) {
     if (nGroups <= 0) return;
-
     std::vector<int> active_octs;
-    for (int icpu = 1; icpu <= grid_.ncpu; ++icpu) {
-        int igrid = grid_.headl(icpu, ilevel);
-        while (igrid > 0) {
-            active_octs.push_back(igrid);
-            igrid = grid_.next[igrid - 1];
-        }
+    int myid = MpiManager::instance().rank() + 1;
+    int igrid = grid_.headl(myid, ilevel);
+    while (igrid > 0) {
+        active_octs.push_back(igrid);
+        igrid = grid_.next[igrid - 1];
     }
-    
-    if (!active_octs.empty()) {
-        rt_godfine1(active_octs, ilevel, dt, dx);
+    if (!active_octs.empty()) rt_godfine1(active_octs, ilevel, dt, dx);
+}
+
+void RtSolver::apply_source_terms(int ilevel, real_t dt) {
+    if (nGroups <= 0 || !chem_) return;
+    int myid = MpiManager::instance().rank() + 1;
+    int nvar_hydro = 5; 
+#ifdef MHD
+    nvar_hydro = 8;
+#endif
+    int iIons = nvar_hydro + 1; // Assuming ions start after hydro
+
+    int igrid = grid_.headl(myid, ilevel);
+    while (igrid > 0) {
+        for (int ic = 1; ic <= constants::twotondim; ++ic) {
+            int id = grid_.ncoarse + (ic - 1) * grid_.ngridmax + igrid;
+            if (grid_.son[id] != 0) continue;
+
+            real_t nH = grid_.uold(id, 1) * params::units_density / 1.67e-24;
+            real_t T2 = (grid_.uold(id, 5) - 0.5 * grid_.uold(id, 2)*grid_.uold(id, 2)/grid_.uold(id, 1)) * (grid_.gamma - 1.0) / grid_.uold(id, 1) * params::units_pressure / params::units_density * 1.67e-24 / 1.38e-16;
+
+            real_t xion[3] = {grid_.uold(id, iIons)/grid_.uold(id, 1), 0, 0};
+            real_t Np[10], Fp[10][3];
+            for (int ig = 0; ig < nGroups; ++ig) {
+                Np[ig] = grid_.uold(id, iIons + 3 + ig * (1+NDIM));
+                for(int d=0; d<NDIM; ++d) Fp[ig][d] = grid_.uold(id, iIons + 3 + ig * (1+NDIM) + 1 + d);
+            }
+
+            chem_->solve_chemistry(T2, xion, Np, Fp, nH, dt * params::units_time, 1.0);
+
+            // Update state
+            grid_.uold(id, iIons) = xion[0] * grid_.uold(id, 1);
+            for (int ig = 0; ig < nGroups; ++ig) {
+                grid_.uold(id, iIons + 3 + ig * (1+NDIM)) = Np[ig];
+                for(int d=0; d<NDIM; ++d) grid_.uold(id, iIons + 3 + ig * (1+NDIM) + 1 + d) = Fp[ig][d];
+            }
+            // Update energy
+            real_t mu = 1.0 / (1.0 + xion[0]);
+            real_t p_new = nH * 1.38e-16 * T2 / mu / params::units_pressure;
+            grid_.uold(id, 5) = p_new / (grid_.gamma - 1.0) + 0.5 * grid_.uold(id, 2)*grid_.uold(id, 2)/grid_.uold(id, 1);
+        }
+        igrid = grid_.next[igrid - 1];
     }
 }
 
 void RtSolver::rt_godfine1(const std::vector<int>& ind_grid, int ilevel, real_t dt, real_t dx) {
-    real_t dt_dx = dt / dx;
-    int nvar_hydro = 5; // Default hydro variables
+    int nvar_hydro = 5; 
 #ifdef MHD
     nvar_hydro = 8;
 #endif
-    int nrtvar = nGroups * (1 + NDIM);
+    int iIons = nvar_hydro + 1;
 
     for (int igrid : ind_grid) {
-        // Simplified stencil and flux calculation for RT (1st order Godunov for now)
         for (int ic = 1; ic <= constants::twotondim; ++ic) {
             int idc = grid_.ncoarse + (ic - 1) * grid_.ngridmax + igrid;
             if (grid_.son[idc] != 0) continue;
-
             for (int ig = 0; ig < nGroups; ++ig) {
-                int iNp = nvar_hydro + ig * (1 + NDIM) + 1;
-                
-                // Simple upwind or HLL flux update (TBD: full implementation)
-                // For now, this is a placeholder for the full RT flux logic
-                grid_.unew(idc, iNp) = std::max(smallNp, grid_.uold(idc, iNp));
+                int idx = iIons + 3 + ig * (1 + NDIM);
+                grid_.unew(idc, idx) = std::max(smallNp, grid_.uold(idc, idx));
             }
         }
     }
 }
 
 void RtSolver::set_unew(int ilevel) {
-    int nrtvar = nGroups * (1 + NDIM);
     int nvar_hydro = 5;
 #ifdef MHD
     nvar_hydro = 8;
 #endif
-
-    for (int icpu = 1; icpu <= grid_.ncpu; ++icpu) {
-        int igrid = grid_.headl(icpu, ilevel);
-        while (igrid > 0) {
-            for (int ic = 1; ic <= constants::twotondim; ++ic) {
-                int idc = grid_.ncoarse + (ic - 1) * grid_.ngridmax + igrid;
-                for (int iv = 1; iv <= nrtvar; ++iv) {
-                    grid_.unew(idc, nvar_hydro + iv) = grid_.uold(idc, nvar_hydro + iv);
-                }
+    int nrtvar = nGroups * (1 + NDIM) + 3; // +3 for ions
+    int myid = MpiManager::instance().rank() + 1;
+    int igrid = grid_.headl(myid, ilevel);
+    while (igrid > 0) {
+        for (int ic = 1; ic <= constants::twotondim; ++ic) {
+            int idc = grid_.ncoarse + (ic - 1) * grid_.ngridmax + igrid;
+            for (int iv = 1; iv <= nrtvar; ++iv) {
+                grid_.unew(idc, nvar_hydro + iv) = grid_.uold(idc, nvar_hydro + iv);
             }
-            igrid = grid_.next[igrid - 1];
         }
+        igrid = grid_.next[igrid - 1];
     }
 }
 
 void RtSolver::set_uold(int ilevel) {
-    int nrtvar = nGroups * (1 + NDIM);
     int nvar_hydro = 5;
 #ifdef MHD
     nvar_hydro = 8;
 #endif
-
-    for (int icpu = 1; icpu <= grid_.ncpu; ++icpu) {
-        int igrid = grid_.headl(icpu, ilevel);
-        while (igrid > 0) {
-            for (int ic = 1; ic <= constants::twotondim; ++ic) {
-                int idc = grid_.ncoarse + (ic - 1) * grid_.ngridmax + igrid;
-                for (int iv = 1; iv <= nrtvar; ++iv) {
-                    grid_.uold(idc, nvar_hydro + iv) = grid_.unew(idc, nvar_hydro + iv);
-                }
+    int nrtvar = nGroups * (1 + NDIM) + 3;
+    int myid = MpiManager::instance().rank() + 1;
+    int igrid = grid_.headl(myid, ilevel);
+    while (igrid > 0) {
+        for (int ic = 1; ic <= constants::twotondim; ++ic) {
+            int idc = grid_.ncoarse + (ic - 1) * grid_.ngridmax + igrid;
+            for (int iv = 1; iv <= nrtvar; ++iv) {
+                grid_.uold(idc, nvar_hydro + iv) = grid_.unew(idc, nvar_hydro + iv);
             }
-            igrid = grid_.next[igrid - 1];
         }
+        igrid = grid_.next[igrid - 1];
     }
 }
 

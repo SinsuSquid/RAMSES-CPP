@@ -18,6 +18,7 @@ struct SnapshotInfo {
     int iout;
     std::vector<double> tout;
     real_t gamma;
+    int nener = 0;
 };
 
 class RamsesWriter {

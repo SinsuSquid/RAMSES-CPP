@@ -4,6 +4,7 @@
 #include "Types.hpp"
 #include "Field.hpp"
 #include "Constants.hpp"
+#include "Config.hpp"
 #include <vector>
 
 namespace ramses {
@@ -15,7 +16,9 @@ namespace ramses {
  */
 class AmrGrid {
 public:
-    AmrGrid() = default;
+    AmrGrid(Config& config) : config_(config) {}
+
+    Config& config() { return config_; }
 
     /**
      * @brief Allocates memory for the grid based on dimensions and limits.
@@ -23,11 +26,11 @@ public:
     void allocate(int nx, int ny, int nz, int ngridmax, int nvar, int ncpu, int nlevelmax);
 
     // Tree Structure (Oct-based)
-    std::vector<real_t> xg;       // Grid positions [ngridmax * NDIM]
+    std::vector<real_t> xg;       // Grid center [ngridmax * NDIM]
     std::vector<int> father;      // Father cell index [ngridmax]
-    std::vector<int> nbor;        // Neighboring father cells [ngridmax * 2*NDIM]
-    std::vector<int> next;        // Next grid in linked list [ngridmax]
-    std::vector<int> prev;        // Previous grid in linked list [ngridmax]
+    std::vector<int> nbor;        // Neighbor cell indices [ngridmax * 2 * NDIM]
+    std::vector<int> next;        // Next grid in level list [ngridmax]
+    std::vector<int> prev;        // Previous grid in level list [ngridmax]
 
     // Cell-based arrays
     std::vector<int> son;         // Son grid index [ncell]
@@ -41,10 +44,10 @@ public:
     Field<real_t> unew;           // Updated state vector [ncell, nvar]
     std::vector<real_t> divu;     // Velocity divergence [ncell]
     std::vector<real_t> phi;      // Gravitational potential [ncell]
-    Field<real_t> f;              // Gravitational acceleration [ncell, NDIM]
-    std::vector<real_t> rho;      // Density (gravity source) [ncell]
+    Field<real_t> f;              // Gravitational force [ncell, NDIM]
+    std::vector<real_t> rho;      // Density [ncell]
 
-    // Linked list pointers (1-based level indexing)
+    // Linked List Pointers
     Field<int> headl;             // Head grid in level list [ncpu, nlevelmax]
     Field<int> taill;             // Tail grid in level list [ncpu, nlevelmax]
     Field<int> numbl;             // Number of grids in level list [ncpu, nlevelmax]
@@ -53,69 +56,57 @@ public:
     Field<int> tailb;             // Tail grid in boundary list [MAXBOUND, nlevelmax]
     Field<int> numbb;             // Number of grids in boundary list [MAXBOUND, nlevelmax]
 
-    // Linked list pointers for free memory
-
-    int headf, tailf, numbf;      // Free memory list pointers
+    // Free list management
+    int headf, tailf, numbf;
     
-    // Grid info
-    int ncoarse;
-    int ncell;
-    int ngridmax;
-    int nvar;
-    int ncpu;
-    int nlevelmax;
-    int ndim;
-    real_t rho_tot = 0.0;
+    // Metadata
+    int ncoarse = 0, ngridmax = 0, nvar = 0, ncpu = 0, nlevelmax = 0, ndim = 0, ncell = 0;
 
-    /**
-     * @brief Returns total number of grids at a specific level across all CPUs.
-     */
-    int count_grids_at_level(int ilevel) const {
-        int total = 0;
-        for (int i = 1; i <= ncpu; ++i) {
-            total += numbl(i, ilevel);
-        }
-        return total;
-    }
-
-    // 1-based utility accessors
-    inline real_t& get_xg(int igrid, int idim) { return xg[(idim - 1) * ngridmax + (igrid - 1)]; }
-    inline int& get_nbor(int igrid, int iface) { return nbor[(iface - 1) * ngridmax + (igrid - 1)]; }
-
-    /**
-     * @brief Find neighboring grids of an oct.
-     * @param igrid 1-based oct index.
-     * @param igridn Output 1-based indices of neighboring grids (0 if not refined). igridn[0] is center.
-     */
+    // Helper to find neighboring grids and cells
     void get_nbor_grids(int igrid, int igridn[7]) const;
-
-    /**
-     * @brief Find neighboring cells of a cell within an oct.
-     * @param igridn 1-based indices of neighboring grids (from get_nbor_grids).
-     * @param icell_pos 1-based position within oct (1-8).
-     * @param icelln Output 1-based indices of neighboring cells.
-     */
     void get_nbor_cells(const int igridn[7], int icell_pos, int icelln[6]) const;
 
-    /**
-     * @brief Find the 3x3x3 cube of father cells around an oct.
-     * @param igrid 1-based oct index.
-     * @param nbors_father Output array of 27 cell indices.
-     */
+    // Helper for 3x3x3 stencil gathering
     void get_3x3x3_father(int igrid, int nbors_father[27]) const;
 
     /**
-     * @brief Computes the center coordinates of a cell.
-     * @param icell 1-based cell index.
+     * @brief Computes the number of grids currently allocated at a specific level.
+     */
+    int count_grids_at_level(int ilevel) const {
+        int count = 0;
+        for (int i = 1; i <= ncpu; ++i) count += numbl(i, ilevel);
+        return count;
+    }
+
+    /**
+     * @brief Computes the center coordinates of a given cell.
+     * @param icell 1-based index of the cell.
      * @param x Output center coordinates.
      */
     void get_cell_center(int icell, real_t x[3]) const;
+
+    /**
+     * @brief Find a cell by its normalized coordinates [0, 1].
+     */
+    int find_cell_by_coords(const real_t x[3], int ilevel_max = -1) const;
+
+    inline real_t& get_xg(int igrid, int idim) { return xg[(idim - 1) * ngridmax + (igrid - 1)]; }
+    inline const real_t& get_xg(int igrid, int idim) const { return xg[(idim - 1) * ngridmax + (igrid - 1)]; }
+    inline int& get_nbor(int igrid, int inbor) { return nbor[(inbor - 1) * ngridmax + (igrid - 1)]; }
+    inline const int& get_nbor(int igrid, int inbor) const { return nbor[(inbor - 1) * ngridmax + (igrid - 1)]; }
+
+    real_t gamma = 1.4;
+    real_t err_grad_d = 0.05;
+    real_t err_grad_u = 0.05;
+    real_t err_grad_p = 0.05;
 
 private:
     // Helper to calculate ncell = ncoarse + twotondim * ngridmax
     static int calculate_ncell(int nx, int ny, int nz, int ngridmax) {
         return (nx * ny * nz) + constants::twotondim * ngridmax;
     }
+
+    Config& config_;
 };
 
 } // namespace ramses

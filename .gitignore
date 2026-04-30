@@ -1,8 +1,5 @@
-# Build
-build/
-
-# Hidden Files
-.*
+# Hidden files
+**/.*
 
 # Prerequisites
 *.d
@@ -55,3 +52,7 @@ legacy/
 # Binaries
 bin/
 build/
+
+# Gemini
+.geminiignore
+GEMINI.md

@@ -21,10 +21,10 @@ public:
     struct OctPacket {
         int ilevel;
         real_t xg[3];
-        int father;
+        real_t father_x[3]; // Center of father cell
         int nbor[6];
-        real_t uold[8][20];
-        real_t unew[8][20];
+        real_t uold[8 * 30]; 
+        real_t unew[8 * 30];
         qdp_t hilbert_keys[8];
     };
 
