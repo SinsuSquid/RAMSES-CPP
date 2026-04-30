@@ -22,6 +22,8 @@ The project has reached a production-ready milestone for its core hydrodynamics 
 - **3D Unsplit Godunov Solver:** Full directional flux integration with strict conservation.
 - **Advanced Hydrodynamics:** HLLC and LLF Riemann solvers with MUSCL-Hancock 2nd-order reconstruction and TVD slope limiters (MinMod, MonCen).
 - **Magnetohydrodynamics (MHD):** Ported HLLD and LLF Riemann solvers with Flux-CT for $\nabla \cdot B = 0$ maintenance.
+- **Radiative Transfer (RT):** M1 closure scheme with HLL advection and photo-ionization coupling.
+- **Gas Chemistry:** Semi-implicit iterative solver for Hydrogen/Helium ionization and heating.
 - **Self-Gravity:** Multigrid Poisson solver with iterative Gauss-Seidel smoothing.
 - **N-Body Dynamics:** Full Particle-Mesh (CIC) mass assignment and advection logic.
 - **MPI Parallelization:** Domain decomposition using Hilbert curve repartitioning.

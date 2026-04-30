@@ -17,6 +17,7 @@ The `Simulation` class is the central driver. It manages the global time-steppin
 
 ### 2. `AmrGrid` (The Data Structure)
 `AmrGrid` encapsulates the linked-list octree structure. In RAMSES-CPP, this is implemented as a collection of `Oct` and `Grid` structures, mimicking the Fortran memory layout but with C++ container management where appropriate.
+- **Level Indexing:** The grid uses **0-based level indexing** (Level 0 = Coarse Grid), ensuring consistency across all solvers.
 - **Path:** `src/AmrGrid.cpp`, `include/ramses/AmrGrid.hpp`
 - **Key Responsibilities:**
     - Storing cell and grid data.
@@ -62,7 +63,7 @@ Implements Radiative Transfer using the M1 closure scheme.
 - **Key Responsibilities:**
     - Advection of photon number density and fluxes for multiple groups.
     - Interpolation of HLL eigenvalues from pre-computed tables.
-    - (Future) Coupling with gas via ionization and heating.
+    - **Ionization Coupling:** Utilizes `RtChemistry` to solve for Hydrogen/Helium ionization fractions and gas energy feedback.
 
 ### 8. `MpiManager` and `LoadBalancer` (Parallelism)
 - **`MpiManager`**: A singleton that handles MPI initialization and provides wrappers for common collective operations.
