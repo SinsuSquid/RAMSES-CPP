@@ -16,12 +16,16 @@ public:
 
     void balance();
 
+    void calculate_hilbert_keys();
+
     struct OctPacket {
         int ilevel;
         real_t xg[3];
         int father;
         int nbor[6];
-        real_t uold[8][5];
+        real_t uold[8][20];
+        real_t unew[8][20];
+        qdp_t hilbert_keys[8];
     };
 
 private:

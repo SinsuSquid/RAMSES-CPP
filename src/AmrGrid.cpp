@@ -29,6 +29,7 @@ void AmrGrid::allocate(int nx_val, int ny_val, int nz_val, int ngridmax_val, int
     flag1.assign(static_cast<size_t>(ncell) + 1, 0);
     flag2.assign(static_cast<size_t>(ncell) + 1, 0);
     cpu_map.assign(static_cast<size_t>(ncell) + 1, 1);
+    hilbert_keys.assign(static_cast<size_t>(ncell) + 1, 0.0);
     divu.assign(static_cast<size_t>(ncell) + 1, 0.0);
     phi.assign(static_cast<size_t>(ncell) + 1, 0.0);
     f.allocate(ncell, NDIM);

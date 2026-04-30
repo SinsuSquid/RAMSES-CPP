@@ -19,12 +19,76 @@ void LoadBalancer::balance() {
     move_grids(cpu_map_new);
 }
 
+void LoadBalancer::calculate_hilbert_keys() {
+    int n_res = 1 << grid_.nlevelmax;
+    for (int i = 1; i <= grid_.ncell; ++i) {
+        real_t xc[3];
+        grid_.get_cell_center(i, xc);
+        
+        std::vector<int> ix(1), iy(1), iz(1);
+        ix[0] = static_cast<int>(std::floor(xc[0] * n_res));
+        if (NDIM > 1) iy[0] = static_cast<int>(std::floor(xc[1] * n_res));
+        if (NDIM > 2) iz[0] = static_cast<int>(std::floor(xc[2] * n_res));
+        
+        std::vector<qdp_t> order;
+        if (NDIM == 1) Hilbert::hilbert1d(ix, order);
+        else if (NDIM == 2) Hilbert::hilbert2d(ix, iy, order, grid_.nlevelmax);
+        else Hilbert::hilbert3d(ix, iy, iz, order, grid_.nlevelmax);
+        
+        grid_.hilbert_keys[i] = order[0];
+    }
+}
+
 void LoadBalancer::compute_new_cpu_map(std::vector<int>& cpu_map_new) {
     auto& mpi = MpiManager::instance();
-    int cells_per_cpu = grid_.ncell / mpi.size();
+    if (mpi.size() == 1) {
+        std::fill(cpu_map_new.begin(), cpu_map_new.end(), 1);
+        return;
+    }
+
+    // 1. Collect all leaf cells
+    struct CellKey {
+        int index;
+        qdp_t key;
+    };
+    std::vector<CellKey> leaf_cells;
     for (int i = 1; i <= grid_.ncell; ++i) {
-        int target_rank = (i - 1) / cells_per_cpu;
-        cpu_map_new[i] = std::min(target_rank + 1, mpi.size());
+        if (grid_.son[i] == 0) leaf_cells.push_back({i, grid_.hilbert_keys[i]});
+    }
+
+    // 2. Sort by Hilbert key
+    std::sort(leaf_cells.begin(), leaf_cells.end(), [](const CellKey& a, const CellKey& b) {
+        return a.key < b.key;
+    });
+
+    // 3. Partition into ncpu segments
+    int nleaf = leaf_cells.size();
+    int leaves_per_cpu = nleaf / mpi.size();
+    int extra_leaves = nleaf % mpi.size();
+
+    int current_leaf = 0;
+    for (int icpu = 1; icpu <= mpi.size(); ++icpu) {
+        int count = leaves_per_cpu + (icpu <= extra_leaves ? 1 : 0);
+        for (int i = 0; i < count; ++i) {
+            cpu_map_new[leaf_cells[current_leaf].index] = icpu;
+            current_leaf++;
+        }
+    }
+
+    // 4. Propagate assignments up the tree (coarse cells)
+    for (int ilevel = grid_.nlevelmax; ilevel >= 1; --ilevel) {
+        for (int icpu = 1; icpu <= mpi.size(); ++icpu) {
+            int igrid = grid_.headl(icpu, ilevel);
+            while (igrid > 0) {
+                int father_cell = grid_.father[igrid - 1];
+                if (father_cell > 0) {
+                    // Assign father to the CPU of its first child
+                    int first_child = grid_.ncoarse + (1 - 1) * grid_.ngridmax + igrid;
+                    cpu_map_new[father_cell] = cpu_map_new[first_child];
+                }
+                igrid = grid_.next[igrid - 1];
+            }
+        }
     }
 }
 
@@ -64,7 +128,11 @@ void LoadBalancer::move_grids(const std::vector<int>& cpu_map_new) {
                 for (int n = 0; n < 6; ++n) p.nbor[n] = grid_.get_nbor(igrid, n + 1);
                 for (int ic = 1; ic <= 8; ++ic) {
                     int ind_cell = grid_.ncoarse + (ic - 1) * grid_.ngridmax + igrid;
-                    for (int iv = 1; iv <= 5; ++iv) p.uold[ic - 1][iv - 1] = grid_.uold(ind_cell, iv);
+                    for (int iv = 1; iv <= grid_.nvar; ++iv) {
+                        p.uold[ic - 1][iv - 1] = grid_.uold(ind_cell, iv);
+                        p.unew[ic - 1][iv - 1] = grid_.unew(ind_cell, iv);
+                    }
+                    p.hilbert_keys[ic - 1] = grid_.hilbert_keys[ind_cell];
                 }
                 send_queues[target_cpu].push_back(p);
                 grids_to_remove.push_back(igrid);
@@ -119,7 +187,11 @@ void LoadBalancer::move_grids(const std::vector<int>& cpu_map_new) {
             // Unpack Hydro
             for (int ic = 1; ic <= 8; ++ic) {
                 int ind_cell = grid_.ncoarse + (ic - 1) * grid_.ngridmax + igrid;
-                for (int iv = 1; iv <= 5; ++iv) grid_.uold(ind_cell, iv) = p.uold[ic-1][iv-1];
+                for (int iv = 1; iv <= grid_.nvar; ++iv) {
+                    grid_.uold(ind_cell, iv) = p.uold[ic-1][iv-1];
+                    grid_.unew(ind_cell, iv) = p.unew[ic-1][iv-1];
+                }
+                grid_.hilbert_keys[ind_cell] = p.hilbert_keys[ic - 1];
                 grid_.cpu_map[ind_cell] = myid;
             }
 

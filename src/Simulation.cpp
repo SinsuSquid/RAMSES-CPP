@@ -75,6 +75,10 @@ void Simulation::initialize(const std::string& nml_path) {
     
     Initializer init(grid_, config_);
     init.apply_all();
+
+    // Initial load balance
+    balancer_.calculate_hilbert_keys();
+    balancer_.balance();
 }
 
 void Simulation::run() {

@@ -34,6 +34,7 @@ public:
     std::vector<int> flag1;       // Refinement flag [ncell]
     std::vector<int> flag2;       // Expansion flag [ncell]
     std::vector<int> cpu_map;     // Domain decomposition [ncell]
+    std::vector<qdp_t> hilbert_keys; // Hilbert keys for load balancing [ncell]
     
     // Physical Fields
     Field<real_t> uold;           // State vector [ncell, nvar]
