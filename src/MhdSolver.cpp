@@ -171,11 +171,39 @@ void MhdSolver::gather_stencil(int igrid, int ilevel, LocalStencil& stencil) {
 }
 
 void MhdSolver::trace(const real_t qloc[6][6][6][20], const real_t bfloc[6][6][6][3][2],
-                       const real_t dq[6][6][6][3][20], real_t dt, real_t dx,
+                       const real_t dq[6][6][6][3][20], const real_t dbf[6][6][6][3][2],
+                       real_t dt, real_t dx,
                        real_t qm[6][6][6][3][20], real_t qp[6][6][6][3][20]) {
     real_t dtdx = dt / dx;
     real_t gamma = config_.get_double("hydro_params", "gamma", 1.4);
     int nvar_pure = grid_.nvar - 3;
+    real_t smallp = 1e-10; // TODO: use parameter
+
+    // 1. Compute edge-centered electric fields (Ez = uBy - vBx)
+    real_t ez[6][6][6] = {0.0}, ey[6][6][6] = {0.0}, ex[6][6][6] = {0.0};
+    for(int k=1; k<6; ++k) for(int j=1; j<6; ++j) for(int i=1; i<6; ++i) {
+        real_t u = 0.25 * (qloc[i-1][j-1][k][1] + qloc[i-1][j][k][1] + qloc[i][j-1][k][1] + qloc[i][j][k][1]);
+        real_t v = 0.25 * (qloc[i-1][j-1][k][2] + qloc[i-1][j][k][2] + qloc[i][j-1][k][2] + qloc[i][j][k][2]);
+        real_t Bx = 0.5 * (bfloc[i][j-1][k][0][0] + bfloc[i][j][k][0][0]);
+        real_t By = 0.5 * (bfloc[i-1][j][k][1][0] + bfloc[i][j][k][1][0]);
+        ez[i][j][k] = u * By - v * Bx;
+
+        if (NDIM > 2) {
+            real_t w = 0.25 * (qloc[i-1][j][k-1][3] + qloc[i-1][j][k][3] + qloc[i][j][k-1][3] + qloc[i][j][k][3]);
+            real_t u3 = 0.25 * (qloc[i-1][j][k-1][1] + qloc[i-1][j][k][1] + qloc[i][j][k-1][1] + qloc[i][j][k][1]);
+            real_t Bz = 0.5 * (bfloc[i-1][j][k][2][0] + bfloc[i][j][k][2][0]);
+            real_t Bx3 = 0.5 * (bfloc[i][j][k-1][0][0] + bfloc[i][j][k][0][0]);
+            ey[i][j][k] = w * Bx3 - u3 * Bz;
+
+            real_t v4 = 0.25 * (qloc[i][j-1][k-1][2] + qloc[i][j-1][k][2] + qloc[i][j][k-1][2] + qloc[i][j][k][2]);
+            real_t w4 = 0.25 * (qloc[i][j-1][k-1][3] + qloc[i][j-1][k][3] + qloc[i][j][k-1][3] + qloc[i][j][k][3]);
+            real_t By4 = 0.5 * (bfloc[i][j][k-1][1][0] + bfloc[i][j][k][0][0]); // TYPO in By4?
+            // Corrected By4: By is index 1.
+            By4 = 0.5 * (bfloc[i][j][k-1][1][0] + bfloc[i][j][k][1][0]);
+            real_t Bz4 = 0.5 * (bfloc[i][j-1][k][2][0] + bfloc[i][j][k][2][0]);
+            ex[i][j][k] = v4 * Bz4 - w4 * By4;
+        }
+    }
 
     for (int k = 1; k < 5; ++k) {
         for (int j = 1; j < 5; ++j) {
@@ -186,73 +214,107 @@ void MhdSolver::trace(const real_t qloc[6][6][6][20], const real_t bfloc[6][6][6
                 real_t v = qloc[i][j][k][2];
                 real_t w = qloc[i][j][k][3];
                 real_t p = qloc[i][j][k][4];
-                real_t A = qloc[i][j][k][5];
-                real_t B = qloc[i][j][k][6];
-                real_t C = qloc[i][j][k][7];
+                real_t A = qloc[i][j][k][5]; // Bx
+                real_t B = qloc[i][j][k][6]; // By
+                real_t C = qloc[i][j][k][7]; // Bz
 
-                for (int idim = 0; idim < NDIM; ++idim) {
-                    real_t dr_d = 0.5 * dq[i][j][k][idim][0];
-                    real_t du_d = 0.5 * dq[i][j][k][idim][1];
-                    real_t dv_d = 0.5 * dq[i][j][k][idim][2];
-                    real_t dw_d = 0.5 * dq[i][j][k][idim][3];
-                    real_t dp_d = 0.5 * dq[i][j][k][idim][4];
-                    real_t dA_d = 0.5 * dq[i][j][k][idim][5];
-                    real_t dB_d = 0.5 * dq[i][j][k][idim][6];
-                    real_t dC_d = 0.5 * dq[i][j][k][idim][7];
+                // TVD slopes
+                real_t drx = 0.5 * dq[i][j][k][0][0]; real_t dry = 0.5 * dq[i][j][k][1][0]; real_t drz = 0.5 * dq[i][j][k][2][0];
+                real_t dux = 0.5 * dq[i][j][k][0][1]; real_t duy = 0.5 * dq[i][j][k][1][1]; real_t duz = 0.5 * dq[i][j][k][2][1];
+                real_t dvx = 0.5 * dq[i][j][k][0][2]; real_t dvy = 0.5 * dq[i][j][k][1][2]; real_t dvz = 0.5 * dq[i][j][k][2][2];
+                real_t dwx = 0.5 * dq[i][j][k][0][3]; real_t dwy = 0.5 * dq[i][j][k][1][3]; real_t dwz = 0.5 * dq[i][j][k][2][3];
+                real_t dpx = 0.5 * dq[i][j][k][0][4]; real_t dpy = 0.5 * dq[i][j][k][1][4]; real_t dpz = 0.5 * dq[i][j][k][2][4];
+                real_t dAx = 0.5 * dq[i][j][k][0][5]; real_t dAy = 0.5 * dq[i][j][k][1][5]; real_t dAz = 0.5 * dq[i][j][k][2][5];
+                real_t dBx = 0.5 * dq[i][j][k][0][6]; real_t dBy = 0.5 * dq[i][j][k][1][6]; real_t dBz = 0.5 * dq[i][j][k][2][6];
+                real_t dCx = 0.5 * dq[i][j][k][0][7]; real_t dCy = 0.5 * dq[i][j][k][1][7]; real_t dCz = 0.5 * dq[i][j][k][2][7];
 
-                    // Map variables to normal/transverse
-                    real_t vn, vt1, vt2, Bn, Bt1, Bt2;
-                    real_t dvn, dvt1, dvt2, dBn, dBt1, dBt2;
+                // Face-centered B prediction using EMFs
+                real_t BLx = bfloc[i][j][k][0][0], BRx = bfloc[i+1][j][k][0][0];
+                real_t BLy = bfloc[i][j][k][1][0], BRy = bfloc[i][j+1][k][1][0];
+                real_t BLz = bfloc[i][j][k][2][0], BRz = bfloc[i][j][k+1][2][0];
 
-                    if (idim == 0) {
-                        vn = u; vt1 = v; vt2 = w; Bn = A; Bt1 = B; Bt2 = C;
-                        dvn = du_d; dvt1 = dv_d; dvt2 = dw_d; dBn = dA_d; dBt1 = dB_d; dBt2 = dC_d;
-                    } else if (idim == 1) {
-                        vn = v; vt1 = w; vt2 = u; Bn = B; Bt1 = C; Bt2 = A;
-                        dvn = dv_d; dvt1 = dw_d; dvt2 = du_d; dBn = dB_d; dBt1 = dC_d; dBt2 = dA_d;
-                    } else {
-                        vn = w; vt1 = u; vt2 = v; Bn = C; Bt1 = A; Bt2 = B;
-                        dvn = dw_d; dvt1 = du_d; dvt2 = dv_d; dBn = dC_d; dBt1 = dA_d; dBt2 = dB_d;
+                if (NDIM > 1) {
+                    real_t sBLx = (ez[i][j+1][k] - ez[i][j][k]) * dtdx * 0.5;
+                    real_t sBRx = (ez[i+1][j+1][k] - ez[i+1][j][k]) * dtdx * 0.5;
+                    real_t sBLy = -(ez[i+1][j][k] - ez[i][j][k]) * dtdx * 0.5;
+                    real_t sBRy = -(ez[i+1][j+1][k] - ez[i][j+1][k]) * dtdx * 0.5;
+                    if (NDIM > 2) {
+                        sBLx += -(ey[i][j][k+1] - ey[i][j][k]) * dtdx * 0.5;
+                        sBRx += -(ey[i+1][j][k+1] - ey[i+1][j][k]) * dtdx * 0.5;
+                        sBLy += (ex[i][j][k+1] - ex[i][j][k]) * dtdx * 0.5;
+                        sBRy += (ex[i][j+1][k+1] - ex[i][j+1][k]) * dtdx * 0.5;
                     }
-
-                    // MHD Source terms (1D part of the prediction)
-                    real_t sr = -vn * dr_d - r * dvn;
-                    real_t sp = -vn * dp_d - gamma * p * dvn;
-                    real_t svn = -vn * dvn - (dp_d + Bt1 * dBt1 + Bt2 * dBt2) / r;
-                    real_t svt1 = -vn * dvt1 + (Bn * dBt1) / r;
-                    real_t svt2 = -vn * dvt2 + (Bn * dBt2) / r;
-                    real_t sBt1 = -vn * dBt1 + Bn * dvt1 - Bt1 * dvn;
-                    real_t sBt2 = -vn * dBt2 + Bn * dvt2 - Bt2 * dvn;
-
-                    // Update states with time prediction
-                    real_t r_pred = r + sr * dtdx;
-                    real_t p_pred = p + sp * dtdx;
-                    real_t vn_pred = vn + svn * dtdx;
-                    real_t vt1_pred = vt1 + svt1 * dtdx;
-                    real_t vt2_pred = vt2 + svt2 * dtdx;
-                    real_t Bt1_pred = Bt1 + sBt1 * dtdx;
-                    real_t Bt2_pred = Bt2 + sBt2 * dtdx;
-
-                    // Map back to global qm/qp
-                    auto set_qmqp = [&](int iv, real_t val, real_t slope) {
-                        qm[i][j][k][idim][iv] = val + slope;
-                        qp[i][j][k][idim][iv] = val - slope;
-                    };
-
-                    set_qmqp(0, r_pred, dr_d);
-                    set_qmqp(4, p_pred, dp_d);
-                    
-                    if (idim == 0) {
-                        set_qmqp(1, vn_pred, du_d); set_qmqp(2, vt1_pred, dv_d); set_qmqp(3, vt2_pred, dw_d);
-                        set_qmqp(5, Bn, dA_d); set_qmqp(6, Bt1_pred, dB_d); set_qmqp(7, Bt2_pred, dC_d);
-                    } else if (idim == 1) {
-                        set_qmqp(2, vn_pred, dv_d); set_qmqp(3, vt1_pred, dw_d); set_qmqp(1, vt2_pred, du_d);
-                        set_qmqp(6, Bn, dB_d); set_qmqp(7, Bt1_pred, dC_d); set_qmqp(5, Bt2_pred, dA_d);
-                    } else {
-                        set_qmqp(3, vn_pred, dw_d); set_qmqp(1, vt1_pred, du_d); set_qmqp(2, vt2_pred, dv_d);
-                        set_qmqp(7, Bn, dC_d); set_qmqp(5, Bt1_pred, dA_d); set_qmqp(6, Bt2_pred, dB_d);
-                    }
+                    BLx += sBLx; BRx += sBRx; BLy += sBLy; BRy += sBRy;
                 }
+                if (NDIM > 2) {
+                    real_t sBLz = (ey[i+1][j][k] - ey[i][j][k]) * dtdx * 0.5 - (ex[i][j+1][k] - ex[i][j][k]) * dtdx * 0.5;
+                    real_t sBRz = (ey[i+1][j][k+1] - ey[i][j][k+1]) * dtdx * 0.5 - (ex[i][j+1][k+1] - ex[i][j][k+1]) * dtdx * 0.5;
+                    BLz += sBLz; BRz += sBRz;
+                }
+
+                // Cell-centered source terms (Full unsplit prediction)
+                real_t sr0 = (-u*drx - r*dux) * dtdx;
+                real_t su0 = (-u*dux - (dpx + B*dBx + C*dCx)/r) * dtdx;
+                real_t sv0 = (-u*dvx + A*dBx/r) * dtdx;
+                real_t sw0 = (-u*dwx + A*dCx/r) * dtdx;
+                real_t sp0 = (-u*dpx - gamma*p*dux) * dtdx;
+                real_t sAx0 = 0.0, sAy0 = (-u*dBx + A*dvx - B*dux) * dtdx, sAz0 = (-u*dCx + A*dwx - C*dux) * dtdx;
+
+                if (NDIM > 1) {
+                    sr0 += (-v*dry - r*dvy) * dtdx;
+                    su0 += (-v*duy + B*dAy/r) * dtdx;
+                    sv0 += (-v*dvy - (dpy + A*dAy + C*dCy)/r) * dtdx;
+                    sw0 += (-v*dwy + B*dCy/r) * dtdx;
+                    sp0 += (-v*dpy - gamma*p*dvy) * dtdx;
+                    sAx0 += (-v*dAy + B*duy - A*dvy) * dtdx;
+                    sAz0 += (-v*dCy + B*dwy - C*dvy) * dtdx;
+                }
+                if (NDIM > 2) {
+                    sr0 += (-w*drz - r*dwz) * dtdx;
+                    su0 += (-w*duz + C*dAz/r) * dtdx;
+                    sv0 += (-w*dvz + C*dBz/r) * dtdx;
+                    sw0 += (-w*dwz - (dpz + A*dAz + B*dBz)/r) * dtdx;
+                    sp0 += (-w*dpz - gamma*p*dwz) * dtdx;
+                    sAx0 += (-w*dAz + C*duz - A*dwz) * dtdx;
+                    sAy0 += (-w*dBz + C*dvz - B*dwz) * dtdx;
+                }
+
+                // Apply source terms
+                r += sr0; u += su0; v += sv0; w += sw0; p += sp0; A = 0.5*(BLx+BRx); B = 0.5*(BLy+BRy); C = 0.5*(BLz+BRz);
+                
+                // Construct interface states
+                auto set_states = [&](int idim, real_t dr, real_t du, real_t dv, real_t dw, real_t dp, real_t dA, real_t dB, real_t dC, real_t BL_val, real_t BR_val) {
+                    qp[i][j][k][idim][0] = std::max(1e-10, r - dr);
+                    qp[i][j][k][idim][1] = u - du;
+                    qp[i][j][k][idim][2] = v - dv;
+                    qp[i][j][k][idim][3] = w - dw;
+                    qp[i][j][k][idim][4] = std::max(smallp, p - dp);
+
+                    qm[i][j][k][idim][0] = std::max(1e-10, r + dr);
+                    qm[i][j][k][idim][1] = u + du;
+                    qm[i][j][k][idim][2] = v + dv;
+                    qm[i][j][k][idim][3] = w + dw;
+                    qm[i][j][k][idim][4] = std::max(smallp, p + dp);
+
+                    // Map B-fields correctly
+                    if (idim == 0) {
+                        qp[i][j][k][idim][5] = BL_val; qm[i][j][k][idim][5] = BR_val;
+                        qp[i][j][k][idim][6] = B - dB; qm[i][j][k][idim][6] = B + dB;
+                        qp[i][j][k][idim][7] = C - dC; qm[i][j][k][idim][7] = C + dC;
+                    } else if (idim == 1) {
+                        qp[i][j][k][idim][5] = A - dA; qm[i][j][k][idim][5] = A + dA;
+                        qp[i][j][k][idim][6] = BL_val; qm[i][j][k][idim][6] = BR_val;
+                        qp[i][j][k][idim][7] = C - dC; qm[i][j][k][idim][7] = C + dC;
+                    } else {
+                        qp[i][j][k][idim][5] = A - dA; qm[i][j][k][idim][5] = A + dA;
+                        qp[i][j][k][idim][6] = B - dB; qm[i][j][k][idim][6] = B + dB;
+                        qp[i][j][k][idim][7] = BL_val; qm[i][j][k][idim][7] = BR_val;
+                    }
+                };
+
+                set_states(0, drx, dux, dvx, dwx, dpx, dAx, dBx, dCx, BLx, BRx);
+                if (NDIM > 1) set_states(1, dry, duy, dvy, dwy, dpy, dAy, dBy, dCy, BLy, BRy);
+                if (NDIM > 2) set_states(2, drz, duz, dvz, dwz, dpz, dAz, dBz, dCz, BLz, BRz);
             }
         }
     }
@@ -365,21 +427,42 @@ void MhdSolver::godfine1(const std::vector<int>& ind_grid, int ilevel, real_t dt
         for(int k=0; k<6; ++k) for(int j=0; j<6; ++j) for(int i=0; i<6; ++i) 
             ctoprim(stencil.uloc[i][j][k], qloc[i][j][k], bfloc[i][j][k], gamma);
 
-        // 1. Compute slopes
+        // 1. Compute slopes for cell-centered variables
         real_t dq[6][6][6][3][20] = {0.0};
+        int slope_type = config_.get_int("hydro_params", "slope_type", 1);
         for(int k=1; k<5; ++k) for(int j=1; j<5; ++j) for(int i=1; i<5; ++i) {
             for(int iv=0; iv<nvar_pure; ++iv) {
-                dq[i][j][k][0][iv] = SlopeLimiter::compute_slope(qloc[i-1][j][k][iv], qloc[i][j][k][iv], qloc[i+1][j][k][iv], 1);
-                if (NDIM > 1) dq[i][j][k][1][iv] = SlopeLimiter::compute_slope(qloc[i][j-1][k][iv], qloc[i][j][k][iv], qloc[i+1][j][k][iv], 1);
-                if (NDIM > 2) dq[i][j][k][2][iv] = SlopeLimiter::compute_slope(qloc[i][j][k-1][iv], qloc[i][j][k][iv], qloc[i][j][k+1][iv], 1);
+                dq[i][j][k][0][iv] = SlopeLimiter::compute_slope(qloc[i-1][j][k][iv], qloc[i][j][k][iv], qloc[i+1][j][k][iv], slope_type);
+                if (NDIM > 1) dq[i][j][k][1][iv] = SlopeLimiter::compute_slope(qloc[i][j-1][k][iv], qloc[i][j][k][iv], qloc[i][j+1][k][iv], slope_type);
+                if (NDIM > 2) dq[i][j][k][2][iv] = SlopeLimiter::compute_slope(qloc[i][j][k-1][iv], qloc[i][j][k][iv], qloc[i][j][k+1][iv], slope_type);
             }
         }
 
-        // 2. Trace states
-        real_t qm[6][6][6][3][20], qp[6][6][6][3][20];
-        trace(qloc, bfloc, dq, dt, dx, qm, qp);
+        // 2. Compute slopes for face-centered B-fields
+        real_t dbf[6][6][6][3][2] = {0.0};
+        for(int k=1; k<5; ++k) for(int j=1; j<5; ++j) for(int i=1; i<5; ++i) {
+            // Bx faces are at (i, j, k) and (i+1, j, k)
+            for(int i_face=i; i_face<=i+1; ++i_face) {
+                if (NDIM > 1) dbf[i_face][j][k][0][0] = SlopeLimiter::compute_slope(bfloc[i_face][j-1][k][0][0], bfloc[i_face][j][k][0][0], bfloc[i_face][j+1][k][0][0], slope_type);
+                if (NDIM > 2) dbf[i_face][j][k][0][1] = SlopeLimiter::compute_slope(bfloc[i_face][j][k-1][0][0], bfloc[i_face][j][k][0][0], bfloc[i_face][j][k+1][0][0], slope_type);
+            }
+            // By faces
+            for(int j_face=j; j_face<=j+1; ++j_face) {
+                if (NDIM > 1) dbf[i][j_face][k][1][0] = SlopeLimiter::compute_slope(bfloc[i-1][j_face][k][1][0], bfloc[i][j_face][k][1][0], bfloc[i+1][j_face][k][1][0], slope_type);
+                if (NDIM > 2) dbf[i][j_face][k][1][1] = SlopeLimiter::compute_slope(bfloc[i][j_face][k-1][1][0], bfloc[i][j_face][k][1][0], bfloc[i][j_face][k+1][1][0], slope_type);
+            }
+            // Bz faces
+            for(int k_face=k; k_face<=k+1; ++k_face) {
+                if (NDIM > 1) dbf[i][j][k_face][2][0] = SlopeLimiter::compute_slope(bfloc[i-1][j][k_face][2][0], bfloc[i][j][k_face][2][0], bfloc[i+1][j][k_face][2][0], slope_type);
+                if (NDIM > 2) dbf[i][j][k_face][2][1] = SlopeLimiter::compute_slope(bfloc[i][j-1][k_face][2][0], bfloc[i][j][k_face][2][0], bfloc[i][j+1][k_face][2][0], slope_type);
+            }
+        }
 
-        // 3. Compute fluxes
+        // 3. Trace states
+        real_t qm[6][6][6][3][20], qp[6][6][6][3][20];
+        trace(qloc, bfloc, dq, dbf, dt, dx, qm, qp);
+
+        // 4. Compute fluxes
         real_t fluxes[3][6][6][6][20] = {0.0};
         for (int idim = 0; idim < NDIM; ++idim) {
             cmpflxm(qm, qp, bfloc, idim, gamma, fluxes[idim]);

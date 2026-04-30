@@ -40,6 +40,11 @@ public:
         bool refined[6][6][6];
     };
 
+    /**
+     * @brief Computes the maximum divergence of B on a specific level.
+     */
+    real_t compute_max_div_b(int ilevel, real_t dx);
+
 private:
     AmrGrid& grid_;
     Config& config_;
@@ -49,15 +54,18 @@ private:
 
     // MUSCL-Hancock trace
     void trace(const real_t qloc[6][6][6][20], const real_t bfloc[6][6][6][3][2],
-               const real_t dq[6][6][6][3][20], real_t dt, real_t dx,
+               const real_t dq[6][6][6][3][20], const real_t dbf[6][6][6][3][2],
+               real_t dt, real_t dx,
                real_t qm[6][6][6][3][20], real_t qp[6][6][6][3][20]);
 
     // Riemann solver wrappers
     void cmpflxm(const real_t qm[6][6][6][3][20], const real_t qp[6][6][6][3][20],
+                 const real_t bfloc[6][6][6][3][2],
                  int idim, real_t gamma, real_t flux[6][6][6][20]);
 
     // MHD-specific methods
     void hlld(const real_t* qleft, const real_t* qright, real_t* fgdnv, real_t gamma);
+    void llf(const real_t* qleft, const real_t* qright, real_t* fgdnv, real_t gamma);
     void find_mhd_flux(const real_t* qvar, real_t* cvar, real_t* ff, real_t gamma);
     void find_speed_fast(const real_t* qvar, real_t& vel_info, real_t gamma);
 
