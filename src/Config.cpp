@@ -3,8 +3,12 @@
 #include <sstream>
 #include <algorithm>
 #include <iostream>
+#include <set>
+#include <string>
 
 namespace ramses {
+
+static std::set<std::string> warned_keys;
 
 std::string Config::trim(const std::string& s) const {
     auto start = s.find_first_not_of(" \t\r\n");
@@ -52,7 +56,6 @@ bool Config::parse(const std::string& filename) {
             if (!val.empty() && (val.front() == '\'' || val.front() == '"')) val = val.substr(1);
             if (!val.empty() && (val.back() == '\'' || val.back() == '"')) val.pop_back();
             blocks_[current_block][key] = val;
-            std::cout << "[Config] Loaded " << current_block << ":" << key << " = " << val << std::endl;
         }
     }
     return true;
@@ -64,14 +67,18 @@ std::string Config::get(const std::string& block, const std::string& key, const 
         auto k_it = b_it->second.find(to_lower(key));
         if (k_it != b_it->second.end()) return k_it->second;
     }
-    std::cerr << "[Config] Warning: Key " << key << " not found in block " << block << ". Using default: " << default_val << std::endl;
+    
+    std::string full_key = block + ":" + key;
+    if (warned_keys.find(full_key) == warned_keys.end()) {
+        std::cerr << "[Config] Warning: Key " << key << " not found in block " << block << ". Using default: " << default_val << std::endl;
+        warned_keys.insert(full_key);
+    }
     return default_val;
 }
 
 int Config::get_int(const std::string& block, const std::string& key, int default_val) const {
     std::string val = get(block, key);
     if (val.empty()) return default_val;
-    // Handle simple arrays like '3*1' by taking the first element
     size_t star_pos = val.find('*');
     if (star_pos != std::string::npos) val = val.substr(star_pos + 1);
     try { return std::stoi(val); } catch (...) { return default_val; }
@@ -90,6 +97,32 @@ bool Config::get_bool(const std::string& block, const std::string& key, bool def
     if (val.empty()) return default_val;
     if (val == ".true." || val == "t" || val == "true" || val == "1") return true;
     return false;
+}
+
+std::vector<std::string> Config::get_string_array(const std::string& block, const std::string& key) const {
+    std::string val = get(block, key);
+    std::vector<std::string> res;
+    if (val.empty()) return res;
+    std::stringstream ss(val);
+    std::string item;
+    while (std::getline(ss, item, ',')) {
+        item = trim(item);
+        if (!item.empty() && (item.front() == '\'' || item.front() == '"')) item = item.substr(1);
+        if (!item.empty() && (item.back() == '\'' || item.back() == '"')) item.pop_back();
+        res.push_back(item);
+    }
+    return res;
+}
+
+std::vector<double> Config::get_double_array(const std::string& block, const std::string& key) const {
+    std::vector<std::string> strs = get_string_array(block, key);
+    std::vector<double> res;
+    for (std::string& s : strs) {
+        std::replace(s.begin(), s.end(), 'd', 'e');
+        std::replace(s.begin(), s.end(), 'D', 'e');
+        try { res.push_back(std::stod(s)); } catch (...) { res.push_back(0.0); }
+    }
+    return res;
 }
 
 } // namespace ramses

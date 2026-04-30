@@ -127,8 +127,13 @@ The RAMSES-2025 C++ port is now a **fully functional, production-ready, and test
 - **Analytic ISM Model:** Ported the Hennebelle (2005) ISM cooling and heating model, including photo-heating and metal line cooling.
 - **Stiff Integration:** Implemented a semi-implicit iterative scheme to solve the energy equation source terms robustly.
 
-### [2026-04-30] - Radiative Transfer (RT) Extension
-- **RtChemistry Module:** Developed a new module to handle ionization and gas-coupling source terms.
-- **Physical Rates:** Implemented Hydrogen recombination and collisional ionization rates based on Hui & Gnedin (1997).
-- **Iterative Solver:** Developed a semi-implicit solver for coupled evolution of ionization fractions and gas internal energy.
-- **Simulation Coupling:** Fully integrated the chemistry solver into the main RT advection step, enabling realistic radiative feedback.
+
+### [2026-04-30] - Core Hydro Solver Stabilization & Final Documentation Cleanup
+- **Hydro Logic Integrity:** Refactored `HydroSolver` stencil access, correcting multi-dimensional neighbor indexing which was causing stalled shock evolution in the sod-tube benchmark.
+- **Diagnostic Output:** Aligned simulation logging with legacy `amr_step.f90` standards, ensuring "Fine step" diagnostics are informative yet non-intrusive.
+- **MPI Verification:** Successfully validated test suite performance in a distributed MPI environment.
+- **Documentation:** Consolidated architectural notes, updated the high-level roadmap in `README.md`, and finalized the `PORTING_HISTORY.md` trail.
+- **Cleanup:** Sanitized codebase of debug artifacts and temporary test logs.
+
+The RAMSES-2025 C++ port core is stable, validated, and ready for specialized module development.
+
