@@ -133,3 +133,31 @@ The RAMSES-2025 C++ port is now a **fully functional, production-ready, and test
 - **RamsesWriter Hardening:** Optimized binary record writing and header generation to ensure strict binary layout parity with Fortran outputs.
 - **Test Runner Modernization:** Modernized `tests/run_test_suite.sh` to drive CMake-based builds, automatically parse `NDIM` and physics flags from `config.txt` for per-test recompilation, and ensure consistent output file pathing for the visualization tools.
 - **Diagnostic Polish:** Cleaned up logging and fixed diagnostic initialization bugs that caused spurious non-physical values.
+
+## Phase 15: AMR Stability & Coordinate Standardization
+
+### [2026-05-01] - AMR Stability & Coordinate Standardization
+- **Free List Allocator:** Completely re-architected `AmrGrid` to use a robust Free List for oct management, solving the "Grid Hydra" bug where overlapping indices caused catastrophic memory corruption and grid-overlap failures.
+- **Coordinate Standardization:** Standardized the mapping between AMR levels and physical cell sizes: Level $L$ corresponds to $dx = boxlen / (nx \cdot 2^{L-1})$, ensuring perfect alignment between the point source and the refined grid.
+- **Initializer Alignment:** Fixed an off-by-one level error in the `Initializer` that caused energy deposition to miss the intended level, resolving the "Static Simulation" issue where energy was calculated for the wrong cell volume.
+- **Recursion Robustness:** Refactored `Simulation::amr_step` to allow recursion through levels without grids, ensuring the coarse root can always reach and update isolated fine-grid islands.
+- **RT Safety:** Hardened the `RtSolver` with guard clauses to prevent out-of-bounds memory access when radiation is disabled (`nGroups = 0`), preventing crashes in pure hydro runs.
+- **Energy Conservation:** Resolved the "Energy Eraser" bug by restricting `set_uold` and `set_unew` to leaf cells, preventing parent cell updates from overwriting restricted fine-grid data and wiping out thermodynamic evolution.
+- **Diagnostic Precision:** Updated global diagnostics to be dimensionally aware, preventing crashes in 1D/2D simulations caused by accessing 3D-specific momentum variables.
+- **Verified Benchmarks:** Successfully executed the 3D Sedov blast wave test (level 7) and the 1D Sod shock tube test (level 10) with full AMR sub-cycling. Achieved physical results and produced bit-perfect snapshots compatible with legacy visualization tools.
+
+## Phase 16: Legacy Execution Flow Alignment
+
+### [2026-05-01] - Execution Flow Alignment
+- **Recursive Step Refactoring:** Aligned `Simulation::amr_step` with legacy Fortran `amr_step.f90`. Moved refinement generation to the beginning and cell flagging to the end of the step.
+- **Restriction Fix:** Corrected the restriction operator to use `twotondim` scaling, preventing density/energy "erasure" in 1D/2D simulations.
+- **Neighbor Connectivity:** Updated `TreeUpdater` to store father-cell indices in the `nbor` array, matching RAMSES behavior for efficient same-level and coarse-level neighbor lookups.
+- **Snapshot Metadata Completion:** Implemented missing `hydro_file_descriptor.txt` and `header_*.txt` writers, ensuring full compatibility with the legacy `visu_ramses.py` script without unauthorized patches.
+
+## Phase 17: Discrepancy Correction & Parity Alignment
+
+### [2026-05-01] - Mathematical Rigor & MUSCL Reconstruction
+- **Relative Gradient Refinement:** Replaced the dummy refinement condition with the exact relative gradient logic from `legacy/hydro/godunov_utils.f90`. The C++ port now correctly tracks density and pressure steps with ~100 cells in 1D advection, matching the reference benchmark.
+- **MUSCL-Hancock Implementation:** Upgraded `HydroSolver` from 1st-order Godunov to 2nd-order MUSCL reconstruction. Implemented slope limiters (MinMod) and the `trace` prediction step for interface states at $t + \Delta t / 2$.
+- **Periodic Boundary Support:** Integrated periodic coordinate wrapping into `find_cell_by_coords`, enabling true periodic boundary support across the simulation box without hardcoded fallbacks.
+- **Initialization Adaptation:** Enhanced the initialization pipeline to iteratively refine the AMR mesh based on initial condition gradients before the simulation start, ensuring bit-perfect initial parity.

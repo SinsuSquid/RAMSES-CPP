@@ -64,18 +64,30 @@ public:
 
     // Helper to find neighboring grids and cells
     void get_nbor_grids(int igrid, int igridn[7]) const;
-    void get_nbor_cells(const int igridn[7], int icell_pos, int icelln[6]) const;
+    void get_nbor_cells(const int igridn[7], int icell_pos, int icelln[6], int igrid) const;
+    void get_27_cell_neighbors(int icell, int nbors[27]) const;
 
-    // Helper for 3x3x3 stencil gathering
-    void get_3x3x3_father(int igrid, int nbors_father[27]) const;
+    void restrict_coarse();
+    void restrict_fine(int ilevel);
+    
+    void setup_root_periodicity();
 
     /**
      * @brief Computes the number of grids currently allocated at a specific level.
      */
     int count_grids_at_level(int ilevel) const {
+        if (ilevel <= 0 || ilevel > nlevelmax) return 0;
         int count = 0;
         for (int i = 1; i <= ncpu; ++i) count += numbl(i, ilevel);
         return count;
+    }
+    
+    /**
+     * @brief Returns the head of the linked list for a given CPU and level.
+     */
+    int get_headl(int icpu, int ilevel) const {
+        if (ilevel <= 0 || ilevel > nlevelmax) return 0;
+        return headl(icpu, ilevel);
     }
 
     /**

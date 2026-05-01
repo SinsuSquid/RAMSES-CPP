@@ -2,6 +2,7 @@
 #define RAMSES_TREE_UPDATER_HPP
 
 #include "AmrGrid.hpp"
+#include "Config.hpp"
 
 namespace ramses {
 
@@ -12,7 +13,7 @@ namespace ramses {
  */
 class TreeUpdater {
 public:
-    TreeUpdater(AmrGrid& grid) : grid_(grid) {}
+    TreeUpdater(AmrGrid& grid, Config& config) : grid_(grid), config_(config) {}
 
     /**
      * @brief Refines coarse level cells (Level 1).
@@ -36,6 +37,7 @@ public:
 
 private:
     AmrGrid& grid_;
+    Config& config_;
 
     /**
      * @brief Internal helper to create a single grid from a coarse cell.

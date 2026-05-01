@@ -24,7 +24,9 @@ void LoadBalancer::balance() {
 
 void LoadBalancer::calculate_hilbert_keys() {
     int n_res = 1 << grid_.nlevelmax;
-    for (int i = 1; i <= grid_.ncell; ++i) {
+    int myid = MpiManager::instance().rank() + 1;
+
+    auto calc_for_cell = [&](int i) {
         real_t xc[3];
         grid_.get_cell_center(i, xc);
         
@@ -39,6 +41,21 @@ void LoadBalancer::calculate_hilbert_keys() {
         else Hilbert::hilbert3d(ix, iy, iz, order, grid_.nlevelmax);
         
         grid_.hilbert_keys[i] = order[0];
+    };
+
+    // 1. Coarse cells
+    for (int i = 1; i <= grid_.ncoarse; ++i) calc_for_cell(i);
+
+    // 2. Fine cells
+    for (int il = 1; il <= grid_.nlevelmax; ++il) {
+        int ig = grid_.headl(myid, il);
+        while (ig > 0) {
+            for (int ic = 1; ic <= constants::twotondim; ++ic) {
+                int id = grid_.ncoarse + (ic - 1) * grid_.ngridmax + ig;
+                calc_for_cell(id);
+            }
+            ig = grid_.next[ig - 1];
+        }
     }
 }
 

@@ -113,6 +113,7 @@ void RtSolver::rt_godfine1(const std::vector<int>& ind_grid, int ilevel, real_t 
 }
 
 void RtSolver::set_unew(int ilevel) {
+    if (nGroups <= 0) return;
     int nvar_hydro = 5;
 #ifdef MHD
     nvar_hydro = 8;
@@ -132,6 +133,7 @@ void RtSolver::set_unew(int ilevel) {
 }
 
 void RtSolver::set_uold(int ilevel) {
+    if (nGroups <= 0) return;
     int nvar_hydro = 5;
 #ifdef MHD
     nvar_hydro = 8;

@@ -38,8 +38,12 @@ public:
     void write_hydro(const AmrGrid& grid, const SnapshotInfo& info);
     void write_grav(const AmrGrid& grid, const SnapshotInfo& info);
     void write_header(const SnapshotInfo& info);
+    void write_hydro_descriptor(const AmrGrid& grid, const SnapshotInfo& info);
+    void write_extra_headers(const SnapshotInfo& info);
 
 private:
+    template <typename T>
+    void write_record_internal(std::ofstream& file, const T* data, size_t count);
     template <typename T>
     void write_record(const T* data, size_t count);
     std::string filename_;

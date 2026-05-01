@@ -56,3 +56,6 @@ build/
 # Gemini
 .geminiignore
 GEMINI.md
+
+# Python Bytecode
+__pycache__/
