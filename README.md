@@ -8,15 +8,14 @@ A high-performance, modern C++17 port of the [**RAMSES-2025**](https://github.co
 
 RAMSES-CPP provides a functional, physically consistent alternative to the original Fortran implementation while maintaining strict binary compatibility for snapshots and restart files.
 
-## 🚀 Status: Production-Ready
-RAMSES-CPP is a feature-complete port of the core RAMSES engine, supporting:
+## 🚀 Status: Active Development
+RAMSES-CPP is currently in the active development and verification phase. We are working towards:
 - **Full Multi-Dimensional Hydrodynamics** (1D/2D/3D).
-- **Verified Magnetohydrodynamics (MHD)** stability in 2D/3D.
+- **Magnetohydrodynamics (MHD)** stabilization in 2D/3D.
 - **Gas Cooling and Heating** via an analytic ISM model.
 - **Radiative Transfer (RT)** using the M1 closure scheme.
 - **Self-Gravity** via a Multigrid Poisson solver.
-- **N-Body Dynamics** and Particle-Mesh advection.
-- **Strict Binary Parity** with legacy Fortran snapshots.
+- **Strict Binary Parity** with legacy Fortran snapshots (Under Verification).
 
 For a detailed log of the migration progress, see [PORTING_HISTORY.md](PORTING_HISTORY.md).
 
@@ -64,23 +63,16 @@ cmake .. -DRAMSES_NDIM=2  # For 2D
 
 ## 🧪 Testing
 
-The repository includes a comprehensive automated test suite to ensure physical consistency and binary parity with the legacy code.
+The repository includes a comprehensive automated test suite to ensure physical consistency and binary parity with the legacy code. We are currently prioritizing the verification of:
+- `hydro/sod-tube`: Classic shock tube benchmark.
+- `hydro/sedov3d`: 3D blast wave benchmark.
+- `mhd/orszag-tang`: 2D MHD vortex evolution.
 
+To run the hydro suite:
 ```bash
-# Run the hydro suite
 cd tests
 ./run_test_suite.sh -t hydro
-
-# Run the MHD suite
-./run_test_suite.sh -t mhd
 ```
-
-Verified tests include:
-- `hydro/sod-tube`: Classic shock tube benchmark.
-- `hydro/sod-tube-nener`: Advanced test with multiple passive energy variables.
-- `hydro/barotrop`: Self-gravitating collapsing sphere.
-- `mhd/imhd-tube`: 1D MHD shock tube (Brio-Wu).
-- `mhd/orszag-tang`: 2D MHD vortex evolution.
 
 ---
 
