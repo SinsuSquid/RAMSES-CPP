@@ -67,9 +67,23 @@ void AmrGrid::get_nbor_cells(const int igridn[7], int icell_pos, int icelln[6], 
             icelln[i] = ncoarse + (ih - 1) * ngridmax + ig_idx_n;
         } else {
             if (ig == 0) {
-                icelln[i] = ncoarse + (ih - 1) * ngridmax + igrid;
+                if (igrid > 0) {
+                    icelln[i] = ncoarse + (ih - 1) * ngridmax + igrid;
+                } else {
+                    // Coarse cell neighbor lookup
+                    real_t x[3]; get_cell_center(icell_pos, x);
+                    x[idim] += (inbor == 0 ? -1.0 : 1.0) / static_cast<real_t>(params::nx);
+                    icelln[i] = find_cell_by_coords(x, 1);
+                }
             } else {
-                icelln[i] = nbor[(ig - 1) * ngridmax + (igrid - 1)];
+                if (igrid > 0) {
+                    icelln[i] = nbor[(ig - 1) * ngridmax + (igrid - 1)];
+                } else {
+                    // Coarse cell neighbor lookup
+                    real_t x[3]; get_cell_center(icell_pos, x);
+                    x[idim] += (inbor == 0 ? -1.0 : 1.0) / static_cast<real_t>(params::nx);
+                    icelln[i] = find_cell_by_coords(x, 1);
+                }
             }
         }
     }

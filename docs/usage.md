@@ -51,10 +51,13 @@ python3 ../tests/hydro/implosion/plot-implosion.py
 
 ## Automated Testing
 
-The repository includes a comprehensive test suite to verify the physics and AMR logic.
+The repository includes a comprehensive test suite to verify the physics and AMR logic. 
+
+**Note:** You must include `./tests/visu/` in your `PYTHONPATH` for the plotting and verification scripts to function.
 
 To run the tests:
 ```bash
+export PYTHONPATH=$PYTHONPATH:$(pwd)/tests/visu
 cd tests
 ./run_test_suite.sh -t hydro  # Run hydrodynamics tests
 ./run_test_suite.sh -t mhd    # Run MHD tests (requires MHD build)

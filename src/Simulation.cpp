@@ -75,6 +75,15 @@ void Simulation::initialize(const std::string& nml_path) {
         while (ss >> val) tout_.push_back(val);
     }
     if (!tout_.empty()) tend_ = std::max(tend_, tout_.back());
+
+    // Parse nsubcycle
+    std::string nsub_s = config_.get("run_params", "nsubcycle", "");
+    if (!nsub_s.empty()) {
+        std::replace(nsub_s.begin(), nsub_s.end(), ',', ' ');
+        std::replace(nsub_s.begin(), nsub_s.end(), '*', ' ');
+        std::stringstream ss(nsub_s); int val;
+        while (ss >> val) nsubcycle_.push_back(val);
+    }
 }
 
 void Simulation::run() {
@@ -125,6 +134,10 @@ void Simulation::run() {
             }
         }
         if (t_ + dt > tend_) dt = tend_ - t_;
+        if (dt < 1e-15 * tend_ && nstep_ > 0) {
+            std::cout << "[Simulation] dt too small, finishing." << std::endl;
+            break;
+        }
         amr_step(p::levelmin, dt);
         t_ += dt;
 
@@ -173,9 +186,13 @@ void Simulation::amr_step(int ilevel, real_t dt, int icount) {
         rt_.set_unew(ilevel);
     }
 
+    int nsub = 2;
+    if (ilevel <= (int)nsubcycle_.size()) nsub = nsubcycle_[ilevel - 1];
+
     if (ilevel < grid_.nlevelmax && grid_.count_grids_at_level(ilevel + 1) > 0) {
-        amr_step(ilevel + 1, dt / 2.0, 1);
-        amr_step(ilevel + 1, dt / 2.0, 2);
+        for (int isub = 1; isub <= nsub; ++isub) {
+            amr_step(ilevel + 1, dt / static_cast<real_t>(nsub), isub);
+        }
     }
 
     if (grid_.count_grids_at_level(ilevel) > 0) {

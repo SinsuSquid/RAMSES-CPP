@@ -74,16 +74,15 @@ void HydroSolver::compute_slopes(int idc, const int icelln[6], int idim, real_t 
 
 void HydroSolver::trace(const real_t q[], const real_t dq[], real_t dtdx, real_t qm[], real_t qp[], real_t gamma) {
     real_t r = std::max(q[0], 1e-10), u = q[1], p = std::max(q[4], 1e-10);
-    real_t drx = dq[0], dux = dq[1], dpx = dq[4];
-    real_t sr0 = -u * drx - dux * r;
-    real_t sp0 = -u * dpx - dux * gamma * p;
-    real_t su0 = -u * dux - dpx / r;
-
+    
     for (int iv = 0; iv < 5; ++iv) {
-        real_t dqi = dq[iv], src = 0.0;
-        if (iv == 0) src = sr0; else if (iv == 1) src = su0; else if (iv == 4) src = sp0;
-        qp[iv] = q[iv] - 0.5 * dqi + 0.5 * dtdx * src;
-        qm[iv] = q[iv] + 0.5 * dqi + 0.5 * dtdx * src;
+        real_t dqi = dq[iv], src = -u * dqi;
+        if (iv == 0) src = -u * dq[0] - dq[1] * r;
+        else if (iv == 1) src = -u * dq[1] - dq[4] / r;
+        else if (iv == 4) src = -u * dq[4] - dq[1] * gamma * p;
+        
+        qp[iv] = q[iv] - 0.5 * dqi + 0.5 * dtdx * src; // i-1/2 (Left)
+        qm[iv] = q[iv] + 0.5 * dqi + 0.5 * dtdx * src; // i+1/2 (Right)
     }
     if (qp[0] < 1e-10) qp[0] = q[0]; if (qm[0] < 1e-10) qm[0] = q[0];
 }
@@ -128,14 +127,14 @@ void HydroSolver::godfine1(const std::vector<int>& octs, int ilevel, real_t dt, 
                     }
 
                     if (ic_n >= 0) {
-                        if (side == 0) { for(int iv=0; iv<5; ++iv){ ql_f[iv]=qp_oct[ic_n][idim][iv]; qr_f[iv]=qm_oct[ic-1][idim][iv]; } }
+                        if (side == 0) { for(int iv=0; iv<5; ++iv){ ql_f[iv]=qm_oct[ic_n][idim][iv]; qr_f[iv]=qp_oct[ic-1][idim][iv]; } }
                         else { for(int iv=0; iv<5; ++iv){ ql_f[iv]=qm_oct[ic-1][idim][iv]; qr_f[iv]=qp_oct[ic_n][idim][iv]; } }
                     } else {
                         if (id_n <= 0) id_n = idc;
                         int igridn_n[7];
                         if (id_n <= grid_.ncoarse) { for(int i=0; i<7; ++i) igridn_n[i]=0; }
                         else { int ig_n = ((id_n - grid_.ncoarse - 1) % grid_.ngridmax) + 1; grid_.get_nbor_grids(ig_n, igridn_n); }
-                        int ic_n_pos = (id_n <= grid_.ncoarse) ? 1 : ((id_n - grid_.ncoarse - 1) / grid_.ngridmax) + 1;
+                        int ic_n_pos = (id_n <= grid_.ncoarse) ? id_n : ((id_n - grid_.ncoarse - 1) / grid_.ngridmax) + 1;
                         int icelln_n[6]; grid_.get_nbor_cells(igridn_n, ic_n_pos, icelln_n, (id_n <= grid_.ncoarse ? 0 : ((id_n - grid_.ncoarse - 1) % grid_.ngridmax) + 1));
                         
                         real_t dq_n[5], qn[5], u_n[5], qm_n[5], qp_n[5];
@@ -145,7 +144,7 @@ void HydroSolver::godfine1(const std::vector<int>& octs, int ilevel, real_t dt, 
                         if (idim > 0) { std::swap(qn[1], qn[1+idim]); std::swap(dq_n[1], dq_n[1+idim]); }
                         trace(qn, dq_n, dtdx, qm_n, qp_n, gamma);
                         if (idim > 0) { std::swap(qm_n[1], qm_n[1+idim]); std::swap(qp_n[1], qp_n[1+idim]); }
-                        if (side == 0) { for(int iv=0; iv<5; ++iv){ ql_f[iv]=qp_n[iv]; qr_f[iv]=qm_oct[ic-1][idim][iv]; } }
+                        if (side == 0) { for(int iv=0; iv<5; ++iv){ ql_f[iv]=qm_n[iv]; qr_f[iv]=qp_oct[ic-1][idim][iv]; } }
                         else { for(int iv=0; iv<5; ++iv){ ql_f[iv]=qm_oct[ic-1][idim][iv]; qr_f[iv]=qp_n[iv]; } }
                     }
 

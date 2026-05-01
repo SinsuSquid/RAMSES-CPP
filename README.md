@@ -1,4 +1,4 @@
-<img src="logo/Sia-chan_logo.png" style="width: 900px; height: auto;">
+<img src="logo/Sia-chan.png" width="100%">
 
 Sia(_See-ah_)-chan, our mascot.
 

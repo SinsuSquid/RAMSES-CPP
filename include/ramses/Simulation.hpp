@@ -65,6 +65,7 @@ private:
     int ncontrol_ = 1;
     int noutput_ = 0;
     int nener_ = 0;
+    std::vector<int> nsubcycle_;
     std::vector<double> tout_;
 };
 

@@ -161,3 +161,11 @@ The RAMSES-2025 C++ port is now a **fully functional, production-ready, and test
 - **MUSCL-Hancock Implementation:** Upgraded `HydroSolver` from 1st-order Godunov to 2nd-order MUSCL reconstruction. Implemented slope limiters (MinMod) and the `trace` prediction step for interface states at $t + \Delta t / 2$.
 - **Periodic Boundary Support:** Integrated periodic coordinate wrapping into `find_cell_by_coords`, enabling true periodic boundary support across the simulation box without hardcoded fallbacks.
 - **Initialization Adaptation:** Enhanced the initialization pipeline to iteratively refine the AMR mesh based on initial condition gradients before the simulation start, ensuring bit-perfect initial parity.
+
+## Phase 18: Grand Parity Masterplan (Dimensional Scaling)
+
+### [2026-05-02] - Masterplan & 1D Foundation
+- **Horizontal Scaling Strategy:** Formulated a 4-phase plan to achieve 100% test parity by scaling from 1D to 3D, ensuring foundational infrastructure is rock solid before adding geometric complexity.
+- **Dynamic Subcycling:** Implemented parsing for the `nsubcycle` namelist parameter. Refactored `Simulation::amr_step` to use level-dependent subcycling factors (e.g., `3*1,2`), matching the exact recursive structure of legacy RAMSES.
+- **Boundary Intel:** Analyzed `legacy/amr/physical_boundaries.f90` to map reflective and free boundary conditions for the upcoming Sod Shock Tube verification.
+- **Status:** Phase 1 (1D Foundation) is underway; initial `advect1d` physics are verified; `sod-tube` subcycling alignment is complete.

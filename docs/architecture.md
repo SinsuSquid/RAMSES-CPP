@@ -71,14 +71,17 @@ Implements Radiative Transfer using the M1 closure scheme.
 
 ## Data Flow
 
-1. **Initialization:** `Simulation` reads parameters and calls `Initializer` to set up the initial conditions on the `AmrGrid`.
+1. **Initialization:** `Simulation` reads parameters and calls `Initializer` to set up the initial conditions on the `AmrGrid`. It performs an iterative refinement pass up to `levelmax` based on initial gradients.
 2. **Main Loop:** 
-    - `Simulation` determines the time step `dt`.
-    - Physics solvers (`HydroSolver`/`MhdSolver`) update the cell states.
-    - `TreeUpdater` checks for refinement criteria and updates the grid structure.
-    - `PoissonSolver` (if enabled) computes the gravitational potential.
-    - `RamsesWriter` periodically saves the state to disk.
-3. **Sub-cycling:** The code recursively steps through AMR levels, ensuring that finer levels are updated more frequently with smaller time steps.
+    - `Simulation` determines the global Courant time step `dt` by scanning across all active leaf cells.
+    - `Simulation::amr_step` is called recursively starting from `levelmin`.
+    - `RamsesWriter` periodically saves the state to disk, producing bit-perfect binary snapshots.
+3. **Recursive AMR Step (`amr_step`):**
+    - **Refinement:** At the beginning of the step, `TreeUpdater` generates new fine grids for the current level and its children.
+    - **Recursive Sub-cycling:** The code recursively steps into finer levels, applying the `nsubcycle` factor.
+    - **Physics Update:** Physics solvers (`HydroSolver`/`MhdSolver`) update the cell states using MUSCL-Hancock reconstruction and Riemann solvers.
+    - **Restriction:** States are restricted from fine cells to their father cells to maintain conservation.
+    - **Flagging:** At the end of the step, `TreeUpdater` marks cells for refinement based on relative gradients for the *next* time step.
 
 ## I/O Parity
 
