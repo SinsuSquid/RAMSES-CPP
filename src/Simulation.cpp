@@ -52,14 +52,34 @@ void Simulation::initialize(const std::string& nml_path) {
 
     grid_.allocate(p::nx, p::ny, p::nz, ngridmax, nvar, ncpu, levelmax);
 
-    // Initial refinement pass
-    for (int il = 1; il < levelmax; ++il) {
+    // Initial refinement pass (up to levelmin)
+    for (int il = 1; il < levelmin; ++il) {
         initializer_.apply_all();
         updater_.mark_cells(il);
         if (il == 1) updater_.refine_coarse();
         else updater_.refine_fine(il);
     }
     initializer_.apply_all(); // Final population of leaf cells
+
+    // Parse boundary_params
+    grid_.nboundary = config_.get_int("boundary_params", "nboundary", 0);
+    if (grid_.nboundary > 0) {
+        std::string bmin_s = config_.get("boundary_params", "ibound_min", "");
+        std::string bmax_s = config_.get("boundary_params", "ibound_max", "");
+        std::string btype_s = config_.get("boundary_params", "bound_type", "");
+        
+        auto parse_vec = [](const std::string& s) {
+            std::vector<int> v;
+            std::string sc = s;
+            std::replace(sc.begin(), sc.end(), ',', ' ');
+            std::stringstream ss(sc); int val;
+            while (ss >> val) v.push_back(val);
+            return v;
+        };
+        grid_.ibound_min = parse_vec(bmin_s);
+        grid_.ibound_max = parse_vec(bmax_s);
+        grid_.bound_type = parse_vec(btype_s);
+    }
 
     t_ = 0.0;
     tend_ = config_.get_double("output_params", "tend", 1.0);

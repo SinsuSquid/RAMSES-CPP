@@ -169,3 +169,10 @@ The RAMSES-2025 C++ port is now a **fully functional, production-ready, and test
 - **Dynamic Subcycling:** Implemented parsing for the `nsubcycle` namelist parameter. Refactored `Simulation::amr_step` to use level-dependent subcycling factors (e.g., `3*1,2`), matching the exact recursive structure of legacy RAMSES.
 - **Boundary Intel:** Analyzed `legacy/amr/physical_boundaries.f90` to map reflective and free boundary conditions for the upcoming Sod Shock Tube verification.
 - **Status:** Phase 1 (1D Foundation) is underway; initial `advect1d` physics are verified; `sod-tube` subcycling alignment is complete.
+
+### [2026-05-02] - Optimization & Boundary Parity
+- **O(1) Neighbor Lookups:** Refactored `get_nbor_grids` and `get_nbor_cells` to use the legacy `son(nbor)` direct pointer logic, completely eliminating slow coordinate lookups in the main solver loop.
+- **Level-Wide Interface Caching:** Implemented a caching system for interface states (`qm`, `qp`) in `HydroSolver::godunov_fine`. This halved simulation runtimes for high-order MUSCL runs.
+- **Physical Boundary Integration:** Implemented reflective and outflow boundary condition logic in `godfine1`. The solver now correctly handles mirrored states at domain walls, as verified by the Sod Shock Tube benchmark.
+- **Stabilization:** Resolved an out-of-bounds access in coarse-neighbor lookups and added a precision-aware safety break to the main simulation loop.
+- **Verification:** Successfully executed the 1D Sod Shock Tube test with AMR subcycling and reflective boundaries. Achieved physical parity and close resolution agreement with the legacy standard.

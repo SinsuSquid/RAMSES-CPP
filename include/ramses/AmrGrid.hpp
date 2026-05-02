@@ -100,7 +100,7 @@ public:
     /**
      * @brief Find a cell by its normalized coordinates [0, 1].
      */
-    int find_cell_by_coords(const real_t x[3], int ilevel_max = -1) const;
+    int find_cell_by_coords(const real_t x[3], int ilevel_max = -1, bool periodic = true) const;
 
     inline real_t& get_xg(int igrid, int idim) { return xg[(idim - 1) * ngridmax + (igrid - 1)]; }
     inline const real_t& get_xg(int igrid, int idim) const { return xg[(idim - 1) * ngridmax + (igrid - 1)]; }
@@ -112,7 +112,13 @@ public:
     real_t err_grad_u = 0.05;
     real_t err_grad_p = 0.05;
 
+    int nboundary = 0;
+    std::vector<int> bound_type;
+    std::vector<int> ibound_min, ibound_max;
+
 private:
+    void get_grids_of_nbor_cells(int igrid, int icell_pos, int nbors_grids[8]) const;
+
     // Helper to calculate ncell = ncoarse + twotondim * ngridmax
     static int calculate_ncell(int nx, int ny, int nz, int ngridmax) {
         return (nx * ny * nz) + constants::twotondim * ngridmax;

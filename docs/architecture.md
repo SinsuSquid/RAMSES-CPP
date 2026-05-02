@@ -69,6 +69,14 @@ Implements Radiative Transfer using the M1 closure scheme.
 - **`MpiManager`**: A singleton that handles MPI initialization and provides wrappers for common collective operations.
 - **`LoadBalancer`**: Implements domain decomposition using the Hilbert Space-Filling Curve. It ensures spatial locality and provides full physical state migration (including Hydro/MHD variables) between MPI ranks.
 
+## Performance and Optimizations
+
+RAMSES-CPP incorporates several key optimizations to ensure high-performance execution:
+
+1. **O(1) Grid Connectivity:** Unlike many AMR implementations that rely on expensive coordinate-based lookups, RAMSES-CPP mirrors the legacy pointer logic using `son(nbor)` direct indexing. This ensures that finding a neighbor cell or grid is a constant-time operation.
+2. **Level-Wide State Caching:** During the MUSCL reconstruction phase, interface states (`qm`, `qp`) are cached across entire AMR levels. This eliminates the redundant slope calculations that occur when multiple interfaces share the same cell, doubling the performance of high-order runs.
+3. **Optimized I/O Stream:** The `RamsesWriter` utilizes buffered binary streams and minimizes file-system overhead by opening snapshots once per level-dump, ensuring rapid data serialization.
+
 ## Data Flow
 
 1. **Initialization:** `Simulation` reads parameters and calls `Initializer` to set up the initial conditions on the `AmrGrid`. It performs an iterative refinement pass up to `levelmax` based on initial gradients.

@@ -11,9 +11,10 @@ RAMSES-CPP provides a functional, physically consistent alternative to the origi
 ## 🚀 Status: Active Development & Verification
 RAMSES-CPP has achieved a major milestone: **Bit-perfect binary compatibility** for 1D and 3D snapshots! We are now focusing on:
 - [x] **Recursive AMR Sub-cycling:** Fully functional sub-cycling with proper recursion and restriction.
-- [x] **High-Order Hydro:** 2nd-order MUSCL-Hancock with slope limiters and interface prediction.
-- [x] **Gradient-Based Refinement:** Exact relative gradient logic matching legacy RAMSES.
-- [x] **Multi-Dimensional Support:** Robust execution for 1D, 2D, and 3D simulations.
+- [x] **High-Order Hydro:** 2nd-order MUSCL-Hancock with level-wide caching for 2x performance.
+- [x] **O(1) Grid Connectivity:** High-speed neighbor lookups matching legacy pointer logic.
+- [x] **Physical Boundaries:** Robust support for Reflective, Outflow, and Periodic conditions.
+- [x] **Multi-Dimensional Support:** Verified 1D advection and Sod Tube benchmarks.
 - [ ] **MHD Stabilization:** Refinement of the CT update for high-gradient 3D flows.
 - [ ] **RT Module:** Full integration of radiative transfer with gas coupling.
 

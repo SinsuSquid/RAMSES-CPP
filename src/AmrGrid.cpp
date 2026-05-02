@@ -8,49 +8,51 @@
 
 namespace ramses {
 
-void AmrGrid::allocate(int nx_val, int ny_val, int nz_val, int ngridmax_val, int nvar_val, int ncpu_val, int nlevelmax_val) {
-    ncoarse = nx_val * ny_val * nz_val;
-    ngridmax = ngridmax_val;
-    nvar = nvar_val;
-    ncpu = ncpu_val;
-    nlevelmax = nlevelmax_val;
+void AmrGrid::allocate(int nx, int ny, int nz, int ngridmax_in, int nvar_in, int ncpu_in, int nlevelmax_in) {
+    ngridmax = ngridmax_in;
+    nvar = nvar_in;
+    ncpu = ncpu_in;
+    nlevelmax = nlevelmax_in;
     ndim = NDIM;
-    ncell = ncoarse + constants::twotondim * ngridmax;
+    ncoarse = nx * ny * nz;
+    ncell = calculate_ncell(nx, ny, nz, ngridmax);
 
-    xg.assign(static_cast<size_t>(ngridmax) * 3, 0.0);
+    xg.assign(ngridmax * 3, 0.0);
     father.assign(ngridmax, 0);
-    nbor.assign(static_cast<size_t>(ngridmax) * 6, 0);
+    nbor.assign(ngridmax * 6, 0);
     next.assign(ngridmax, 0);
     prev.assign(ngridmax, 0);
 
-    son.assign(ncell, 0);
-    flag1.assign(ncell, 0);
-    flag2.assign(ncell, 0);
-    cpu_map.assign(ncell, 1);
-    hilbert_keys.assign(ncell, 0);
-    
+    son.assign(ncell + 1, 0);
+    flag1.assign(ncell + 1, 0);
+    flag2.assign(ncell + 1, 0);
+    cpu_map.assign(ncell + 1, 0);
+    hilbert_keys.assign(ncell + 1, 0.0);
+
     uold.allocate(ncell, nvar);
     unew.allocate(ncell, nvar);
-    phi.assign(ncell, 0.0);
+    divu.assign(ncell + 1, 0.0);
+    phi.assign(ncell + 1, 0.0);
     f.allocate(ncell, 3);
+    rho.assign(ncell + 1, 0.0);
 
     headl.allocate(ncpu, nlevelmax);
     taill.allocate(ncpu, nlevelmax);
     numbl.allocate(ncpu, nlevelmax);
 
-    headf = 1; tailf = ngridmax; numbf = ngridmax;
+    headf = 1;
+    tailf = ngridmax;
+    numbf = ngridmax;
     for (int i = 1; i <= ngridmax; ++i) {
-        next[i - 1] = (i < ngridmax) ? (i + 1) : 0;
-        prev[i - 1] = (i > 1) ? (i - 1) : 0;
+        next[i - 1] = (i < ngridmax) ? i + 1 : 0;
+        prev[i - 1] = (i > 1) ? i - 1 : 0;
     }
-
-    std::cout << "[AmrGrid] Allocated: ncoarse=" << ncoarse << " ngridmax=" << ngridmax << " ncell=" << ncell << std::endl;
 }
 
 void AmrGrid::get_nbor_grids(int igrid, int igridn[7]) const {
     igridn[0] = igrid;
     if (igrid <= 0 || igrid > ngridmax) return;
-    for (int i = 1; i <= 6; ++i) {
+    for (int i = 1; i <= 2 * NDIM; ++i) {
         int inb = nbor[(i - 1) * ngridmax + (igrid - 1)];
         igridn[i] = (inb > 0) ? son[inb] : 0;
     }
@@ -67,78 +69,118 @@ void AmrGrid::get_nbor_cells(const int igridn[7], int icell_pos, int icelln[6], 
             icelln[i] = ncoarse + (ih - 1) * ngridmax + ig_idx_n;
         } else {
             if (ig == 0) {
-                if (igrid > 0) {
-                    icelln[i] = ncoarse + (ih - 1) * ngridmax + igrid;
-                } else {
-                    // Coarse cell neighbor lookup
-                    real_t x[3]; get_cell_center(icell_pos, x);
-                    x[idim] += (inbor == 0 ? -1.0 : 1.0) / static_cast<real_t>(params::nx);
-                    icelln[i] = find_cell_by_coords(x, 1);
-                }
+                icelln[i] = ncoarse + (ih - 1) * ngridmax + igrid;
             } else {
-                if (igrid > 0) {
-                    icelln[i] = nbor[(ig - 1) * ngridmax + (igrid - 1)];
-                } else {
-                    // Coarse cell neighbor lookup
-                    real_t x[3]; get_cell_center(icell_pos, x);
-                    x[idim] += (inbor == 0 ? -1.0 : 1.0) / static_cast<real_t>(params::nx);
-                    icelln[i] = find_cell_by_coords(x, 1);
-                }
+                icelln[i] = nbor[(ig - 1) * ngridmax + (igrid - 1)];
             }
         }
     }
 }
 
-void AmrGrid::setup_root_periodicity() {
-    if (ncoarse == 1) {
-        // Coarse grid 1 is the only grid. Neighbors are cell 1 itself.
-        // Wait, nbor array is for GRIDS, not cell-index in Fortran?
-        // Actually nbor array in Fortran stores cell indices.
-        // But since we are level 1, there's no grid index, just cell indices.
-        // Wait, nbor is only for grids? No.
+void AmrGrid::get_grids_of_nbor_cells(int igrid, int icell_pos, int nbors_grids[8]) const {
+    int iii_loc[8] = {1,2,1,2,1,2,1,2};
+    int jjj_loc[8] = {3,3,4,4,3,3,4,4};
+    int kkk_loc[8] = {5,5,5,5,6,6,6,6};
+
+    for(int i=0; i<8; ++i) nbors_grids[i] = 0;
+    
+    int iimin=0, iimax=1, jjmin=0, jjmax=0, kkmin=0, kkmax=0;
+    if(NDIM > 1) jjmax=1;
+    if(NDIM > 2) kkmax=1;
+
+    for(int kk=kkmin; kk<=kkmax; ++kk) {
+        int ig1 = igrid;
+        if(kk > 0) ig1 = (igrid > 0) ? son[get_nbor(igrid, kkk_loc[icell_pos-1])] : 0;
+        for(int jj=jjmin; jj<=jjmax; ++jj) {
+            int ig2 = ig1;
+            if(jj > 0) ig2 = (ig1 > 0) ? son[get_nbor(ig1, jjj_loc[icell_pos-1])] : 0;
+            for(int ii=iimin; ii<=iimax; ++ii) {
+                int ig3 = ig2;
+                if(ii > 0) ig3 = (ig2 > 0) ? son[get_nbor(ig2, iii_loc[icell_pos-1])] : 0;
+                int inbor = 1 + ii + 2*jj + 4*kk;
+                nbors_grids[inbor-1] = ig3;
+            }
+        }
     }
 }
 
 void AmrGrid::get_27_cell_neighbors(int icell, int nbors[27]) const {
     for (int i = 0; i < 27; ++i) nbors[i] = 0;
-    real_t x[3]; get_cell_center(icell, x);
+    if (icell <= ncoarse) {
+        real_t x[3]; get_cell_center(icell, x);
+        int nx = params::nx, ny = params::ny, nz = params::nz;
+        real_t dx = 1.0 / static_cast<real_t>(nx);
+        for (int iz = (NDIM > 2 ? -1 : 0); iz <= (NDIM > 2 ? 1 : 0); ++iz) {
+            for (int iy = (NDIM > 1 ? -1 : 0); iy <= (NDIM > 1 ? 1 : 0); ++iy) {
+                for (int ix = -1; ix <= 1; ++ix) {
+                    real_t xn[3] = { x[0] + ix * dx, x[1] + iy * dx, x[2] + iz * dx };
+                    int idx = (iz + 1) * 9 + (iy + 1) * 3 + (ix + 1);
+                    nbors[idx] = find_cell_by_coords(xn, 1, nboundary == 0);
+                }
+            }
+        }
+        return;
+    }
+
+    int igrid = ((icell - ncoarse - 1) % ngridmax) + 1;
+    int icell_pos = (icell - ncoarse - 1) / ngridmax + 1;
     
-    int ilevel = 1;
-    if (icell > ncoarse) {
-        int igrid = ((icell - ncoarse - 1) % ngridmax) + 1;
-        int ifath = father[igrid - 1];
-        ilevel = 2;
-        while (ifath > ncoarse) {
-            ilevel++;
-            int ig_f = ((ifath - ncoarse - 1) % ngridmax) + 1;
-            ifath = father[ig_f - 1];
-            if (ilevel > 50) break;
+    int nbors_grids[8];
+    get_grids_of_nbor_cells(igrid, icell_pos, nbors_grids);
+
+    for (int j = 1; j <= constants::threetondim; ++j) {
+        int ig = constants::lll[icell_pos - 1][j - 1];
+        int ic = constants::mmm[icell_pos - 1][j - 1];
+        int ig_idx = nbors_grids[ig - 1];
+        if (ig_idx > 0) {
+            nbors[j - 1] = ncoarse + (ic - 1) * ngridmax + ig_idx;
+        } else {
+            // Coarse neighbor fallback
+            // In RAMSES, this case is handled by get3cubefather.
+            // For now, use coordinate lookup as a slow fallback.
+            real_t x[3], xn[3]; get_cell_center(icell, x);
+            // This is still slow but happens only at level boundaries.
+            // Wait, we need to know the offset for j.
+            int ix = (j-1)%3 - 1; int iy = ((j-1)/3)%3 - 1; int iz = (j-1)/9 - 1;
+            // ... actually, let's just use coordinate lookup for all 27 if any grid is missing.
+            // NO! Let's be smart.
         }
     }
+    // Revert to coordinate lookup for the whole cube if any neighbor grid is missing
+    // to ensure correctness until get3cubefather is fully ported.
+    real_t x[3]; get_cell_center(icell, x);
+    int ifath = father[igrid - 1];
+    int ilevel = 2;
+    while (ifath > ncoarse) {
+        ilevel++;
+        int ig_f = ((ifath - ncoarse - 1) % ngridmax) + 1;
+        ifath = father[ig_f - 1];
+    }
     real_t dx = 1.0 / static_cast<real_t>(params::nx * (1 << (ilevel - 1)));
-
     for (int iz = (NDIM > 2 ? -1 : 0); iz <= (NDIM > 2 ? 1 : 0); ++iz) {
         for (int iy = (NDIM > 1 ? -1 : 0); iy <= (NDIM > 1 ? 1 : 0); ++iy) {
             for (int ix = -1; ix <= 1; ++ix) {
                 real_t xn[3] = { x[0] + ix * dx, x[1] + iy * dx, x[2] + iz * dx };
-                for(int d=0; d<3; ++d) { 
-                    while (xn[d] < 0.0) xn[d] += 1.0; 
-                    while (xn[d] >= 1.0) xn[d] -= 1.0; 
-                }
                 int idx = (iz + 1) * 9 + (iy + 1) * 3 + (ix + 1);
-                nbors[idx] = find_cell_by_coords(xn, ilevel);
+                nbors[idx] = find_cell_by_coords(xn, ilevel, nboundary == 0);
             }
         }
     }
 }
 
-int AmrGrid::find_cell_by_coords(const real_t x[3], int ilevel_max) const {
+void AmrGrid::setup_root_periodicity() {}
+
+int AmrGrid::find_cell_by_coords(const real_t x[3], int ilevel_max, bool periodic) const {
     if (ilevel_max < 0) ilevel_max = nlevelmax;
     
     real_t xp[3] = {x[0], x[1], x[2]};
     for(int d=0; d<3; ++d) {
-        while(xp[d] < 0.0) xp[d] += 1.0;
-        while(xp[d] >= 1.0) xp[d] -= 1.0;
+        if (periodic) {
+            while(xp[d] < 0.0) xp[d] += 1.0;
+            while(xp[d] >= 1.0) xp[d] -= 1.0;
+        } else {
+            if (xp[d] < 0.0 || xp[d] >= 1.0) return 0;
+        }
     }
 
     int nx = params::nx, ny = params::ny, nz = params::nz;
@@ -182,7 +224,6 @@ void AmrGrid::get_cell_center(int icell, real_t x[3]) const {
             ilevel++;
             int ig_f = ((ifath - ncoarse - 1) % ngridmax) + 1;
             ifath = father[ig_f - 1];
-            if (ilevel > 50) break;
         }
         real_t dx = 1.0 / static_cast<real_t>(params::nx * (1 << (ilevel - 1)));
         x[0] = get_xg(igrid, 1) + (static_cast<real_t>(cx) - 0.5f) * dx;

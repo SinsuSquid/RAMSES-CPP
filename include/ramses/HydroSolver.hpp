@@ -45,6 +45,8 @@ private:
     AmrGrid& grid_;
     Config& config_;
 
+    std::vector<real_t> qm_level_, qp_level_;
+
     void trace(const real_t q[], const real_t dq[], real_t dtdx, real_t qm[], real_t qp[], real_t gamma);
     void compute_slopes(int idc, const int icelln[6], int idim, real_t dq[5], int slope_type);
 
