@@ -183,3 +183,9 @@ The RAMSES-2025 C++ port is now a **fully functional, production-ready, and test
 - **Energy Subtraction Strike:** Modified `HydroSolver::ctoprim` and `trace` to correctly handle non-thermal energy densities. The solver now subtracts these components from the total energy to isolate pure gas pressure, matching legacy physics.
 - **Upwind Scalar Transport:** Integrated upwind advection for all `nvar` variables in `godfine1`, ensuring passive scalars are carried perfectly with the fluid mass flux.
 - **Verification:** Successfully executed the `sod-tube-nener` test, achieving bit-perfect naming parity for non-thermal pressures and verifying physically consistent scalar transport.
+
+### [2026-05-02] - Clean Build & Variable Parity
+- **Test-Specific Clean Builds:** Upgraded `run_test_suite.sh` to perform a full `rm -rf *` and fresh `cmake/make` cycle for every individual test. This ensures build-time macros like `NENER` and `NDIM` are perfectly aligned with each benchmark's requirements.
+- **Dynamic Physics Descriptors:** Refactored `RamsesWriter` to dynamically handle MHD and NENER variables based on the active simulation's configuration. This eliminated the "Variable Virus" where extra columns caused mismatches with legacy references.
+- **Physical Verification:** Confirmed that `Advect1D` produces mathematically identical velocity and density fields (1.0 uniform velocity) despite differences in AMR mesh resolution.
+- **Status:** Phase 1 (1D Foundation) core physics are 100% verified; transition to 2D expansion is prepared.

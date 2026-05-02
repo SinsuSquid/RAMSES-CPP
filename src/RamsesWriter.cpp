@@ -7,6 +7,7 @@
 #include <cmath>
 #include <algorithm>
 #include <iomanip>
+#include <sstream>
 
 namespace ramses {
 
@@ -24,7 +25,7 @@ void RamsesWriter::write_record_internal(std::ofstream& file, const T* data, siz
 
 template <typename T>
 void RamsesWriter::write_record(const T* data, size_t count) {
-    std::ofstream file(filename_, std::ios::binary | std::ios::app);
+    std::ofstream file(filename_, std::ios::binary | std::ios::out);
     if (!file.is_open()) return;
     write_record_internal(file, data, count);
     file.close();
@@ -268,10 +269,12 @@ void RamsesWriter::write_header(const SnapshotInfo& info) {
 void RamsesWriter::write_hydro_descriptor(const AmrGrid& grid, const SnapshotInfo& info) {
     std::ofstream file(filename_);
     if (!file.is_open()) return;
+    
     bool mhd = false;
 #ifdef MHD
     mhd = true;
 #endif
+
     int ivar = 1;
     file << ivar++ << ", density, double" << std::endl;
     for(int d=1; d<=NDIM; ++d) {
