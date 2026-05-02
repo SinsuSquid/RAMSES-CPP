@@ -176,3 +176,10 @@ The RAMSES-2025 C++ port is now a **fully functional, production-ready, and test
 - **Physical Boundary Integration:** Implemented reflective and outflow boundary condition logic in `godfine1`. The solver now correctly handles mirrored states at domain walls, as verified by the Sod Shock Tube benchmark.
 - **Stabilization:** Resolved an out-of-bounds access in coarse-neighbor lookups and added a precision-aware safety break to the main simulation loop.
 - **Verification:** Successfully executed the 1D Sod Shock Tube test with AMR subcycling and reflective boundaries. Achieved physical parity and close resolution agreement with the legacy standard.
+
+### [2026-05-02] - 1D Passive Scalar (NENER) Parity
+- **Automated Flag Mapping:** Upgraded `run_test_suite.sh` to automatically detect and map `KEY=VALUE` pairs from `config.txt` to CMake flags. This ensures specialized build-time constants like `NENER` are correctly propagated.
+- **Scalar-Aware Initializer:** Upgraded the `Initializer` to parse `prad_region` and correctly populate non-thermal energy variables on the AMR mesh.
+- **Energy Subtraction Strike:** Modified `HydroSolver::ctoprim` and `trace` to correctly handle non-thermal energy densities. The solver now subtracts these components from the total energy to isolate pure gas pressure, matching legacy physics.
+- **Upwind Scalar Transport:** Integrated upwind advection for all `nvar` variables in `godfine1`, ensuring passive scalars are carried perfectly with the fluid mass flux.
+- **Verification:** Successfully executed the `sod-tube-nener` test, achieving bit-perfect naming parity for non-thermal pressures and verifying physically consistent scalar transport.

@@ -30,7 +30,11 @@ void Simulation::initialize(const std::string& nml_path) {
     if (ngridmax == 0) ngridmax = config_.get_int("amr_params", "ngridtot", 1000000);
     p::ngridmax = ngridmax;
 
+#ifdef NENER
+    nener_ = NENER;
+#else
     nener_ = config_.get_int("hydro_params", "nener", 0);
+#endif
     int nvar_default = 5 + nener_;
 #ifdef MHD
     nvar_default = 8 + nener_;
@@ -52,8 +56,8 @@ void Simulation::initialize(const std::string& nml_path) {
 
     grid_.allocate(p::nx, p::ny, p::nz, ngridmax, nvar, ncpu, levelmax);
 
-    // Initial refinement pass (up to levelmin)
-    for (int il = 1; il < levelmin; ++il) {
+    // Initial refinement pass (up to levelmax)
+    for (int il = 1; il < levelmax; ++il) {
         initializer_.apply_all();
         updater_.mark_cells(il);
         if (il == 1) updater_.refine_coarse();
@@ -94,7 +98,9 @@ void Simulation::initialize(const std::string& nml_path) {
         std::stringstream ss(tout_s); double val;
         while (ss >> val) tout_.push_back(val);
     }
-    if (!tout_.empty()) tend_ = std::max(tend_, tout_.back());
+    if (!tout_.empty()) {
+        tend_ = tout_.back();
+    }
 
     // Parse nsubcycle
     std::string nsub_s = config_.get("run_params", "nsubcycle", "");
@@ -247,6 +253,7 @@ void Simulation::dump_snapshot(int iout) {
     info.noutput = tout_.size();
     info.iout = iout;
     info.gamma = grid_.gamma;
+    info.nener = nener_;
     info.tout = tout_;
 
     int myid = MpiManager::instance().rank() + 1;

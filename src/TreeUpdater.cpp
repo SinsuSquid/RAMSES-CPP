@@ -145,6 +145,7 @@ void TreeUpdater::make_grid_fine(int ind_grid_father, int icell_pos, int ilevel,
 void TreeUpdater::mark_cells(int ilevel) {
     real_t err_grad_d = config_.get_double("refine_params", "err_grad_d", -1.0);
     real_t err_grad_p = config_.get_double("refine_params", "err_grad_p", -1.0);
+    real_t err_grad_u = config_.get_double("refine_params", "err_grad_u", -1.0);
     real_t floor_d = 1e-10;
 
     int myid = MpiManager::instance().rank() + 1;
@@ -162,10 +163,24 @@ void TreeUpdater::mark_cells(int ilevel) {
                     xp[idim] -= dx_c; int id_l = grid_.find_cell_by_coords(xp, 1, grid_.nboundary == 0);
                     xp[idim] += 2.0 * dx_c; int id_r = grid_.find_cell_by_coords(xp, 1, grid_.nboundary == 0);
                     
+                    if (id_l <= 0) id_l = idc; if (id_r <= 0) id_r = idc;
+
                     if (err_grad_d >= 0.0) {
                         real_t dl = grid_.uold(id_l, 1), dc = grid_.uold(idc, 1), dr = grid_.uold(id_r, 1);
                         real_t err = 2.0 * std::max(std::abs(dr - dc) / (dr + dc + floor_d), std::abs(dc - dl) / (dc + dl + floor_d));
                         if (err > err_grad_d) refine = true;
+                    }
+                    if (err_grad_u >= 0.0 && !refine) {
+                        real_t ul = 0, uc = 0, ur = 0;
+                        real_t dl = std::max(grid_.uold(id_l, 1), floor_d), dc = std::max(grid_.uold(idc, 1), floor_d), dr = std::max(grid_.uold(id_r, 1), floor_d);
+                        for(int i=1; i<=NDIM; ++i) {
+                            ul += (grid_.uold(id_l, 1+i)/dl)*(grid_.uold(id_l, 1+i)/dl);
+                            uc += (grid_.uold(idc, 1+i)/dc)*(grid_.uold(idc, 1+i)/dc);
+                            ur += (grid_.uold(id_r, 1+i)/dr)*(grid_.uold(id_r, 1+i)/dr);
+                        }
+                        ul = std::sqrt(ul); uc = std::sqrt(uc); ur = std::sqrt(ur);
+                        real_t err = 2.0 * std::max(std::abs(ur - uc) / (ur + uc + floor_d), std::abs(uc - ul) / (uc + ul + floor_d));
+                        if (err > err_grad_u) refine = true;
                     }
                     if (refine) break;
                 }
@@ -200,6 +215,18 @@ void TreeUpdater::mark_cells(int ilevel) {
                         real_t pl = grid_.uold(id_l, 5), pc = grid_.uold(idc, 5), pr = grid_.uold(id_r, 5);
                         real_t err = 2.0 * std::max(std::abs(pr - pc) / (pr + pc + floor_d), std::abs(pc - pl) / (pc + pl + floor_d));
                         if (err > err_grad_p) refine = true;
+                    }
+                    if (err_grad_u >= 0.0 && !refine) {
+                        real_t ul = 0, uc = 0, ur = 0;
+                        real_t dl = std::max(grid_.uold(id_l, 1), floor_d), dc = std::max(grid_.uold(idc, 1), floor_d), dr = std::max(grid_.uold(id_r, 1), floor_d);
+                        for(int i=1; i<=NDIM; ++i) {
+                            ul += (grid_.uold(id_l, 1+i)/dl)*(grid_.uold(id_l, 1+i)/dl);
+                            uc += (grid_.uold(idc, 1+i)/dc)*(grid_.uold(idc, 1+i)/dc);
+                            ur += (grid_.uold(id_r, 1+i)/dr)*(grid_.uold(id_r, 1+i)/dr);
+                        }
+                        ul = std::sqrt(ul); uc = std::sqrt(uc); ur = std::sqrt(ur);
+                        real_t err = 2.0 * std::max(std::abs(ur - uc) / (ur + uc + floor_d), std::abs(uc - ul) / (uc + ul + floor_d));
+                        if (err > err_grad_u) refine = true;
                     }
                     if (refine) break;
                 }

@@ -288,7 +288,9 @@ void RamsesWriter::write_hydro_descriptor(const AmrGrid& grid, const SnapshotInf
         file << ivar++ << ", B_z_right, double" << std::endl;
     }
     for(int ie=1; ie<=info.nener; ++ie) {
-        file << ivar++ << ", internal_energy_" << ie << ", double" << std::endl;
+        std::stringstream ss;
+        ss << "non_thermal_pressure_" << std::setfill('0') << std::setw(2) << ie;
+        file << ivar++ << ", " << ss.str() << ", double" << std::endl;
     }
     file << ivar++ << ", pressure, double" << std::endl;
     int npscal = (grid.nvar > (mhd ? 8 : 5) + info.nener) ? grid.nvar - ((mhd ? 8 : 5) + info.nener) : 0;

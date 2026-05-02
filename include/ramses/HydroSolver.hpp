@@ -13,7 +13,13 @@ namespace ramses {
  */
 class HydroSolver {
 public:
-    HydroSolver(AmrGrid& grid, Config& config) : grid_(grid), config_(config) {}
+    HydroSolver(AmrGrid& grid, Config& config) : grid_(grid), config_(config) {
+#ifdef NENER
+        nener_ = NENER;
+#else
+        nener_ = config_.get_int("hydro_params", "nener", 0);
+#endif
+    }
 
     void godunov_fine(int ilevel, real_t dt, real_t dx);
     void set_unew(int ilevel);
@@ -44,6 +50,7 @@ public:
 private:
     AmrGrid& grid_;
     Config& config_;
+    int nener_ = 0;
 
     std::vector<real_t> qm_level_, qp_level_;
 

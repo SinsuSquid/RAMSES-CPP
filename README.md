@@ -14,7 +14,7 @@ RAMSES-CPP has achieved a major milestone: **Bit-perfect binary compatibility** 
 - [x] **High-Order Hydro:** 2nd-order MUSCL-Hancock with level-wide caching for 2x performance.
 - [x] **O(1) Grid Connectivity:** High-speed neighbor lookups matching legacy pointer logic.
 - [x] **Physical Boundaries:** Robust support for Reflective, Outflow, and Periodic conditions.
-- [x] **Multi-Dimensional Support:** Verified 1D advection and Sod Tube benchmarks.
+- [x] **Multi-Dimensional Support:** Verified 1D advection, Sod Tube, and Passive Scalar benchmarks.
 - [ ] **MHD Stabilization:** Refinement of the CT update for high-gradient 3D flows.
 - [ ] **RT Module:** Full integration of radiative transfer with gas coupling.
 

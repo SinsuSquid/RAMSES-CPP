@@ -27,7 +27,11 @@ void Initializer::ana_disk_potential_condinit() { region_condinit(); }
 void Initializer::region_condinit() {
     int nreg = config_.get_int("init_params", "nregion", 1);
     real_t gam = config_.get_double("hydro_params", "gamma", 1.4);
+#ifdef NENER
+    int nener = NENER;
+#else
     int nener = config_.get_int("hydro_params", "nener", 0);
+#endif
     
     auto parse = [&](const std::string& k) {
         std::vector<real_t> v; std::string s = config_.get("init_params", k, "");
@@ -39,7 +43,18 @@ void Initializer::region_condinit() {
     auto drs = parse("d_region"), prs = parse("p_region"), urs = parse("u_region"), vrs = parse("v_region"), wrs = parse("w_region");
     auto xcs = parse("x_center"), lxs = parse("length_x"), ycs = parse("y_center"), lys = parse("length_y"), zcs = parse("z_center"), lzs = parse("length_z");
 
+    std::vector<std::vector<real_t>> prads(10);
+    for(int r=0; r<10; ++r) {
+        for(int ie=1; ie<=nener; ++ie) {
+            std::string key = "prad_region(" + std::to_string(r + 1) + "," + std::to_string(ie) + ")";
+            prads[r].push_back(config_.get_double("init_params", key, 0.0));
+        }
+    }
+
     real_t db = !drs.empty() ? drs[0] : 1.0, pb = !prs.empty() ? prs[0] : 1e-5, ub = !urs.empty() ? urs[0] : 0.0, vb = !vrs.empty() ? vrs[0] : 0.0, wb = !wrs.empty() ? wrs[0] : 0.0;
+    std::vector<real_t> prad_b(nener, 0.0);
+    for(int ie=0; ie<nener; ++ie) prad_b[ie] = prads[0][ie];
+
     int total_matches[10] = {0};
 
     auto apply_cell = [&](int id, int il) {
@@ -47,22 +62,20 @@ void Initializer::region_condinit() {
         real_t xp = x_cell[0] * params::boxlen, yp = x_cell[1] * params::boxlen, zp = x_cell[2] * params::boxlen;
         
         real_t q[5] = {db, ub, vb, wb, pb};
+        std::vector<real_t> q_rad = prad_b;
+
         for (int r = 0; r < nreg; ++r) {
             std::string rkey = "region_type(" + std::to_string(r + 1) + ")";
             std::string rtype = config_.get("init_params", rkey, "square");
             real_t xc = (r < (int)xcs.size()) ? xcs[r] : 0.0, yc = (r < (int)ycs.size()) ? ycs[r] : 0.0, zc = (r < (int)zcs.size()) ? zcs[r] : 0.0;
 
+            bool matched = false;
             if (rtype == "square" || rtype == "'square'") {
                 real_t lx = (r < (int)lxs.size()) ? lxs[r] : 1e10, ly = (r < (int)lys.size()) ? lys[r] : 1e10, lz = (r < (int)lzs.size()) ? lzs[r] : 1e10;
                 real_t en = config_.get_double("init_params", "exp_region(" + std::to_string(r + 1) + ")", 10.0);
                 real_t xn = 2.0 * std::abs(xp - xc) / lx, yn = 2.0 * std::abs(yp - yc) / ly, zn = 2.0 * std::abs(zp - zc) / lz;
                 real_t rad = (en < 10.0) ? std::pow(std::pow(xn, en) + std::pow(yn, en) + std::pow(zn, en), 1.0/en) : std::max({xn, yn, zn});
-                if (rad < 1.0) {
-                    q[0] = (r < (int)drs.size()) ? drs[r] : db; q[1] = (r < (int)urs.size()) ? urs[r] : ub;
-                    q[2] = (r < (int)vrs.size()) ? vrs[r] : vb; q[3] = (r < (int)wrs.size()) ? wrs[r] : wb;
-                    q[4] = (r < (int)prs.size()) ? prs[r] : pb;
-                    if (grid_.son[id] == 0 && r < 10) total_matches[r]++;
-                }
+                if (rad < 1.0) matched = true;
             } else if (rtype == "point" || rtype == "'point'") {
                 real_t dx = params::boxlen / static_cast<real_t>(params::nx * (1 << (il - 1)));
                 real_t vol = std::pow(dx, NDIM);
@@ -70,28 +83,38 @@ void Initializer::region_condinit() {
                 real_t yn = std::max(0.0, 1.0 - std::abs(yp - yc) / dx);
                 real_t zn = std::max(0.0, 1.0 - std::abs(zp - zc) / dx);
                 real_t w = xn; if (NDIM > 1) w *= yn; if (NDIM > 2) w *= zn;
-                if (w > 0.0) {
-                    q[0] += ((r < (int)drs.size()) ? drs[r] : 0.0) * w / vol;
-                    q[1] += ((r < (int)urs.size()) ? urs[r] : 0.0) * w;
-                    q[2] += ((r < (int)vrs.size()) ? vrs[r] : 0.0) * w;
-                    q[3] += ((r < (int)wrs.size()) ? wrs[r] : 0.0) * w;
-                    q[4] += ((r < (int)prs.size()) ? prs[r] : 0.0) * w / vol;
-                    if (grid_.son[id] == 0 && r < 10) total_matches[r]++;
-                }
+                if (w > 0.0) matched = true;
+            }
+
+            if (matched) {
+                q[0] = (r < (int)drs.size()) ? drs[r] : db; q[1] = (r < (int)urs.size()) ? urs[r] : ub;
+                q[2] = (r < (int)vrs.size()) ? vrs[r] : vb; q[3] = (r < (int)wrs.size()) ? wrs[r] : wb;
+                q[4] = (r < (int)prs.size()) ? prs[r] : pb;
+                for(int ie=0; ie<nener; ++ie) q_rad[ie] = prads[r][ie];
+                if (grid_.son[id] == 0 && r < 10) total_matches[r]++;
             }
         }
+
         q[0] = std::max(q[0], 1e-5);
-        grid_.uold(id, 1) = q[0]; grid_.uold(id, 2) = q[0] * q[1]; grid_.uold(id, 3) = q[0] * q[2]; grid_.uold(id, 4) = q[0] * q[3];
-        grid_.uold(id, 5) = q[4] / (gam - 1.0) + 0.5 * q[0] * (q[1]*q[1] + q[2]*q[2] + q[3]*q[3]);
+        grid_.uold(id, 1) = q[0];
+        grid_.uold(id, 2) = q[0] * q[1];
+        grid_.uold(id, 3) = q[0] * q[2];
+        grid_.uold(id, 4) = q[0] * q[3];
+        
+        real_t e_thermal = q[4] / (gam - 1.0);
+        real_t e_kinetic = 0.5 * q[0] * (q[1]*q[1] + q[2]*q[2] + q[3]*q[3]);
+        real_t e_nonthermal = 0.0;
+        for(int ie=0; ie<nener; ++ie) {
+            // Assume gamma_rad = gam for passive scalars unless specified
+            real_t e_rad = q_rad[ie] / (gam - 1.0);
+            grid_.uold(id, 6 + ie) = e_rad;
+            e_nonthermal += e_rad;
+        }
+        grid_.uold(id, 5) = e_thermal + e_kinetic + e_nonthermal;
+        
         for (int iv = 1; iv <= grid_.nvar; ++iv) grid_.unew(id, iv) = grid_.uold(id, iv);
         grid_.cpu_map[id] = 1;
     };
-
-    for (int i = 1; i <= grid_.ncell; ++i) {
-        grid_.uold(i, 1) = db; grid_.uold(i, 2) = db * ub; grid_.uold(i, 3) = db * vb; grid_.uold(i, 4) = db * wb;
-        grid_.uold(i, 5) = pb / (gam - 1.0) + 0.5 * db * (ub*ub + vb*vb + wb*wb);
-        for (int iv = 1; iv <= grid_.nvar; ++iv) grid_.unew(i, iv) = grid_.uold(i, iv);
-    }
 
     for (int i = 1; i <= grid_.ncoarse; ++i) apply_cell(i, 1);
 

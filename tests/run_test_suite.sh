@@ -289,8 +289,14 @@ for ((i=0;i<$ntests;i++)); do
    done
    CMAKE_FLAGS="-DRAMSES_NDIM=${ndim} ";
    for ((k=0;k<$nflags;k++)); do
-      if [ ${flag_split[$k]:0:4} != "NDIM" ] ; then
-         # Map legacy flags to CMake options if needed
+      if [[ ${flag_split[$k]} == *"="* ]]; then
+         key=$(echo ${flag_split[$k]} | cut -d '=' -f1);
+         val=$(echo ${flag_split[$k]} | cut -d '=' -f2);
+         if [ "$key" != "NDIM" ]; then
+            CMAKE_FLAGS="${CMAKE_FLAGS} -DRAMSES_${key}=${val} ";
+         fi
+      else
+         # Map boolean legacy flags to CMake options
          if [ ${flag_split[$k]} = "MHD" ] ; then CMAKE_FLAGS="${CMAKE_FLAGS} -DRAMSES_USE_MHD=ON "; fi
          if [ ${flag_split[$k]} = "RT" ] ; then CMAKE_FLAGS="${CMAKE_FLAGS} -DRAMSES_USE_RT=ON "; fi
       fi
