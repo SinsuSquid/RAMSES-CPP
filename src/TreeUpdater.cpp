@@ -1,253 +1,129 @@
 #include "ramses/TreeUpdater.hpp"
-#include "ramses/Parameters.hpp"
+#include "ramses/AmrGrid.hpp"
 #include "ramses/Constants.hpp"
-#include "ramses/MpiManager.hpp"
 #include <iostream>
-#include <cmath>
 #include <algorithm>
+#include <cmath>
 
 namespace ramses {
 
-void TreeUpdater::refine_coarse() {
-    real_t dx = 1.0 / static_cast<real_t>(params::nx);
-    for (int ic = 1; ic <= grid_.ncoarse; ++ic) {
-        if (grid_.flag1[ic] == 1 && grid_.son[ic] == 0) {
-            if (grid_.numbf <= 0) return;
-            int igrid = grid_.headf;
-            grid_.headf = grid_.next[igrid - 1];
-            if (grid_.headf > 0) grid_.prev[grid_.headf - 1] = 0;
-            else grid_.tailf = 0;
-            grid_.numbf--;
+TreeUpdater::TreeUpdater(AmrGrid& grid) : grid_(grid) {}
 
-            grid_.son[ic] = igrid;
-            grid_.father[igrid - 1] = ic;
+void TreeUpdater::make_grid_fine(int ilevel) {
+    if (ilevel >= grid_.nlevelmax) return;
 
-            int iz = (ic - 1) / (params::nx * params::ny);
-            int iy = (ic - 1 - iz * params::nx * params::ny) / params::nx;
-            int ix = (ic - 1 - iy * params::nx - iz * params::nx * params::ny);
-
-            grid_.get_xg(igrid, 1) = (static_cast<real_t>(ix) + 0.5f) * dx;
-            if (NDIM > 1) grid_.get_xg(igrid, 2) = (static_cast<real_t>(iy) + 0.5f) * dx;
-            if (NDIM > 2) grid_.get_xg(igrid, 3) = (static_cast<real_t>(iz) + 0.5f) * dx;
-
-            // Populate nbor grids
-            for (int n = 1; n <= constants::twondim; ++n) {
-                int dim = (n - 1) / 2;
-                int side = (n - 1) % 2;
-                real_t xn[3] = { grid_.get_xg(igrid, 1), grid_.get_xg(igrid, 2), grid_.get_xg(igrid, 3) };
-                xn[dim] += (side == 0 ? -1.0 : 1.0) * dx;
-                int inb = grid_.find_cell_by_coords(xn, 1, grid_.nboundary == 0);
-                grid_.get_nbor(igrid, n) = inb;
+    std::vector<int> grids_to_refine;
+    int myid = grid_.ncpu > 0 ? grid_.ncpu : 1; // Simplification for serial
+    for (int icpu = 1; icpu <= myid; ++icpu) {
+        int igrid = grid_.get_headl(icpu, ilevel);
+        while (igrid > 0) {
+            bool refine = false;
+            for (int ic = 1; ic <= constants::twotondim; ++ic) {
+                int idc = grid_.ncoarse + (ic - 1) * grid_.ngridmax + igrid;
+                if (grid_.flag1[idc] > 0 && grid_.son[idc] == 0) {
+                    refine = true;
+                    break;
+                }
             }
+            if (refine) grids_to_refine.push_back(igrid);
+            igrid = grid_.next[igrid - 1];
+        }
+    }
 
-            int icpu = grid_.cpu_map[ic];
-            for (int jc = 1; jc <= constants::twotondim; ++jc) {
-                int cell_idx = grid_.ncoarse + (jc - 1) * grid_.ngridmax + igrid;
-                grid_.cpu_map[cell_idx] = icpu;
+    for (int ig : grids_to_refine) {
+        int ign[7]; grid_.get_nbor_grids(ig, ign);
+        for (int ic = 1; ic <= constants::twotondim; ++ic) {
+            int idc = grid_.ncoarse + (ic - 1) * grid_.ngridmax + ig;
+            if (grid_.flag1[idc] > 0 && grid_.son[idc] == 0) {
+                int new_ig = grid_.get_free_grid();
+                if (new_ig == 0) {
+                    std::cerr << "[TreeUpdater] Error: No free grids available!" << std::endl;
+                    return;
+                }
+                grid_.son[idc] = new_ig;
+                grid_.father[new_ig - 1] = idc;
+                
+                // Initialize child coordinates
+                for (int d = 1; d <= NDIM; ++d) {
+                    real_t dx_level = grid_.boxlen / std::pow(2.0, ilevel);
+                    int ix = (ic - 1) & 1, iy = ((ic - 1) & 2) >> 1, iz = ((ic - 1) & 4) >> 2;
+                    real_t offset = (d == 1) ? (ix - 0.5) : (d == 2) ? (iy - 0.5) : (iz - 0.5);
+                    grid_.xg[(d - 1) * grid_.ngridmax + (new_ig - 1)] = grid_.xg[(d - 1) * grid_.ngridmax + (ig - 1)] + offset * dx_level;
+                }
+
+                // Gather neighbors for interpolation
+                int icn[6]; grid_.get_nbor_cells(ign, ic, icn, ig);
+                real_t u1[7][20] = {0};
+                for(int iv=1; iv<=grid_.nvar; ++iv) u1[0][iv-1] = grid_.uold(idc, iv);
+                for(int idim=0; idim<NDIM; ++idim) {
+                    int id_l = icn[idim*2], id_r = icn[idim*2+1];
+                    if (id_l > 0) for(int iv=1; iv<=grid_.nvar; ++iv) u1[2*idim+1][iv-1] = grid_.uold(id_l, iv);
+                    else for(int iv=1; iv<=grid_.nvar; ++iv) u1[2*idim+1][iv-1] = u1[0][iv-1];
+                    if (id_r > 0) for(int iv=1; iv<=grid_.nvar; ++iv) u1[2*idim+2][iv-1] = grid_.uold(id_r, iv);
+                    else for(int iv=1; iv<=grid_.nvar; ++iv) u1[2*idim+2][iv-1] = u1[0][iv-1];
+                }
+
+                real_t u2[8][20] = {0};
+                if (interpol_hook_) interpol_hook_(u1, u2);
+                else { for(int i=0; i<8; ++i) for(int iv=0; iv<grid_.nvar; ++iv) u2[i][iv] = u1[0][iv]; }
+
+                for (int isc = 1; ic <= constants::twotondim; ++ic) {
+                    int id_child = grid_.ncoarse + (isc - 1) * grid_.ngridmax + new_ig;
+                    for (int iv = 1; iv <= grid_.nvar; ++iv) {
+                        grid_.uold(id_child, iv) = u2[isc-1][iv-1];
+                        grid_.unew(id_child, iv) = u2[isc-1][iv-1];
+                    }
+                }
+                grid_.add_to_level_list(new_ig, ilevel + 1);
+            }
+        }
+    }
+}
+
+void TreeUpdater::restrict_fine(int ilevel) {
+    if (ilevel >= grid_.nlevelmax) return;
+    int myid = grid_.ncpu > 0 ? grid_.ncpu : 1;
+    int igrid = grid_.get_headl(myid, ilevel);
+    while (igrid > 0) {
+        for (int ic = 1; ic <= constants::twotondim; ++ic) {
+            int idc = grid_.ncoarse + (ic - 1) * grid_.ngridmax + igrid;
+            int ig_son = grid_.son[idc];
+            if (ig_son > 0) {
                 for (int iv = 1; iv <= grid_.nvar; ++iv) {
-                    grid_.uold(cell_idx, iv) = grid_.uold(ic, iv);
-                    grid_.unew(cell_idx, iv) = grid_.uold(ic, iv);
+                    real_t sum = 0;
+                    for (int is = 1; is <= constants::twotondim; ++is) {
+                        sum += grid_.uold(grid_.ncoarse + (is - 1) * grid_.ngridmax + ig_son, iv);
+                    }
+                    grid_.uold(idc, iv) = sum / constants::twotondim;
                 }
-                grid_.son[cell_idx] = 0;
-            }
-
-            int n_ilevel = 2;
-            if (grid_.numbl(icpu, n_ilevel) > 0) {
-                int tail = grid_.taill(icpu, n_ilevel);
-                grid_.next[tail - 1] = igrid;
-                grid_.prev[igrid - 1] = tail;
-                grid_.next[igrid - 1] = 0;
-                grid_.taill(icpu, n_ilevel) = igrid;
-            } else {
-                grid_.headl(icpu, n_ilevel) = igrid;
-                grid_.taill(icpu, n_ilevel) = igrid;
-                grid_.prev[igrid - 1] = 0;
-                grid_.next[igrid - 1] = 0;
-            }
-            grid_.numbl(icpu, n_ilevel)++;
-        }
-    }
-}
-
-void TreeUpdater::refine_fine(int ilevel) {
-    int myid = MpiManager::instance().rank() + 1;
-    int igrid = grid_.get_headl(myid, ilevel);
-    while (igrid > 0) {
-        for (int ind = 1; ind <= constants::twotondim; ++ind) {
-            int idc = grid_.ncoarse + (ind - 1) * grid_.ngridmax + igrid;
-            if (grid_.flag1[idc] == 1 && grid_.son[idc] == 0) {
-                make_grid_fine(igrid, ind, ilevel, 0, false);
             }
         }
         igrid = grid_.next[igrid - 1];
     }
 }
 
-void TreeUpdater::make_grid_fine(int ind_grid_father, int icell_pos, int ilevel, int ibound, bool boundary_region) {
-    if (grid_.numbf <= 0) return;
-    int igrid = grid_.headf;
-    grid_.headf = grid_.next[igrid - 1];
-    if (grid_.headf > 0) grid_.prev[grid_.headf - 1] = 0;
-    else grid_.tailf = 0;
-    grid_.numbf--;
-
-    int ind_cell_father = grid_.ncoarse + (icell_pos - 1) * grid_.ngridmax + ind_grid_father;
-    grid_.son[ind_cell_father] = igrid;
-    grid_.father[igrid - 1] = ind_cell_father;
-
-    real_t offset = 1.0 / static_cast<real_t>(params::nx * (1 << ilevel));
-    int ix = (icell_pos - 1) & 1;
-    int iy = ((icell_pos - 1) & 2) >> 1;
-    int iz = ((icell_pos - 1) & 4) >> 2;
-
-    grid_.get_xg(igrid, 1) = grid_.get_xg(ind_grid_father, 1) + (static_cast<real_t>(ix) - 0.5f) * 2.0f * offset;
-    if (NDIM > 1) grid_.get_xg(igrid, 2) = grid_.get_xg(ind_grid_father, 2) + (static_cast<real_t>(iy) - 0.5f) * 2.0f * offset;
-    if (NDIM > 2) grid_.get_xg(igrid, 3) = grid_.get_xg(ind_grid_father, 3) + (static_cast<real_t>(iz) - 0.5f) * 2.0f * offset;
-
-    // Populate nbor grids
-    real_t dx_father = 2.0f * offset;
-    for (int n = 1; n <= constants::twondim; ++n) {
-        int dim = (n - 1) / 2;
-        int side = (n - 1) % 2;
-        real_t xn[3] = { grid_.get_xg(igrid, 1), grid_.get_xg(igrid, 2), grid_.get_xg(igrid, 3) };
-        xn[dim] += (side == 0 ? -1.0 : 1.0) * dx_father;
-        int inb = grid_.find_cell_by_coords(xn, ilevel, grid_.nboundary == 0);
-        grid_.get_nbor(igrid, n) = inb;
-    }
-
-    int icpu = grid_.cpu_map[ind_cell_father];
-    for (int ic = 1; ic <= constants::twotondim; ++ic) {
-        int cell_idx = grid_.ncoarse + (ic - 1) * grid_.ngridmax + igrid;
-        grid_.cpu_map[cell_idx] = icpu;
-        for (int iv = 1; iv <= grid_.nvar; ++iv) {
-            grid_.uold(cell_idx, iv) = grid_.uold(ind_cell_father, iv);
-            grid_.unew(cell_idx, iv) = grid_.uold(ind_cell_father, iv);
-        }
-        grid_.son[cell_idx] = 0;
-    }
-
-    int n_ilevel = ilevel + 1;
-    if (grid_.numbl(icpu, n_ilevel) > 0) {
-        int tail = grid_.taill(icpu, n_ilevel);
-        grid_.next[tail - 1] = igrid;
-        grid_.prev[igrid - 1] = tail;
-        grid_.next[igrid - 1] = 0;
-        grid_.taill(icpu, n_ilevel) = igrid;
-    } else {
-        grid_.headl(icpu, n_ilevel) = igrid;
-        grid_.taill(icpu, n_ilevel) = igrid;
-        grid_.prev[igrid - 1] = 0;
-        grid_.next[igrid - 1] = 0;
-    }
-    grid_.numbl(icpu, n_ilevel)++;
-}
-
-void TreeUpdater::mark_cells(int ilevel) {
-    real_t err_grad_d = config_.get_double("refine_params", "err_grad_d", -1.0);
-    real_t err_grad_p = config_.get_double("refine_params", "err_grad_p", -1.0);
-    real_t err_grad_u = config_.get_double("refine_params", "err_grad_u", -1.0);
-    real_t floor_d = 1e-10;
-
-    int myid = MpiManager::instance().rank() + 1;
-    
-    if (ilevel == 1) {
-        for (int idc = 1; idc <= grid_.ncoarse; ++idc) {
-            bool refine = false;
-            if (params::levelmin > 1) {
-                refine = true;
-            } else {
-                real_t x[3]; grid_.get_cell_center(idc, x);
-                for (int idim = 0; idim < NDIM; ++idim) {
-                    real_t xp[3] = {x[0], x[1], x[2]};
-                    real_t dx_c = 1.0 / static_cast<real_t>(params::nx);
-                    xp[idim] -= dx_c; int id_l = grid_.find_cell_by_coords(xp, 1, grid_.nboundary == 0);
-                    xp[idim] += 2.0 * dx_c; int id_r = grid_.find_cell_by_coords(xp, 1, grid_.nboundary == 0);
-                    
-                    if (id_l <= 0) id_l = idc; if (id_r <= 0) id_r = idc;
-
-                    if (err_grad_d >= 0.0) {
-                        real_t dl = grid_.uold(id_l, 1), dc = grid_.uold(idc, 1), dr = grid_.uold(id_r, 1);
-                        real_t err = 2.0 * std::max(std::abs(dr - dc) / (dr + dc + floor_d), std::abs(dc - dl) / (dc + dl + floor_d));
-                        if (err > err_grad_d) refine = true;
-                    }
-                    if (err_grad_u >= 0.0 && !refine) {
-                        real_t ul = 0, uc = 0, ur = 0;
-                        real_t dl = std::max(grid_.uold(id_l, 1), floor_d), dc = std::max(grid_.uold(idc, 1), floor_d), dr = std::max(grid_.uold(id_r, 1), floor_d);
-                        for(int i=1; i<=NDIM; ++i) {
-                            ul += (grid_.uold(id_l, 1+i)/dl)*(grid_.uold(id_l, 1+i)/dl);
-                            uc += (grid_.uold(idc, 1+i)/dc)*(grid_.uold(idc, 1+i)/dc);
-                            ur += (grid_.uold(id_r, 1+i)/dr)*(grid_.uold(id_r, 1+i)/dr);
-                        }
-                        ul = std::sqrt(ul); uc = std::sqrt(uc); ur = std::sqrt(ur);
-                        real_t err = 2.0 * std::max(std::abs(ur - uc) / (ur + uc + floor_d), std::abs(uc - ul) / (uc + ul + floor_d));
-                        if (err > err_grad_u) refine = true;
-                    }
-                    if (refine) break;
-                }
-            }
-            grid_.flag1[idc] = refine ? 1 : 0;
-        }
-        return;
-    }
-
+void TreeUpdater::flag_fine(int ilevel, real_t err_grad_d, real_t err_grad_p, real_t err_grad_v) {
+    int myid = grid_.ncpu > 0 ? grid_.ncpu : 1;
     int igrid = grid_.get_headl(myid, ilevel);
     while (igrid > 0) {
-        int igridn[7]; grid_.get_nbor_grids(igrid, igridn);
+        int ign[7]; grid_.get_nbor_grids(igrid, ign);
         for (int ic = 1; ic <= constants::twotondim; ++ic) {
             int idc = grid_.ncoarse + (ic - 1) * grid_.ngridmax + igrid;
-            bool refine = false;
-            
-            if (ilevel < params::levelmin) {
-                refine = true;
-            } else {
-                int icelln[6]; grid_.get_nbor_cells(igridn, ic, icelln, igrid);
-                for (int idim = 0; idim < NDIM; ++idim) {
-                    int id_l = icelln[idim * 2], id_r = icelln[idim * 2 + 1];
-                    if (id_l <= 0) id_l = idc;
-                    if (id_r <= 0) id_r = idc;
+            grid_.flag1[idc] = 0;
+            if (grid_.son[idc] != 0) continue;
 
-                    if (err_grad_d >= 0.0) {
-                        real_t dl = grid_.uold(id_l, 1), dc = grid_.uold(idc, 1), dr = grid_.uold(id_r, 1);
-                        real_t err = 2.0 * std::max(std::abs(dr - dc) / (dr + dc + floor_d), std::abs(dc - dl) / (dc + dl + floor_d));
-                        if (err > err_grad_d) refine = true;
+            int icn[6]; grid_.get_nbor_cells(ign, ic, icn, igrid);
+            real_t d_c = grid_.uold(idc, 1);
+            for (int idim = 0; idim < NDIM; ++idim) {
+                int idl = icn[idim * 2], idr = icn[idim * 2 + 1];
+                if (idl > 0 && idr > 0) {
+                    real_t d_l = grid_.uold(idl, 1), d_r = grid_.uold(idr, 1);
+                    if (std::abs(d_r - d_l) / std::max({d_l, d_r, 1e-10}) > err_grad_d) {
+                        grid_.flag1[idc] = 1;
+                        break;
                     }
-                    if (err_grad_p >= 0.0 && !refine) {
-                        real_t pl = grid_.uold(id_l, 5), pc = grid_.uold(idc, 5), pr = grid_.uold(id_r, 5);
-                        real_t err = 2.0 * std::max(std::abs(pr - pc) / (pr + pc + floor_d), std::abs(pc - pl) / (pc + pl + floor_d));
-                        if (err > err_grad_p) refine = true;
-                    }
-                    if (err_grad_u >= 0.0 && !refine) {
-                        real_t ul = 0, uc = 0, ur = 0;
-                        real_t dl = std::max(grid_.uold(id_l, 1), floor_d), dc = std::max(grid_.uold(idc, 1), floor_d), dr = std::max(grid_.uold(id_r, 1), floor_d);
-                        for(int i=1; i<=NDIM; ++i) {
-                            ul += (grid_.uold(id_l, 1+i)/dl)*(grid_.uold(id_l, 1+i)/dl);
-                            uc += (grid_.uold(idc, 1+i)/dc)*(grid_.uold(idc, 1+i)/dc);
-                            ur += (grid_.uold(id_r, 1+i)/dr)*(grid_.uold(id_r, 1+i)/dr);
-                        }
-                        ul = std::sqrt(ul); uc = std::sqrt(uc); ur = std::sqrt(ur);
-                        real_t err = 2.0 * std::max(std::abs(ur - uc) / (ur + uc + floor_d), std::abs(uc - ul) / (uc + ul + floor_d));
-                        if (err > err_grad_u) refine = true;
-                    }
-                    if (refine) break;
                 }
             }
-            grid_.flag1[idc] = refine ? 1 : 0;
-        }
-        igrid = grid_.next[igrid - 1];
-    }
-}
-
-void TreeUpdater::mark_all(int ilevel) {
-    if (ilevel == 0) {
-        for (int ic = 1; ic <= grid_.ncoarse; ++ic) grid_.flag1[ic] = 1;
-        return;
-    }
-    int myid = MpiManager::instance().rank() + 1;
-    int igrid = grid_.get_headl(myid, ilevel);
-    while (igrid > 0) {
-        for (int ic = 1; ic <= constants::twotondim; ++ic) {
-            int idc = grid_.ncoarse + (ic - 1) * grid_.ngridmax + igrid;
-            grid_.flag1[idc] = 1;
         }
         igrid = grid_.next[igrid - 1];
     }

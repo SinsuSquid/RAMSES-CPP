@@ -315,7 +315,6 @@ for ((i=0;i<$ntests;i++)); do
    # Compile source
    echo "Compiling source with ${CMAKE_FLAGS}" | tee -a $LOGFILE;
    cd ${BASE_DIRECTORY}/build;
-   rm -rf *
    cmake .. ${CMAKE_FLAGS} >> ${LOGFILE} 2>&1;
    make -j$(nproc) >> ${LOGFILE} 2>&1;
    cd ${TEST_DIRECTORY}/${testname[n]};

@@ -66,6 +66,7 @@ void HydroSolver::godunov_fine(int ilevel, real_t dt, real_t dx) {
                 for (int side = 0; side < 2; ++side) {
                     int id_n = icn[idim * 2 + side];
                     real_t ql_f[20], qr_f[20], flux[20];
+                    
                     if (id_n <= 0) {
                         int ibound = (idim == 0) ? ((side == 0) ? 1 : 2) : (idim == 1) ? ((side == 0) ? 3 : 4) : ((side == 0) ? 5 : 6);
                         int btype = 1;
@@ -102,7 +103,6 @@ void HydroSolver::godunov_fine(int ilevel, real_t dt, real_t dx) {
                     else if (riemann == "llf") RiemannSolver::solve_llf(ql_f, qr_f, flux, gamma);
                     else RiemannSolver::solve_hll(ql_f, qr_f, flux, gamma);
 
-                    // Advect passive scalars (including nener variables as internal energy densities)
                     real_t mass_flux = flux[0];
                     for (int iv = 5; iv < grid_.nvar; ++iv) {
                         real_t q_scalar = (mass_flux > 0) ? ql_f[iv] : qr_f[iv];
@@ -160,7 +160,7 @@ void HydroSolver::ctoprim(const real_t u[], real_t q[], real_t gamma) {
     real_t e_thermal_dens = u[4] - 0.5 * d * v2;
     for (int ie = 0; ie < nener_; ++ie) e_thermal_dens -= u[5 + ie];
     q[4] = std::max(e_thermal_dens * (gamma - 1.0), d * 1e-10);
-    for (int iv = 5; iv < grid_.nvar; ++iv) q[iv] = u[iv] * (gamma - 1.0); // non-thermal pressure
+    for (int iv = 5; iv < grid_.nvar; ++iv) q[iv] = u[iv] * (gamma - 1.0);
 }
 
 void HydroSolver::compute_slopes(int idc, const int icelln[6], int idim, real_t dq[20], int slope_type) {
@@ -178,26 +178,64 @@ void HydroSolver::compute_slopes(int idc, const int icelln[6], int idim, real_t 
 
 void HydroSolver::trace(const real_t q[], const real_t dq[], real_t dtdx, real_t qm[], real_t qp[], real_t gamma) {
     real_t r = std::max(q[0], 1e-10), u = q[1], p = std::max(q[4], 1e-10);
-    real_t floor_p = 1e-10 * r;
-
     real_t sr0 = -u * dq[0] - dq[1] * r;
     real_t su0 = -u * dq[1] - dq[4] / r;
-    for(int ie=0; ie<nener_; ++ie) su0 -= dq[5+ie] / r; // nener pressure gradients
+    for(int ie=0; ie<nener_; ++ie) su0 -= dq[5+ie] / r;
     real_t sp0 = -u * dq[4] - dq[1] * gamma * p;
 
     for (int iv = 0; iv < grid_.nvar; ++iv) {
         real_t dqi = dq[iv], src = -u * dqi;
-        if (iv == 0) src = sr0;
-        else if (iv == 1) src = su0;
-        else if (iv == 4) src = sp0;
-        else if (iv >= 5 && iv < 5+nener_) {
-            // non-thermal pressure source: -u*grad(P_non) - grad(u)*gamma_rad*P_non
-            src = -u * dq[iv] - dq[1] * gamma * q[iv];
-        }
+        if (iv == 0) src = sr0; else if (iv == 1) src = su0; else if (iv == 4) src = sp0;
+        else if (iv >= 5 && iv < 5+nener_) src = -u * dq[iv] - dq[1] * gamma * q[iv];
         qp[iv] = q[iv] - 0.5 * dqi + 0.5 * dtdx * src;
         qm[iv] = q[iv] + 0.5 * dqi + 0.5 * dtdx * src;
     }
     if (qp[0] < 1e-10) qp[0] = q[0]; if (qm[0] < 1e-10) qm[0] = q[0];
+}
+
+void HydroSolver::interpol_hydro(const real_t u1[7][20], real_t u2[8][20]) {
+    int interpol_type = config_.get_int("refine_params", "interpol_type", 2);
+    int nvar = grid_.nvar;
+    real_t gam = grid_.gamma;
+
+    if (interpol_type == 0) {
+        for (int i = 0; i < 8; ++i) for (int iv = 1; iv <= nvar; ++iv) u2[i][iv-1] = u1[0][iv-1];
+        return;
+    }
+
+    real_t q1[7][20], q2[8][20];
+    for (int i = 0; i < 7; ++i) ctoprim(u1[i], q1[i], gam);
+
+    for (int iv = 0; iv < nvar; ++iv) {
+        real_t slopes[3] = {0,0,0};
+        for (int idim = 0; idim < NDIM; ++idim) {
+            real_t dlft = q1[0][iv] - q1[2*idim+1][iv];
+            real_t drgt = q1[2*idim+2][iv] - q1[0][iv];
+            if (dlft * drgt <= 0.0) slopes[idim] = 0.0;
+            else {
+                real_t sgn = (dlft >= 0.0) ? 1.0 : -1.0;
+                slopes[idim] = sgn * std::min(std::abs(dlft), std::abs(drgt));
+            }
+        }
+        for (int i = 0; i < 8; ++i) {
+            int ix = i & 1, iy = (i & 2) >> 1, iz = (i & 4) >> 2;
+            q2[i][iv] = q1[0][iv] + (ix-0.5)*slopes[0] + (iy-0.5)*slopes[1] + (iz-0.5)*slopes[2];
+        }
+    }
+
+    for (int i = 0; i < 8; ++i) {
+        real_t d = q2[i][0], u = q2[i][1], v = q2[i][2], w = q2[i][3], p = q2[i][4];
+        u2[i][0] = d; u2[i][1] = d*u; u2[i][2] = d*v; u2[i][3] = d*w;
+        real_t e_thermal = p / (gam - 1.0);
+        real_t e_kinetic = 0.5 * d * (u*u + v*v + w*w);
+        real_t e_nonthermal = 0.0;
+        for (int ie = 0; ie < nener_; ++ie) {
+            real_t e_rad = q2[i][5+ie] / (gam - 1.0);
+            u2[i][5+ie] = e_rad;
+            e_nonthermal += e_rad;
+        }
+        u2[i][4] = e_thermal + e_kinetic + e_nonthermal;
+    }
 }
 
 real_t HydroSolver::compute_courant_step(int ilevel, real_t dx, real_t gamma, real_t courant_factor) {
@@ -237,6 +275,5 @@ void HydroSolver::get_diagnostics(int ilevel, real_t dx, real_t& min_d, real_t& 
 }
 
 void HydroSolver::add_gravity_source_terms(int ilevel, real_t dt) {}
-void HydroSolver::interpol_hydro(const real_t u1[7][20], real_t u2[8][20]) {}
 
 } // namespace ramses

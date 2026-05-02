@@ -3,51 +3,27 @@
 
 #include "AmrGrid.hpp"
 #include "Config.hpp"
+#include <functional>
 
 namespace ramses {
 
 /**
  * @brief Handles tree refinement and derefinement operations.
- * 
- * Implements logic from amr/refine_utils.f90.
  */
 class TreeUpdater {
 public:
-    TreeUpdater(AmrGrid& grid, Config& config) : grid_(grid), config_(config) {}
+    TreeUpdater(AmrGrid& grid);
 
-    /**
-     * @brief Refines coarse level cells (Level 1).
-     */
-    void refine_coarse();
+    void make_grid_fine(int ilevel);
+    void restrict_fine(int ilevel);
+    void flag_fine(int ilevel, real_t err_grad_d, real_t err_grad_p, real_t err_grad_v);
 
-    /**
-     * @brief Refines fine level cells (ilevel -> ilevel + 1).
-     */
-    void refine_fine(int ilevel);
-
-    /**
-     * @brief Marks cells for refinement based on gradients.
-     */
-    void mark_cells(int ilevel);
-
-    /**
-     * @brief Marks all cells on a level for refinement.
-     */
-    void mark_all(int ilevel);
+    using InterpolHook = std::function<void(const real_t u1[7][20], real_t u2[8][20])>;
+    void set_interpol_hook(InterpolHook hook) { interpol_hook_ = hook; }
 
 private:
     AmrGrid& grid_;
-    Config& config_;
-
-    /**
-     * @brief Internal helper to create a single grid from a coarse cell.
-     */
-    void make_grid_coarse(int ind_cell, int ibound, bool boundary_region);
-
-    /**
-     * @brief Internal helper to create a single grid from a fine cell.
-     */
-    void make_grid_fine(int ind_grid_father, int icell_pos, int ilevel, int ibound, bool boundary_region);
+    InterpolHook interpol_hook_;
 };
 
 } // namespace ramses

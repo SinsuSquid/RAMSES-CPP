@@ -189,3 +189,10 @@ The RAMSES-2025 C++ port is now a **fully functional, production-ready, and test
 - **Dynamic Physics Descriptors:** Refactored `RamsesWriter` to dynamically handle MHD and NENER variables based on the active simulation's configuration. This eliminated the "Variable Virus" where extra columns caused mismatches with legacy references.
 - **Physical Verification:** Confirmed that `Advect1D` produces mathematically identical velocity and density fields (1.0 uniform velocity) despite differences in AMR mesh resolution.
 - **Status:** Phase 1 (1D Foundation) core physics are 100% verified; transition to 2D expansion is prepared.
+
+### [2026-05-02] - Architectural Realignment & Visualization Victory
+- **Core Refactoring:** Synchronized `AmrGrid`, `HydroSolver`, `RamsesReader`, and `RamsesWriter` to match the exact record-grouping and byte-alignment requirements of the legacy Fortran benchmarks.
+- **Interpolation Upgrade:** Implemented 2nd-order slope-limited linear interpolation (`interpol_hydro`) in `TreeUpdater` via a functional hook, resolving the "Resolution Paradox" where cell counts diverged between C++ and Fortran.
+- **Visualization Robustness:** Patched `visu_ramses.py` to handle missing particle files and prevent `UnboundLocalError`/`ValueError` during pure-hydro analysis.
+- **Sanitized Repository:** Untracked Python `__pycache__` artifacts from the Git index to respect `.gitignore`.
+- **Status:** 1D Hydro benchmarks are physically synchronized and visualization-compatible. Ready for 2D expansion.

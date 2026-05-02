@@ -15,6 +15,7 @@ RAMSES-CPP has achieved a major milestone: **Bit-perfect binary compatibility** 
 - [x] **O(1) Grid Connectivity:** High-speed neighbor lookups matching legacy pointer logic.
 - [x] **Physical Boundaries:** Robust support for Reflective, Outflow, and Periodic conditions.
 - [x] **1D Physics Foundation:** 100% verified bit-perfect physics for all 1D benchmarks.
+- [x] **Visualization Compatibility:** Bit-perfect parity with legacy `visu_ramses.py` scripts.
 - [ ] **MHD Stabilization:** Refinement of the CT update for high-gradient 3D flows.
 - [ ] **RT Module:** Full integration of radiative transfer with gas coupling.
 

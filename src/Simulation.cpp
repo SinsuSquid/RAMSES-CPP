@@ -20,117 +20,86 @@ namespace p = params;
 
 void Simulation::initialize(const std::string& nml_path) {
     config_.parse(nml_path);
-
     p::nx = config_.get_int("amr_params", "nx", 1);
     p::ny = config_.get_int("amr_params", "ny", 1);
     p::nz = config_.get_int("amr_params", "nz", 1);
     p::boxlen = config_.get_double("amr_params", "boxlen", 1.0);
-
     int ngridmax = config_.get_int("amr_params", "ngridmax", 0);
     if (ngridmax == 0) ngridmax = config_.get_int("amr_params", "ngridtot", 1000000);
     p::ngridmax = ngridmax;
-
-#ifdef NENER
-    nener_ = NENER;
+#ifdef RAMSES_NENER
+    nener_ = RAMSES_NENER;
 #else
     nener_ = config_.get_int("hydro_params", "nener", 0);
 #endif
-    int nvar_default = 5 + nener_;
-#ifdef MHD
-    nvar_default = 8 + nener_;
-#endif
-#ifdef RT
-    int nGroups = config_.get_int("rt_params", "nGroups", 0);
-    nvar_default += nGroups * (1 + NDIM);
-#endif
-    int nvar = config_.get_int("hydro_params", "nvar", nvar_default);
-
+    hydro_.set_nener(nener_); mhd_.set_nener(nener_);
     int levelmin = config_.get_int("amr_params", "levelmin", 1);
     int levelmax = config_.get_int("amr_params", "levelmax", 1);
-    params::levelmin = levelmin;
-    params::nlevelmax = levelmax;
+    params::levelmin = levelmin; params::nlevelmax = levelmax;
     int ncpu = MpiManager::instance().size();
-
     real_t gamma = config_.get_double("hydro_params", "gamma", 1.4);
     grid_.gamma = gamma;
-
+    int nvar = config_.get_int("hydro_params", "nvar", 5 + nener_);
+#ifdef MHD
+    nvar = config_.get_int("hydro_params", "nvar", 8 + nener_);
+#endif
     grid_.allocate(p::nx, p::ny, p::nz, ngridmax, nvar, ncpu, levelmax);
-
-    // Initial refinement pass (up to levelmax)
+    updater_.set_interpol_hook([this](const real_t u1[7][20], real_t u2[8][20]){
+#ifdef MHD
+        mhd_.interpol_mhd(u1, u2);
+#else
+        hydro_.interpol_hydro(u1, u2);
+#endif
+    });
     for (int il = 1; il < levelmax; ++il) {
         initializer_.apply_all();
-        updater_.mark_cells(il);
-        if (il == 1) updater_.refine_coarse();
-        else updater_.refine_fine(il);
+        updater_.flag_fine(il, config_.get_double("refine_params", "err_grad_d", 0.05), 0.0, 0.0);
+        if (il < levelmin) { for(int i=1; i<=grid_.ncell; ++i) if(grid_.son[i-1] == 0) grid_.flag1[i-1] = 1; }
+        updater_.make_grid_fine(il);
     }
-    initializer_.apply_all(); // Final population of leaf cells
-
-    // Parse boundary_params
+    initializer_.apply_all(); 
     grid_.nboundary = config_.get_int("boundary_params", "nboundary", 0);
     if (grid_.nboundary > 0) {
-        std::string bmin_s = config_.get("boundary_params", "ibound_min", "");
-        std::string bmax_s = config_.get("boundary_params", "ibound_max", "");
-        std::string btype_s = config_.get("boundary_params", "bound_type", "");
-        
         auto parse_vec = [](const std::string& s) {
-            std::vector<int> v;
-            std::string sc = s;
-            std::replace(sc.begin(), sc.end(), ',', ' ');
-            std::stringstream ss(sc); int val;
-            while (ss >> val) v.push_back(val);
-            return v;
+            std::vector<int> v; std::string sc = s; std::replace(sc.begin(), sc.end(), ',', ' ');
+            std::stringstream ss(sc); int val; while (ss >> val) v.push_back(val); return v;
         };
-        grid_.ibound_min = parse_vec(bmin_s);
-        grid_.ibound_max = parse_vec(bmax_s);
-        grid_.bound_type = parse_vec(btype_s);
+        grid_.ibound_min = parse_vec(config_.get("boundary_params", "ibound_min", ""));
+        grid_.ibound_max = parse_vec(config_.get("boundary_params", "ibound_max", ""));
+        grid_.bound_type = parse_vec(config_.get("boundary_params", "bound_type", ""));
     }
-
-    t_ = 0.0;
-    tend_ = config_.get_double("output_params", "tend", 1.0);
+    t_ = 0.0; tend_ = config_.get_double("output_params", "tend", 1.0);
     nstepmax_ = config_.get_int("run_params", "nstepmax", 1000000);
     ncontrol_ = config_.get_int("run_params", "ncontrol", 1);
-    if (ncontrol_ > 100) ncontrol_ = 100; // Prevent timeouts
-    
-    // Parse tout
     std::string tout_s = config_.get("output_params", "tout", "");
     if (!tout_s.empty()) {
         std::replace(tout_s.begin(), tout_s.end(), ',', ' ');
-        std::stringstream ss(tout_s); double val;
-        while (ss >> val) tout_.push_back(val);
+        std::stringstream ss(tout_s); double val; while (ss >> val) tout_.push_back(val);
+        if (!tout_.empty()) tend_ = tout_.back();
     }
-    if (!tout_.empty()) {
-        tend_ = tout_.back();
-    }
-
-    // Parse nsubcycle
     std::string nsub_s = config_.get("run_params", "nsubcycle", "");
     if (!nsub_s.empty()) {
         std::replace(nsub_s.begin(), nsub_s.end(), ',', ' ');
-        std::replace(nsub_s.begin(), nsub_s.end(), '*', ' ');
-        std::stringstream ss(nsub_s); int val;
-        while (ss >> val) nsubcycle_.push_back(val);
+        std::stringstream ss(nsub_s); std::string part;
+        while (ss >> part) {
+            size_t star = part.find('*');
+            if (star != std::string::npos) {
+                int count = std::stoi(part.substr(0, star));
+                int val = std::stoi(part.substr(star + 1));
+                for(int i=0; i<count; ++i) nsubcycle_.push_back(val);
+            } else {
+                nsubcycle_.push_back(std::stoi(part));
+            }
+        }
     }
 }
 
 void Simulation::run() {
     std::cout << "[Simulation] Starting main loop..." << std::endl;
-    real_t gamma = grid_.gamma;
-    
-    // Step 0 Diagnostics
-    {
-        real_t mind, maxv, mint, maxt;
-        hydro_.get_diagnostics(p::levelmin, 0.0, mind, maxv, mint, maxt);
-        printf(" Fine step=      0 t=%12.5e dt=%10.3e level=%2d min_d=%9.2e max_v=%9.2e min_T=%9.2e max_T=%9.2e\n", 
-               t_, 0.0, p::levelmin, mind, maxv, mint, maxt);
-    }
-
-    dump_snapshot(1);
+    real_t gamma = grid_.gamma; dump_snapshot(1);
     int iout = 0, snapshot_count = 2;
-
     while (t_ < tend_ && nstep_ < nstepmax_) {
-        nstep_++;
-        real_t dt = 1e30;
-
+        nstep_++; real_t dt = 1e30;
         for (int il = p::levelmin; il <= grid_.nlevelmax; ++il) {
             if (grid_.count_grids_at_level(il) == 0) continue;
             real_t dx_cell = p::boxlen / static_cast<real_t>(p::nx * (1 << (il - 1)));
@@ -141,144 +110,60 @@ void Simulation::run() {
 #endif
             dt = std::min(dt, ldt);
         }
-        
         if (iout < (int)tout_.size()) {
             if (t_ + dt >= tout_[iout]) {
-                dt = tout_[iout] - t_;
-                amr_step(p::levelmin, dt);
-                t_ += dt;
-                
-                // Restriction for levels below levelmin
-                for (int il = p::levelmin - 1; il >= 1; --il) {
-                    if (il == 1) grid_.restrict_coarse();
-                    else grid_.restrict_fine(il);
-                }
-
-                dump_snapshot(snapshot_count++);
-                iout++;
-                continue;
+                dt = tout_[iout] - t_; amr_step(p::levelmin, dt); t_ += dt;
+                dump_snapshot(snapshot_count++); iout++; continue;
             }
         }
-        if (t_ + dt > tend_) dt = tend_ - t_;
-        if (dt < 1e-15 * tend_ && nstep_ > 0) {
-            std::cout << "[Simulation] dt too small, finishing." << std::endl;
-            break;
-        }
-        amr_step(p::levelmin, dt);
-        t_ += dt;
-
-        // Restriction for levels below levelmin
-        for (int il = p::levelmin - 1; il >= 1; --il) {
-            if (il == 1) grid_.restrict_coarse();
-            else grid_.restrict_fine(il);
-        }
-
-        // Step summary diagnostics
+        amr_step(p::levelmin, dt); t_ += dt;
         if (nstep_ % ncontrol_ == 0) {
-            real_t mind, maxv, mint, maxt;
-            hydro_.get_diagnostics(p::levelmin, 0.0, mind, maxv, mint, maxt);
-            printf(" Fine step=%7d t=%12.5e dt=%10.3e level=%2d min_d=%9.2e max_v=%9.2e min_T=%9.2e max_T=%9.2e\n", 
-                   nstep_, t_, dt, p::levelmin, mind, maxv, mint, maxt);
-        }
-
-        // Dynamic Load Balancing
-        if (MpiManager::instance().size() > 1) {
-            balancer_.calculate_hilbert_keys();
-            balancer_.balance();
+            real_t mind, maxv, mint, maxt; hydro_.get_diagnostics(p::levelmin, 0.0, mind, maxv, mint, maxt);
+            printf(" Fine step=%7d t=%12.5e dt=%10.3e level=%2d min_d=%9.2e max_v=%9.2e min_T=%9.2e max_T=%9.2e\n", nstep_, t_, dt, p::levelmin, mind, maxv, mint, maxt);
         }
     }
-    if (iout < (int)tout_.size() || t_ >= tend_) dump_snapshot(snapshot_count);
+    dump_snapshot(snapshot_count);
 }
 
 void Simulation::amr_step(int ilevel, real_t dt, int icount) {
-    if (ilevel > grid_.nlevelmax) return;
-    if (grid_.count_grids_at_level(ilevel) == 0) return;
-
+    if (ilevel > grid_.nlevelmax || grid_.count_grids_at_level(ilevel) == 0) return;
     real_t dx = p::boxlen / static_cast<real_t>(p::nx * (1 << (ilevel - 1)));
-
-    // Refinement generation (beginning of step)
-    if (ilevel == p::levelmin || icount > 1) {
-        for (int i = ilevel; i < grid_.nlevelmax; ++i) {
-            updater_.refine_fine(i);
-        }
-    }
-
-    if (grid_.count_grids_at_level(ilevel) > 0) {
 #ifdef MHD
-        mhd_.set_unew(ilevel);
+    mhd_.godunov_fine(ilevel, dt, dx);
 #else
-        hydro_.set_unew(ilevel);
+    hydro_.godunov_fine(ilevel, dt, dx);
 #endif
-        rt_.set_unew(ilevel);
+    int nsub = 1; if (ilevel < grid_.nlevelmax && ilevel - p::levelmin < (int)nsubcycle_.size()) nsub = nsubcycle_[ilevel - p::levelmin];
+    for (int i = 1; i <= nsub; ++i) { amr_step(ilevel + 1, dt / nsub, i); }
+    updater_.restrict_fine(ilevel);
+    if (icount == nsub) {
+        updater_.flag_fine(ilevel, config_.get_double("refine_params", "err_grad_d", 0.05), 0.0, 0.0);
+        updater_.make_grid_fine(ilevel);
     }
-
-    int nsub = 2;
-    if (ilevel <= (int)nsubcycle_.size()) nsub = nsubcycle_[ilevel - 1];
-
-    if (ilevel < grid_.nlevelmax && grid_.count_grids_at_level(ilevel + 1) > 0) {
-        for (int isub = 1; isub <= nsub; ++isub) {
-            amr_step(ilevel + 1, dt / static_cast<real_t>(nsub), isub);
-        }
-    }
-
-    if (grid_.count_grids_at_level(ilevel) > 0) {
 #ifdef MHD
-        mhd_.godunov_fine(ilevel, dt, dx);
-        mhd_.set_uold(ilevel);
+    mhd_.set_uold(ilevel);
 #else
-        hydro_.godunov_fine(ilevel, dt, dx);
-        hydro_.set_uold(ilevel);
+    hydro_.set_uold(ilevel);
 #endif
-        rt_.set_uold(ilevel);
-    }
-
-    // Restriction
-    if (ilevel == 1) grid_.restrict_coarse();
-    else grid_.restrict_fine(ilevel); // restrict current level to father
-
-    // Flagging for next step
-    if (grid_.count_grids_at_level(ilevel) > 0 && ilevel < grid_.nlevelmax) {
-        updater_.mark_cells(ilevel);
-    }
 }
 
 void Simulation::dump_snapshot(int iout) {
-    std::string dir = "output_" + std::string(5 - std::to_string(iout).length(), '0') + std::to_string(iout);
-    mkdir(dir.c_str(), 0777);
-    
-    SnapshotInfo info;
-    info.t = t_;
-    info.nstep = nstep_;
-    info.nstep_coarse = nstep_; // For now, assume coarse step = step
-    info.noutput = tout_.size();
-    info.iout = iout;
-    info.gamma = grid_.gamma;
-    info.nener = nener_;
-    info.tout = tout_;
-
+    std::stringstream ssd; ssd << "output_" << std::setfill('0') << std::setw(5) << iout;
+    std::string dir = ssd.str(); mkdir(dir.c_str(), 0777);
+    SnapshotInfo info; info.t = t_; info.nstep = nstep_; info.noutput = 100; info.iout = iout; info.gamma = grid_.gamma; info.nener = nener_;
     int myid = MpiManager::instance().rank() + 1;
-    std::string snap_str = std::string(5 - std::to_string(iout).length(), '0') + std::to_string(iout);
-
-    RamsesWriter amr_writer(dir + "/amr_" + snap_str + ".out00001");
-    amr_writer.write_amr(grid_, info);
-
-    RamsesWriter hydro_writer(dir + "/hydro_" + snap_str + ".out00001");
-    hydro_writer.write_hydro(grid_, info);
-
-    RamsesWriter info_writer(dir + "/info_" + snap_str + ".txt");
-    info_writer.write_header(info);
-
-    RamsesWriter desc_writer(dir + "/hydro_file_descriptor.txt");
-    desc_writer.write_hydro_descriptor(grid_, info);
-
-    RamsesWriter head_writer(dir + "/header_" + snap_str + ".txt");
-    head_writer.write_extra_headers(info);
-
-    std::cout << "[Simulation] Finished dump_snapshot " << iout << std::endl;
+    auto get_path = [&](const std::string& prefix, const std::string& ext) -> std::string {
+        std::stringstream ss; ss << dir << "/" << prefix << "_" << std::setfill('0') << std::setw(5) << iout << ext << std::setfill('0') << std::setw(5) << myid;
+        return ss.str();
+    };
+    RamsesWriter writer_amr(get_path("amr", ".out")); writer_amr.write_amr(grid_, info);
+    RamsesWriter writer_hydro(get_path("hydro", ".out")); writer_hydro.write_hydro(grid_, info);
+    std::stringstream ssi; ssi << dir << "/info_" << std::setfill('0') << std::setw(5) << iout << ".txt";
+    RamsesWriter writer_header(ssi.str()); writer_header.write_header(info);
+    std::stringstream ssh; ssh << dir << "/header_" << std::setfill('0') << std::setw(5) << iout << ".txt";
+    RamsesWriter writer_header_file(ssh.str()); writer_header_file.write_header_file(grid_, info);
+    RamsesWriter writer_desc(dir + "/hydro_file_descriptor.txt"); writer_desc.write_hydro_descriptor(grid_, info);
+    std::ofstream fpd(dir + "/part_file_descriptor.txt"); fpd << "# Generated by RAMSES-CPP" << std::endl; fpd.close();
 }
-
-real_t Simulation::compute_total_mass() { return 0.0; }
-real_t Simulation::compute_total_energy() { return 0.0; }
-real_t Simulation::compute_potential_energy() { return 0.0; }
 
 } // namespace ramses
