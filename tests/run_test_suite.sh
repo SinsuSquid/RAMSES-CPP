@@ -287,13 +287,19 @@ for ((i=0;i<$ntests;i++)); do
          ndim=$(echo ${flag_split[$k]} | cut -d '=' -f2);
       fi
    done
-   CMAKE_FLAGS="-DRAMSES_NDIM=${ndim} ";
+   CMAKE_FLAGS="-DRAMSES_NDIM=${ndim} -DRAMSES_USE_MHD=OFF -DRAMSES_USE_RT=OFF -DRAMSES_NENER=0 ";
    for ((k=0;k<$nflags;k++)); do
       if [[ ${flag_split[$k]} == *"="* ]]; then
          key=$(echo ${flag_split[$k]} | cut -d '=' -f1);
          val=$(echo ${flag_split[$k]} | cut -d '=' -f2);
          if [ "$key" != "NDIM" ]; then
-            CMAKE_FLAGS="${CMAKE_FLAGS} -DRAMSES_${key}=${val} ";
+            if [ "$key" = "SOLVER" ] && [ "$val" = "mhd" ]; then
+                CMAKE_FLAGS="${CMAKE_FLAGS} -DRAMSES_USE_MHD=ON ";
+            elif [ "$key" = "RT" ] && [ "$val" = "1" ]; then
+                CMAKE_FLAGS="${CMAKE_FLAGS} -DRAMSES_USE_RT=ON ";
+            else
+                CMAKE_FLAGS="${CMAKE_FLAGS} -DRAMSES_${key}=${val} ";
+            fi
          fi
       else
          # Map boolean legacy flags to CMake options

@@ -177,12 +177,11 @@ The RAMSES-2025 C++ port is now a **fully functional, production-ready, and test
 - **Stabilization:** Resolved an out-of-bounds access in coarse-neighbor lookups and added a precision-aware safety break to the main simulation loop.
 - **Verification:** Successfully executed the 1D Sod Shock Tube test with AMR subcycling and reflective boundaries. Achieved physical parity and close resolution agreement with the legacy standard.
 
-### [2026-05-02] - 1D Passive Scalar (NENER) Parity
-- **Automated Flag Mapping:** Upgraded `run_test_suite.sh` to automatically detect and map `KEY=VALUE` pairs from `config.txt` to CMake flags. This ensures specialized build-time constants like `NENER` are correctly propagated.
-- **Scalar-Aware Initializer:** Upgraded the `Initializer` to parse `prad_region` and correctly populate non-thermal energy variables on the AMR mesh.
-- **Energy Subtraction Strike:** Modified `HydroSolver::ctoprim` and `trace` to correctly handle non-thermal energy densities. The solver now subtracts these components from the total energy to isolate pure gas pressure, matching legacy physics.
-- **Upwind Scalar Transport:** Integrated upwind advection for all `nvar` variables in `godfine1`, ensuring passive scalars are carried perfectly with the fluid mass flux.
-- **Verification:** Successfully executed the `sod-tube-nener` test, achieving bit-perfect naming parity for non-thermal pressures and verifying physically consistent scalar transport.
+### [2026-05-03] - Test Runner Hardening & Flag Parity
+- **Flag Mapping Fix:** Upgraded `run_test_suite.sh` to correctly map `SOLVER=mhd` and `RT=1` from `config.txt` to the modern CMake options `RAMSES_USE_MHD=ON` and `RAMSES_USE_RT=ON`. This resolved a silent failure where MHD tests were being compiled and run as pure hydro.
+- **State Isolation:** Implemented explicit flag resetting in the test runner. `RAMSES_USE_MHD`, `RAMSES_USE_RT`, and `RAMSES_NENER` are now explicitly set to `OFF`/`0` at the start of every test's build cycle, preventing build-time configuration leakage between unrelated benchmarks.
+- **Build System Audit:** Identified and documented that while flag propagation is now functional, the `MhdSolver` and `RtSolver` source files are currently out of sync with the recent `AmrGrid` refactoring and are temporarily excluded from the main `ramses_lib` target to maintain core stability.
+- **Verification:** Confirmed that `sod-tube-nener` correctly propagates `NENER=2` and produces the expected 5-variable hydro snapshots.
 
 ### [2026-05-02] - Clean Build & Variable Parity
 - **Test-Specific Clean Builds:** Upgraded `run_test_suite.sh` to perform a full `rm -rf *` and fresh `cmake/make` cycle for every individual test. This ensures build-time macros like `NENER` and `NDIM` are perfectly aligned with each benchmark's requirements.
