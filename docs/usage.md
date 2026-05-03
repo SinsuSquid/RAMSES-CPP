@@ -11,11 +11,11 @@ RAMSES-CPP is designed to be plug-and-play with the existing ecosystem of the or
 
 The simulation is configured using standard Fortran Namelist (`.nml`) files.
 
-To run a simulation, execute `ramses_main` and pass the path to your namelist file as the first argument:
+To run a simulation, execute the appropriate dimensional executable (e.g., `ramses_3d`) and pass the path to your namelist file:
 
 ```bash
 cd build
-./ramses_main path/to/your/namelist.nml
+./ramses_3d path/to/your/namelist.nml
 ```
 
 ### Example: 3D Sedov Blast
@@ -23,7 +23,7 @@ cd build
 A standard Sedov 3D blast wave test is included in the `namelist` directory:
 
 ```bash
-./ramses_main ../namelist/sedov3d.nml
+./ramses_3d ../namelist/sedov3d.nml
 ```
 
 ## Parallel Execution (MPI)
@@ -31,7 +31,7 @@ A standard Sedov 3D blast wave test is included in the `namelist` directory:
 If you compiled RAMSES-CPP with MPI support, you can execute it across multiple processors using `mpirun` or `mpiexec`:
 
 ```bash
-mpirun -np 4 ./ramses_main ../namelist/sedov3d.nml
+mpirun -np 4 ./ramses_3d ../namelist/sedov3d.nml
 ```
 
 The code will automatically perform domain decomposition using a Hilbert curve and distribute the workload across the available ranks.

@@ -34,13 +34,14 @@ To build RAMSES-CPP from source, ensure you have the following installed on your
    make -j$(nproc)
    ```
 
-   This will generate the main executable `ramses_main` and the reference verification tool `verify_ref` in the `build/` directory.
+   This will generate the dimensional executables (e.g., `ramses_1d`, `ramses_3d`) and the reference verification tool `verify_ref` in the `build/` directory.
 
 ## CMake Configuration Options
 
 You can customize the build using the following CMake flags:
 
 - `-DRAMSES_NDIM=[1|2|3]`: Set the number of dimensions (default is 3).
+- `-DRAMSES_NENER=N`: Set the number of non-thermal energy variables (default is 0).
 - `-DRAMSES_USE_MHD=[ON|OFF]`: Enable or disable the Magnetohydrodynamics module (default is OFF).
 - `-DRAMSES_USE_MPI=[ON|OFF]`: Force enable/disable MPI support (usually auto-detected).
 

@@ -16,12 +16,12 @@ The `Simulation` class is the central driver. It manages the global time-steppin
     - Managing recursive level-stepping.
 
 ### 2. `AmrGrid` (The Data Structure)
-`AmrGrid` encapsulates the linked-list octree structure. In RAMSES-CPP, this is implemented as a collection of `Oct` and `Grid` structures, mimicking the Fortran memory layout but with C++ container management where appropriate.
+`AmrGrid` encapsulates the linked-list octree structure. In RAMSES-CPP, this is implemented as a collection of vectors (e.g., `son`, `father`, `nbor`), mimicking the Fortran memory layout but with C++ container management.
 - **Level Indexing:** The grid uses **0-based level indexing** (Level 0 = Coarse Grid), ensuring consistency across all solvers.
 - **Path:** `src/AmrGrid.cpp`, `include/ramses/AmrGrid.hpp`
 - **Key Responsibilities:**
     - Storing cell and grid data.
-    - Neighbor lookups and tree traversal.
+    - **Neighbor Connectivity:** Maintains a dedicated `nbor` array that stores pre-calculated neighbor pointers for every grid, enabling constant-time ($O(1)$) traversal.
     - Handling periodic and physical boundaries.
 
 ### 3. `TreeUpdater` (Grid Evolution)
