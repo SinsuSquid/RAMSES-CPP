@@ -3,7 +3,7 @@ layout: default
 title: Home
 ---
 
-<img src="https://github.com/SinsuSquid/RAMSES-CPP/blob/main/logo/Sia-chan_logo.png?raw=true" style="width: 300px; height: auto; float: right; margin-left: 20px;">
+<img src="https://github.com/SinsuSquid/RAMSES-CPP/blob/main/logo/Sia-chan.png?raw=true" style="width: 300px; height: auto; float: right; margin-left: 20px;">
 
 # RAMSES-CPP Documentation
 
