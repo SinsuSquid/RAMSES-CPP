@@ -73,9 +73,9 @@ Implements Radiative Transfer using the M1 closure scheme.
 
 RAMSES-CPP incorporates several key optimizations to ensure high-performance execution:
 
-1. **O(1) Grid Connectivity:** Unlike many AMR implementations that rely on expensive coordinate-based lookups, RAMSES-CPP mirrors the legacy pointer logic using `son(nbor)` direct indexing. This ensures that finding a neighbor cell or grid is a constant-time operation.
-2. **Level-Wide State Caching:** During the MUSCL reconstruction phase, interface states (`qm`, `qp`) are cached across entire AMR levels. This eliminates the redundant slope calculations that occur when multiple interfaces share the same cell, doubling the performance of high-order runs.
-3. **Optimized I/O Stream:** The `RamsesWriter` utilizes buffered binary streams and minimizes file-system overhead by opening snapshots once per level-dump, ensuring rapid data serialization.
+1. **O(1) Grid Connectivity:** RAMSES-CPP utilizes a dedicated `nbor` array within `AmrGrid` to store direct neighbor pointers (indices) for every grid. This mirrors the legacy pointer logic, ensuring that finding a neighbor cell across grid boundaries is a constant-time operation ($O(1)$), which is essential for efficient gradient calculation and AMR refinement.
+2. **Advanced Initializer:** The `Initializer` features a robust namelist parser capable of handling comma-separated lists and multi-dimensional array inputs (e.g., `d_region`, `prad_region`). It performs coordinate-accurate placement of child grids during the initial refinement phase, ensuring no mesh overlaps.
+3. **Level-Wide State Caching:** During the MUSCL reconstruction phase, interface states (`qm`, `qp`) are cached across entire AMR levels. This eliminates redundant slope calculations for shared cell interfaces, significantly improving high-order simulation performance.
 
 ## Data Flow
 

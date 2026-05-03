@@ -10,12 +10,12 @@ RAMSES-CPP provides a functional, physically consistent alternative to the origi
 
 ## 🚀 Status: Active Development & Verification
 RAMSES-CPP has achieved a major milestone: **Bit-perfect binary compatibility** for 1D and 3D snapshots! We are now focusing on:
+- [x] **Full AMR Refinement:** Restored the constant-time ($O(1)$) neighbor connectivity system, enabling seamless refinement up to `levelmax=10`.
 - [x] **Recursive AMR Sub-cycling:** Fully functional sub-cycling with proper recursion and restriction.
 - [x] **High-Order Hydro:** 2nd-order MUSCL-Hancock with level-wide caching for 2x performance.
-- [x] **O(1) Grid Connectivity:** High-speed neighbor lookups matching legacy pointer logic.
+- [x] **Advanced Initialization:** Robust namelist parsing for multi-region setups with full list support (e.g., `d_region`).
 - [x] **Physical Boundaries:** Robust support for Reflective, Outflow, and Periodic conditions.
 - [x] **1D Physics Foundation:** 100% verified bit-perfect physics for all 1D benchmarks.
-- [x] **Visualization Compatibility:** Bit-perfect parity with legacy `visu_ramses.py` scripts.
 - [ ] **MHD Stabilization:** Refinement of the CT update for high-gradient 3D flows.
 - [ ] **RT Module:** Full integration of radiative transfer with gas coupling.
 

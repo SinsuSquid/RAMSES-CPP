@@ -60,10 +60,17 @@ To run the tests:
 export PYTHONPATH=$PYTHONPATH:$(pwd)/tests/visu
 cd tests
 ./run_test_suite.sh -t hydro  # Run hydrodynamics tests
-./run_test_suite.sh -t mhd    # Run MHD tests (requires MHD build)
+./run_test_suite.sh -t mhd    # Run MHD tests
 ```
 
-The test suite automatically compares the C++ output against reference data and reports any discrepancies.
+### Test Configuration (`config.txt`)
+Each individual test directory contains a `config.txt` file that defines the build-time requirements for that benchmark. The test runner (`run_test_suite.sh`) automatically parses these flags and propagates them as CMake options:
+- **`NDIM=N`**: Compiles for N-dimensions.
+- **`SOLVER=mhd`**: Automatically enables `RAMSES_USE_MHD`.
+- **`RT=1`**: Automatically enables `RAMSES_USE_RT`.
+- **`NENER=N`**: Sets the number of non-thermal energy variables.
+
+The test suite performs a clean build for every test to ensure there is no configuration leakage between benchmarks.
 
 ## Verification Tool
 
