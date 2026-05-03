@@ -7,12 +7,16 @@ set(CMAKE_CXX_STANDARD_REQUIRED ON)
 # Configuration Options
 set(RAMSES_NDIM 3 CACHE STRING "Dimensions (1, 2, or 3)")
 set(RAMSES_PRECISION 8 CACHE STRING "Real precision (4 or 8)")
+set(RAMSES_NENER 0 CACHE STRING "Number of non-thermal energies")
 set(RAMSES_LONGINT OFF CACHE BOOL "Use 64-bit integers for grid IDs")
 set(RAMSES_USE_MPI OFF CACHE BOOL "Enable MPI support")
 set(RAMSES_USE_MHD OFF CACHE BOOL "Enable MHD solver")
 set(RAMSES_USE_RT OFF CACHE BOOL "Enable RT solver")
 
 add_definitions(-DNDIM=${RAMSES_NDIM})
+if(RAMSES_NENER GREATER 0)
+    add_definitions(-DRAMSES_NENER=${RAMSES_NENER})
+endif()
 
 if(RAMSES_USE_MPI)
     find_package(MPI REQUIRED)

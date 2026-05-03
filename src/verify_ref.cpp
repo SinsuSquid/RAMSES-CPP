@@ -1,104 +1,76 @@
-#include "ramses/RamsesReader.hpp"
 #include "ramses/AmrGrid.hpp"
-#include "ramses/Config.hpp"
+#include "ramses/RamsesReader.hpp"
 #include <iostream>
 #include <vector>
+#include <string>
 #include <cmath>
-#include <algorithm>
 
 using namespace ramses;
 
-struct CellData {
-    double x[3];
-    std::vector<double> u;
-};
-
-std::vector<CellData> collect_leaf_cells(const AmrGrid& grid) {
-    std::vector<CellData> leaf_cells;
-    int twotondim = (1 << NDIM);
-    real_t dx_base = grid.boxlen; // Simplified
-    
-    for (int i = 1; i <= grid.ncoarse; ++i) {
-        if (grid.son[i-1] == 0) {
-            CellData c; 
-            // Simplified position
-            c.x[0] = (i - 0.5) * (grid.boxlen / grid.ncoarse);
-            c.u.resize(grid.nvar);
-            for(int iv=1; iv<=grid.nvar; ++iv) c.u[iv-1] = grid.uold(i, iv);
-            leaf_cells.push_back(c);
-        }
+int main(int argc, char** argv) {
+    if (argc < 3) {
+        std::cerr << "Usage: " << argv[0] << " <ref_amr> <local_amr>" << std::endl;
+        return 1;
     }
 
-    for (int il = 1; il <= grid.nlevelmax; ++il) {
-        for (int icpu = 1; icpu <= grid.ncpu; ++icpu) {
-            int igrid = grid.headl(icpu, il);
-            while (igrid > 0) {
-                for (int ic = 1; ic <= twotondim; ++ic) {
-                    int id = grid.ncoarse + (ic - 1) * grid.ngridmax + igrid;
-                    if (grid.son[id - 1] == 0) {
-                        CellData c;
-                        real_t dx_level = grid.boxlen / (1 << (il - 1));
-                        int ix = (ic - 1) & 1, iy = ((ic - 1) & 2) >> 1, iz = ((ic - 1) & 4) >> 2;
-                        c.x[0] = grid.xg[0 * grid.ngridmax + (igrid - 1)] + (ix - 0.5) * dx_level;
-                        c.x[1] = grid.xg[1 * grid.ngridmax + (igrid - 1)] + (iy - 0.5) * dx_level;
-                        c.x[2] = grid.xg[2 * grid.ngridmax + (igrid - 1)] + (iz - 0.5) * dx_level;
-                        c.u.resize(grid.nvar);
-                        for(int iv=1; iv<=grid.nvar; ++iv) c.u[iv-1] = grid.uold(id, iv);
-                        leaf_cells.push_back(c);
-                    }
+    std::string ref_amr = argv[1];
+    std::string loc_amr = argv[2];
+
+    auto get_hydro_path = [](const std::string& amr_path) {
+        std::string hydro_path = amr_path;
+        size_t pos = hydro_path.find("amr");
+        if (pos != std::string::npos) {
+            hydro_path.replace(pos, 3, "hydro");
+        }
+        return hydro_path;
+    };
+
+    std::string ref_hydro = get_hydro_path(ref_amr);
+    std::string loc_hydro = get_hydro_path(loc_amr);
+
+    AmrGrid grid_ref, grid_loc;
+    grid_ref.nvar = 5; grid_loc.nvar = 5; // Default for check
+
+    RamsesReader reader_ref(ref_amr);
+    if (!reader_ref.load_amr(grid_ref)) {
+        std::cerr << "Failed to load ref AMR: " << ref_amr << std::endl;
+        return 1;
+    }
+    RamsesReader reader_ref_h(ref_hydro);
+    reader_ref_h.load_hydro(grid_ref);
+
+    RamsesReader reader_loc(loc_amr);
+    if (!reader_loc.load_amr(grid_loc)) {
+        std::cerr << "Failed to load local AMR: " << loc_amr << std::endl;
+        return 1;
+    }
+    RamsesReader reader_loc_h(loc_hydro);
+    reader_loc_h.load_hydro(grid_loc);
+
+    std::cout << "Comparing " << ref_amr << " and " << loc_amr << std::endl;
+    
+    // Simple comparison of cell counts and some values
+    if (grid_ref.ncoarse != grid_loc.ncoarse) {
+        std::cout << "DIFFERENCE: ncoarse ref=" << grid_ref.ncoarse << " loc=" << grid_loc.ncoarse << std::endl;
+    }
+    
+    int diff_count = 0;
+    for (int i = 0; i < std::min(grid_ref.ncell, grid_loc.ncell); ++i) {
+        for (int iv = 1; iv <= std::min(grid_ref.nvar, grid_loc.nvar); ++iv) {
+            if (std::abs(grid_ref.uold(i + 1, iv) - grid_loc.uold(i + 1, iv)) > 1e-10) {
+                if (diff_count < 10) {
+                    std::cout << "Value diff at cell " << i+1 << " var " << iv << ": ref=" << grid_ref.uold(i+1, iv) << " loc=" << grid_loc.uold(i+1, iv) << std::endl;
                 }
-                igrid = grid.next[igrid - 1];
+                diff_count++;
             }
         }
     }
-    return leaf_cells;
-}
 
-int main(int argc, char** argv) {
-    if (argc < 3) {
-        std::cerr << "Usage: " << argv[0] << " <ref_amr_file> <loc_amr_file>" << std::endl;
-        return 1;
-    }
-
-    AmrGrid grid_ref;
-    AmrGrid grid_loc;
-    RamsesReader reader_ref(argv[1]);
-    RamsesReader reader_loc(argv[2]);
-
-    if (!reader_ref.load_amr(grid_ref)) return 1;
-    if (!reader_loc.load_amr(grid_loc)) return 1;
-
-    // Load hydro as well
-    std::string ref_hydro = argv[1]; ref_hydro.replace(ref_hydro.find("amr"), 3, "hydro");
-    std::string loc_hydro = argv[2]; loc_hydro.replace(loc_hydro.find("amr"), 3, "hydro");
-    RamsesReader h_ref(ref_hydro); h_ref.load_hydro(grid_ref);
-    RamsesReader h_loc(loc_hydro); h_loc.load_hydro(grid_loc);
-
-    auto leaf_ref = collect_leaf_cells(grid_ref);
-    auto leaf_loc = collect_leaf_cells(grid_loc);
-
-    std::cout << "Reference leaf cells: " << leaf_ref.size() << std::endl;
-    std::cout << "Local leaf cells:     " << leaf_loc.size() << std::endl;
-
-    if (leaf_ref.size() != leaf_loc.size()) {
-        std::cout << "Mismatch in leaf cell count!" << std::endl;
-        return 1;
-    }
-
-    double max_err = 0.0;
-    for (size_t i = 0; i < leaf_ref.size(); ++i) {
-        for (int iv = 0; iv < grid_ref.nvar; ++iv) {
-            double err = std::abs(leaf_ref[i].u[iv] - leaf_loc[i].u[iv]);
-            max_err = std::max(max_err, err);
-        }
-    }
-
-    std::cout << "Maximum absolute error: " << max_err << std::endl;
-    if (max_err < 1e-10) {
-        std::cout << "Verification PASSED" << std::endl;
+    if (diff_count == 0 && grid_ref.ncell == grid_loc.ncell) {
+        std::cout << "SUCCESS: Snapshots match perfectly!" << std::endl;
         return 0;
     } else {
-        std::cout << "Verification FAILED" << std::endl;
+        std::cout << "FAILURE: Found " << diff_count << " differences." << std::endl;
         return 1;
     }
 }

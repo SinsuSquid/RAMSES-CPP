@@ -29,11 +29,12 @@ public:
     int get_int(const std::string& block, const std::string& key, int default_val = 0) const;
     double get_double(const std::string& block, const std::string& key, double default_val = 0.0) const;
     bool get_bool(const std::string& block, const std::string& key, bool default_val = false) const;
+    
+    std::string trim(const std::string& s) const;
 
 private:
     std::map<std::string, std::map<std::string, std::string>> blocks_;
     
-    std::string trim(const std::string& s) const;
     std::string to_lower(const std::string& s) const;
 };
 

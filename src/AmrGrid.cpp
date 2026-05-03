@@ -6,8 +6,8 @@
 
 namespace ramses {
 
-void AmrGrid::allocate(int nx, int ny, int nz, int ngridmax_val, int nvar_val, int ncpu_val, int nlevelmax_val) {
-    nx = std::max(nx, 1); ny = std::max(ny, 1); nz = std::max(nz, 1);
+void AmrGrid::allocate(int nx_val, int ny_val, int nz_val, int ngridmax_val, int nvar_val, int ncpu_val, int nlevelmax_val) {
+    nx = std::max(nx_val, 1); ny = std::max(ny_val, 1); nz = std::max(nz_val, 1);
     ngridmax = ngridmax_val; nvar = nvar_val; ncpu = ncpu_val; nlevelmax = nlevelmax_val;
     ncoarse = nx * ny * nz;
     ncell = ncoarse + constants::twotondim * ngridmax;
@@ -21,6 +21,7 @@ void AmrGrid::allocate(int nx, int ny, int nz, int ngridmax_val, int nvar_val, i
     father.assign(ngridmax, 0);
 
     son.assign(ncell, 0);
+    nbor.assign(ngridmax * 6, 0);
     flag1.assign(ncell, 0);
     cpu_map.assign(ncell, 0);
 
@@ -80,14 +81,27 @@ int AmrGrid::count_grids_at_level(int ilevel) const {
 
 void AmrGrid::get_nbor_grids(int igrid, int ign[7]) const {
     ign[0] = igrid;
-    for (int i = 1; i <= 6; ++i) ign[i] = 0; 
+    for (int i = 1; i <= 6; ++i) {
+        int ic_nbor = nbor[(i - 1) * ngridmax + igrid - 1];
+        if (ic_nbor > 0) ign[i] = son[ic_nbor - 1];
+        else ign[i] = 0;
+    }
 }
 
 void AmrGrid::get_nbor_cells(const int ign[7], int ic, int icn[6], int igrid) const {
-    int ix = (ic - 1) & 1;
-    if (ix == 0) { icn[0] = 0; icn[1] = ncoarse + 1 * ngridmax + igrid; }
-    else { icn[0] = ncoarse + 0 * ngridmax + igrid; icn[1] = 0; }
-    for(int i=2; i<6; ++i) icn[i] = 0;
+    for (int i = 0; i < 6; ++i) icn[i] = 0;
+    for (int idim = 0; idim < NDIM; ++idim) {
+        for (int inbor = 0; inbor < 2; ++inbor) {
+            int ig_idx = constants::iii[idim][inbor][ic - 1];
+            int ic_pos = constants::jjj[idim][inbor][ic - 1];
+            int ig = ign[ig_idx];
+            if (ig > 0) {
+                icn[idim * 2 + inbor] = ncoarse + (ic_pos - 1) * ngridmax + ig;
+            } else {
+                icn[idim * 2 + inbor] = nbor[(idim * 2 + inbor) * ngridmax + igrid - 1];
+            }
+        }
+    }
 }
 
 } // namespace ramses

@@ -14,10 +14,11 @@ public:
     void allocate(int nx, int ny, int nz, int ngridmax, int nvar, int ncpu, int nlevelmax);
 
     int ncpu, ngridmax, nlevelmax, nvar, ncoarse, ncell;
+    int nx, ny, nz;
     real_t boxlen, gamma;
 
     std::vector<int> headl_vec, taill_vec, numbl_vec; 
-    std::vector<int> next, prev, father, son, flag1, cpu_map;
+    std::vector<int> next, prev, father, son, nbor, flag1, cpu_map;
     std::vector<real_t> xg, uold_vec, unew_vec;
     
     std::vector<real_t> phi, rho;
