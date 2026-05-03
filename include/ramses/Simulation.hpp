@@ -7,11 +7,7 @@
 #include "PoissonSolver.hpp"
 #include "TreeUpdater.hpp"
 #include "Config.hpp"
-#include "ParticleSystem.hpp"
-#include "ParticleSolver.hpp"
-#include "LoadBalancer.hpp"
-#include "CoolingSolver.hpp"
-#include "RtSolver.hpp"
+#include "Initializer.hpp"
 #include <vector>
 
 namespace ramses {
@@ -21,28 +17,27 @@ namespace ramses {
  */
 class Simulation {
 public:
-    Simulation() : grid_(config_), hydro_(grid_), mhd_(grid_, config_), poisson_(grid_, config_), 
-                   updater_(grid_), ptcl_solver_(grid_, ps_), balancer_(grid_, ps_), 
-                   cooling_(grid_, config_), rt_(grid_, config_) {}
+    Simulation() : grid_(), 
+                   hydro_(grid_, config_), 
+                   mhd_(grid_, config_), 
+                   poisson_(grid_, config_), 
+                   updater_(grid_), 
+                   initializer_(grid_, config_) {}
 
     void initialize(const std::string& nml_path);
     void run();
 
 private:
-    void amr_step(int ilevel, real_t dt);
+    void amr_step(int ilevel, real_t dt, int icount = 1);
     void dump_snapshot(int iout);
-
+    
     Config config_;
     AmrGrid grid_;
     HydroSolver hydro_;
     MhdSolver mhd_;
     PoissonSolver poisson_;
     TreeUpdater updater_;
-    ParticleSystem ps_;
-    ParticleSolver ptcl_solver_;
-    LoadBalancer balancer_;
-    CoolingSolver cooling_;
-    RtSolver rt_;
+    Initializer initializer_;
 
     real_t t_ = 0.0;
     real_t tend_ = 1.0;
@@ -51,6 +46,7 @@ private:
     int ncontrol_ = 1;
     int noutput_ = 0;
     int nener_ = 0;
+    std::vector<int> nsubcycle_;
     std::vector<double> tout_;
 };
 

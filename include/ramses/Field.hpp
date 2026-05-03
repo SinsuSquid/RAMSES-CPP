@@ -26,11 +26,19 @@ public:
 
     // 1-based access: field(i, j)
     inline T& operator()(size_t i, size_t j) {
-        return data_[(j - 1) * dim1_ + (i - 1)];
+        size_t idx = (j - 1) * dim1_ + (i - 1);
+        if (idx >= data_.size()) {
+            throw std::out_of_range("Field index out of bounds: (" + std::to_string(i) + "," + std::to_string(j) + ") dim1=" + std::to_string(dim1_) + " dim2=" + std::to_string(dim2_));
+        }
+        return data_[idx];
     }
 
     inline const T& operator()(size_t i, size_t j) const {
-        return data_[(j - 1) * dim1_ + (i - 1)];
+        size_t idx = (j - 1) * dim1_ + (i - 1);
+        if (idx >= data_.size()) {
+            throw std::out_of_range("Field index out of bounds: (" + std::to_string(i) + "," + std::to_string(j) + ") dim1=" + std::to_string(dim1_) + " dim2=" + std::to_string(dim2_));
+        }
+        return data_[idx];
     }
 
     // Accessors for dimensions

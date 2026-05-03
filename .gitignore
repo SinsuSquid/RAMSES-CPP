@@ -45,6 +45,7 @@ tests/test_suite.log
 tests/**/output_*/
 *.pdf
 *.tex
+*.log
 
 # Legacy codes
 legacy/
@@ -53,6 +54,5 @@ legacy/
 bin/
 build/
 
-# Gemini
-.geminiignore
-GEMINI.md
+# Python Bytecode
+__pycache__/

@@ -1,4 +1,5 @@
 #include "ramses/MhdSolver.hpp"
+#include "ramses/MpiManager.hpp"
 #include "ramses/Parameters.hpp"
 #include "ramses/Constants.hpp"
 #include "ramses/Muscl.hpp"
@@ -85,29 +86,32 @@ void MhdSolver::godunov_fine(int ilevel, real_t dt, real_t dx) {
 }
 
 void MhdSolver::gather_stencil(int igrid, int ilevel, LocalStencil& stencil) {
-    int nbors_father[27]; grid_.get_3x3x3_father(igrid, nbors_father);
+    int ind_father = grid_.father[igrid - 1];
+    int nbors_27[27];
+    grid_.get_27_cell_neighbors(ind_father, nbors_27);
+    int pos = 1;
+    if (ind_father > grid_.ncoarse) {
+        pos = ((ind_father - grid_.ncoarse - 1) / grid_.ngridmax) + 1;
+    }
+    int myid = MpiManager::instance().rank() + 1;
     int nvar = grid_.nvar;
-    for (int k1 = 0; k1 < 3; ++k1) for (int j1 = 0; j1 < 3; ++j1) for (int i1 = 0; i1 < 3; ++i1) {
-        int ifather = nbors_father[i1 + 3*j1 + 9*k1];
-        int ison = (ifather > 0 && ifather <= (int)grid_.son.size() - 1) ? grid_.son[ifather] : 0;
-        for (int k2 = 0; k2 < 2; ++k2) for (int j2 = 0; j2 < 2; ++j2) for (int i2 = 0; i2 < 2; ++i2) {
-            int i3 = i1*2+i2, j3 = j1*2+j2, k3 = k1*2+k2, icp = 1+i2+2*j2+4*k2;
-            for (int iv = 0; iv < 20; ++iv) stencil.uloc[i3][j3][k3][iv] = 0.0;
-            if (ison > 0 && icp <= constants::twotondim) {
-                int idc = grid_.ncoarse + (icp-1)*grid_.ngridmax + ison;
-                if (idc > 0 && idc <= grid_.ncell) {
-                    for (int iv = 1; iv <= nvar; ++iv) stencil.uloc[i3][j3][k3][iv-1] = grid_.uold(idc, iv);
-                    stencil.refined[i3][j3][k3] = (grid_.son[idc] > 0);
-                }
-            } else if (ifather > 0 && ifather <= grid_.ncell) {
-                for (int iv = 1; iv <= nvar; ++iv) stencil.uloc[i3][j3][k3][iv-1] = grid_.uold(ifather, iv);
-                stencil.refined[i3][j3][k3] = false;
+
+    for (int j = 0; j < 27; ++j) {
+        int f_idx = constants::lll[pos-1][j]; // 1..27
+        int c_pos = constants::mmm[pos-1][j]; // 1..8
+        int ifather_n = nbors_27[f_idx - 1];
+        int sz = j / 9; int sy = (j % 9) / 3; int sx = j % 3;
+
+        for (int iv = 0; iv < 20; ++iv) stencil.uloc[sz][sy][sx][iv] = 0.0;
+        if (ifather_n > 0 && grid_.cpu_map[ifather_n] == myid) {
+            if (grid_.son[ifather_n] > 0) {
+                int ig_son = grid_.son[ifather_n];
+                int idc = grid_.ncoarse + (c_pos - 1) * grid_.ngridmax + ig_son;
+                for (int iv = 1; iv <= nvar; ++iv) stencil.uloc[sz][sy][sx][iv - 1] = grid_.uold(idc, iv);
+                stencil.refined[sz][sy][sx] = (grid_.son[idc] > 0);
             } else {
-                int ai2 = i2, aj2 = (NDIM > 1) ? j2 : 0, ak2 = (NDIM > 2) ? k2 : 0, aicp = 1+ai2+2*aj2+4*ak2;
-                if (ison > 0 && aicp <= constants::twotondim) {
-                    int idc = grid_.ncoarse + (aicp-1)*grid_.ngridmax + ison;
-                    if (idc > 0 && idc <= grid_.ncell) for (int iv = 1; iv <= nvar; ++iv) stencil.uloc[i3][j3][k3][iv-1] = grid_.uold(idc, iv);
-                }
+                for (int iv = 1; iv <= nvar; ++iv) stencil.uloc[sz][sy][sx][iv - 1] = grid_.uold(ifather_n, iv);
+                stencil.refined[sz][sy][sx] = false;
             }
         }
     }

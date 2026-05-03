@@ -1,5 +1,7 @@
 # Magnetohydrodynamics (MHD) in RAMSES-CPP
 
+> **Status:** The MHD module is currently undergoing a major API synchronization to align with the recently refactored `AmrGrid` system. While the core algorithms have been ported, the current build temporarily excludes the MHD solver for stability during Phase 16 development.
+
 The MHD module in RAMSES-CPP provides a robust, divergence-free implementation of ideal magnetohydrodynamics on adaptive grids.
 
 ## Key Features

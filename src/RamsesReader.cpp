@@ -1,118 +1,109 @@
 #include "ramses/RamsesReader.hpp"
-#include "ramses/Constants.hpp"
 #include "ramses/Parameters.hpp"
+#include "ramses/Constants.hpp"
 #include <iostream>
-#include <algorithm>
-#include <cmath>
 #include <vector>
+#include <cstring>
+#include <algorithm>
 
 namespace ramses {
+RamsesReader::RamsesReader(const std::string& filename) : filename_(filename) {}
 
 bool RamsesReader::load_amr(AmrGrid& grid) {
-    if (!file_.is_open()) return false;
+    std::ifstream file(filename_, std::ios::binary);
+    if (!file.is_open()) return false;
+    int32_t ncpu, ndim, nx, ny, nz, nlevelmax, ngridmax;
+    read_record(file, ncpu);
+    read_record(file, ndim);
+    std::vector<int> nxnyz; read_record(file, nxnyz); 
+    if(nxnyz.size()>=3) { nx=nxnyz[0]; ny=nxnyz[1]; nz=nxnyz[2]; } else { nx=ny=nz=1; }
+    read_record(file, nlevelmax);
+    read_record(file, ngridmax);
+    int32_t nboundary, ngrid_current; double boxlen;
+    read_record(file, nboundary);
+    read_record(file, ngrid_current);
+    read_record(file, boxlen);
 
-    int ncpu = read_single<int>();
-    int ndim = read_single<int>();
-    std::vector<int> nxyz; read_record(nxyz);
-    int nx = nxyz[0], ny = nxyz[1], nz = nxyz[2];
-    int nlevelmax = read_single<int>();
-    int ngridmax = read_single<int>();
-    int nboundary = read_single<int>();
-    int ngrid_current = read_single<int>();
-    real_t boxlen = read_single<real_t>();
+    grid.allocate(nx, ny, nz, ngridmax, grid.nvar, ncpu, nlevelmax);
+    grid.nboundary = nboundary;
 
-    grid.allocate(nx, ny, nz, ngridmax, grid.nvar > 0 ? grid.nvar : 5, ncpu, nlevelmax);
-    grid.ndim = ndim;
-
-    for(int i=0; i<3; ++i) skip_record(); // nout, tout, aout
-    real_t t = read_single<real_t>(); // t
-    for(int i=0; i<7; ++i) skip_record(); // dtold, dtnew, nstep, einit, cosmo, aexp, msph
-
-    std::vector<int> buf;
-    read_record(buf); for(int i=0; i<ncpu*nlevelmax; ++i) grid.headl.data()[i] = buf[i];
-    read_record(buf); for(int i=0; i<ncpu*nlevelmax; ++i) grid.taill.data()[i] = buf[i];
-    read_record(buf); for(int i=0; i<ncpu*nlevelmax; ++i) grid.numbl.data()[i] = buf[i];
-    skip_record(); // numbtot
-    if (nboundary > 0) { skip_record(); skip_record(); skip_record(); }
-    skip_record(); // headf...
-    skip_record(); // order
-    skip_record(); // key_size
-
-    read_record(buf); for(int i=0; i<grid.ncoarse; ++i) grid.son[i+1] = buf[i];
-    read_record(buf); for(int i=0; i<grid.ncoarse; ++i) grid.flag1[i+1] = buf[i];
-    read_record(buf); for(int i=0; i<grid.ncoarse; ++i) grid.cpu_map[i+1] = buf[i];
-
-    for(int il=1; il <= nlevelmax; ++il) for(int ic=1; ic <= ncpu; ++ic) {
-        int nca = grid.numbl(ic, il);
+    int32_t noutput, iout, ifout;
+    std::vector<int> rec9; read_record(file, rec9); 
+    if(rec9.size()>=3) { noutput=rec9[0]; iout=rec9[1]; ifout=rec9[2]; } else { noutput=1; }
+    
+    std::vector<double> tout; read_record(file, tout);
+    std::vector<double> aout; read_record(file, aout);
+    double t; read_record(file, t);
+    std::vector<double> dtold; read_record(file, dtold);
+    std::vector<double> dtnew; read_record(file, dtnew);
+    std::vector<int> rec15; read_record(file, rec15);
+    
+    // EINIT, MASS_TOT_0, RHO_TOT
+    std::vector<double> rec16; read_record(file, rec16);
+    // COSMO
+    std::vector<double> rec17; read_record(file, rec17);
+    // AEXP, HEXP...
+    std::vector<double> rec18; read_record(file, rec18);
+    // MASS_SPH
+    double msph; read_record(file, msph);
+    
+    std::vector<int> hl_buf, tl_buf, nl_buf;
+    read_record(file, hl_buf); 
+    read_record(file, tl_buf);
+    read_record(file, nl_buf);
+    for(int i=0; i<std::min((int)hl_buf.size(), (int)grid.headl_vec.size()); ++i) grid.headl_vec[i] = hl_buf[i];
+    for(int i=0; i<std::min((int)tl_buf.size(), (int)grid.taill_vec.size()); ++i) grid.taill_vec[i] = tl_buf[i];
+    for(int i=0; i<std::min((int)nl_buf.size(), (int)grid.numbl_vec.size()); ++i) grid.numbl_vec[i] = nl_buf[i];
+    
+    std::vector<int> nt; read_record(file, nt); 
+    if (nboundary > 0) { std::vector<int> hb, tb, nb; read_record(file, hb); read_record(file, tb); read_record(file, nb); }
+    
+    std::vector<int> mem; read_record(file, mem);
+    char ord[128]; read_record_raw(file, ord, 128);
+    std::vector<double> bk; read_record(file, bk);
+    
+    read_record_raw(file, grid.son.data(), grid.ncoarse * sizeof(int));
+    read_record_raw(file, grid.flag1.data(), grid.ncoarse * sizeof(int));
+    read_record_raw(file, grid.cpu_map.data(), grid.ncoarse * sizeof(int));
+    
+    for(int il=1; il<=nlevelmax; ++il) for(int ic=1; ic<=ncpu + nboundary; ++ic) {
+        int nca = (ic <= ncpu) ? grid.numbl(ic, il) : 0;
         if (nca > 0) {
-            std::vector<int> igs; read_record(igs);
-            std::vector<int> nxt; read_record(nxt);
-            std::vector<int> prv; read_record(prv);
+            std::vector<int> igs; read_record(file, igs);
+            std::vector<int> nxt; read_record(file, nxt);
+            std::vector<int> prv; read_record(file, prv);
             for(int i=0; i<nca; ++i) { grid.next[igs[i]-1] = nxt[i]; grid.prev[igs[i]-1] = prv[i]; }
-            for(int d=1; d<=ndim; ++d) { std::vector<double> xgd; read_record(xgd); for(int i=0; i<nca; ++i) grid.xg[(d-1)*ngridmax + (igs[i]-1)] = xgd[i]; }
-            std::vector<int> ftr; read_record(ftr); for(int i=0; i<nca; ++i) grid.father[igs[i]-1] = ftr[i];
-            for(int n=1; n<=2*ndim; ++n) { std::vector<int> nbd; read_record(nbd); for(int i=0; i<nca; ++i) grid.nbor[(n-1)*ngridmax + (igs[i]-1)] = nbd[i]; }
-            for(int s=1; s<=constants::twotondim; ++s) { read_record(buf); for(int i=0; i<nca; ++i) grid.son[grid.ncoarse + (s-1)*ngridmax + igs[i]] = buf[i]; }
-            for(int s=1; s<=constants::twotondim; ++s) { read_record(buf); for(int i=0; i<nca; ++i) grid.flag1[grid.ncoarse + (s-1)*ngridmax + igs[i]] = buf[i]; }
-            for(int s=1; s<=constants::twotondim; ++s) { read_record(buf); for(int i=0; i<nca; ++i) grid.cpu_map[grid.ncoarse + (s-1)*ngridmax + igs[i]] = buf[i]; }
+            for(int d=1; d<=ndim; ++d) { std::vector<double> xgd; read_record(file, xgd); for(int i=0; i<nca; ++i) grid.xg[(d-1)*ngridmax + (igs[i]-1)] = xgd[i]; }
+            std::vector<int> ftr; read_record(file, ftr); for(int i=0; i<nca; ++i) grid.father[igs[i]-1] = ftr[i];
+            for(int n=1; n<=2*ndim; ++n) { std::vector<int> nbd; read_record(file, nbd); }
+            for(int s=1; s<=constants::twotondim; ++s) { std::vector<int> sd; read_record(file, sd); for(int i=0; i<nca; ++i) grid.son[grid.ncoarse+(s-1)*ngridmax + igs[i]-1] = sd[i]; }
+            for(int s=1; s<=constants::twotondim; ++s) { std::vector<int> cmd; read_record(file, cmd); for(int i=0; i<nca; ++i) grid.cpu_map[grid.ncoarse+(s-1)*ngridmax + igs[i]-1] = cmd[i]; }
+            for(int s=1; s<=constants::twotondim; ++s) { std::vector<int> f1d; read_record(file, f1d); for(int i=0; i<nca; ++i) grid.flag1[grid.ncoarse+(s-1)*ngridmax + igs[i]-1] = f1d[i]; }
         }
     }
     return true;
 }
 
 bool RamsesReader::load_hydro(AmrGrid& grid) {
-    if (!file_.is_open()) return false;
-    
-    int ncpu = read_single<int>();
-    int nvar_file = read_single<int>();
-    int ndim = read_single<int>();
-    int nlevelmax = read_single<int>();
-    int nboundary = read_single<int>();
-    real_t gamma = read_single<real_t>();
-
-    for (int il = 1; il <= nlevelmax; ++il) {
-        for (int ib = 1; ib <= nboundary + ncpu; ++ib) {
-            int ilevel = read_single<int>();
-            int ncache = read_single<int>();
-            if (ncache > 0) {
-                std::vector<int> active_grids;
-                if (ib <= ncpu) {
-                    int curr = grid.headl(ib, il);
-                    while (curr > 0) { active_grids.push_back(curr); curr = grid.next[curr-1]; }
-                }
-                int n_to_read = 1 + ndim; // density + velocities
-                // We don't know nener, so we'll try to read as many as possible
-                // for (int is = 1; is <= (1<<ndim); ++is) {
-                //     for (int iv = 1; iv <= nvar_file; ++iv) { ... }
-                // }
-                // Standard RAMSES backup_hydro writes: 1 + ndim + nener + 1 + npscal
-                
-                for (int is = 1; is <= (1<<ndim); ++is) {
-                    int iv_in = 1;
-                    // 1. Density
-                    std::vector<double> data; read_record(data);
-                    for(int i=0; i<ncache; ++i) grid.uold(grid.ncoarse + (is-1)*grid.ngridmax + active_grids[i], 1) = data[i];
-                    iv_in++;
-
-                    // 2. Velocities
-                    for(int d=1; d<=ndim; ++d) {
-                        read_record(data);
-                        for(int i=0; i<ncache; ++i) grid.uold(grid.ncoarse + (is-1)*grid.ngridmax + active_grids[i], 1+d) = data[i];
-                        iv_in++;
-                    }
-
-                    // 3. Pressure (we store at 5)
-                    read_record(data);
-                    for(int i=0; i<ncache; ++i) grid.uold(grid.ncoarse + (is-1)*grid.ngridmax + active_grids[i], 5) = data[i];
-                    iv_in++;
-
-                    // Skip remaining records for this cell
-                    for(; iv_in <= nvar_file; ++iv_in) skip_record();
-                }
+    std::ifstream file(filename_, std::ios::binary);
+    if (!file.is_open()) return false;
+    int32_t ncpu, nvar, ndim, nlevelmax, nboundary; double gamma;
+    int32_t s; file.read((char*)&s, 4); file.read((char*)&ncpu, 4); file.read((char*)&nvar, 4); file.read((char*)&ndim, 4); file.read((char*)&nlevelmax, 4); file.read((char*)&nboundary, 4); file.read((char*)&gamma, 8); file.read((char*)&s, 4);
+    for(int il=1; il<=nlevelmax; ++il) for(int ic=1; ic<=ncpu + nboundary; ++ic) {
+        int ilevel2, nca; read_record(file, ilevel2); read_record(file, nca);
+        if (nca > 0) {
+            std::vector<int> igs(nca); int head = grid.headl(ic, il); for(int i=0; i<nca; ++i) { igs[i] = head; head = grid.next[head-1]; }
+            for(int ind=1; ind<=constants::twotondim; ++ind) {
+                int iskip = grid.ncoarse + (ind-1)*grid.ngridmax;
+                for(int iv=1; iv<=nvar; ++iv) { std::vector<double> buf; read_record(file, buf); if(iv<=grid.nvar) for(int i=0; i<nca; ++i) grid.uold(igs[i]+iskip, iv) = buf[i]; }
             }
         }
     }
     return true;
 }
 
-} // namespace ramses
+template <typename T> void RamsesReader::read_record(std::ifstream& f, T& d) { int32_t s; f.read((char*)&s, 4); f.read((char*)&d, sizeof(T)); f.read((char*)&s, 4); }
+template <typename T> void RamsesReader::read_record(std::ifstream& f, std::vector<T>& d) { int32_t s; f.read((char*)&s, 4); d.resize(s/sizeof(T)); if(s>0) f.read((char*)d.data(), s); f.read((char*)&s, 4); }
+void RamsesReader::read_record_raw(std::ifstream& f, void* d, size_t s_max) { int32_t s; f.read((char*)&s, 4); size_t r = std::min((size_t)s, s_max); if(r>0) f.read((char*)d, r); if((size_t)s > s_max) f.seekg(s - s_max, std::ios::cur); f.read((char*)&s, 4); }
+void RamsesReader::read_record(std::ifstream& f, void* d, size_t s) { read_record_raw(f, d, s); }
+}

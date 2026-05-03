@@ -1,188 +1,128 @@
 #include "ramses/Initializer.hpp"
-#include "ramses/Parameters.hpp"
+#include "ramses/AmrGrid.hpp"
+#include "ramses/Constants.hpp"
 #include <iostream>
-#include <cmath>
+#include <vector>
 #include <algorithm>
+#include <cmath>
 #include <sstream>
 
 namespace ramses {
 
 void Initializer::apply_all() {
-    std::string condinit_kind = config_.get("init_params", "condinit_kind", "");
-    std::cout << "[Initializer] condinit_kind=\"" << condinit_kind << "\"" << std::endl;
-    if (condinit_kind == "ana_disk_potential" || condinit_kind == "'ana_disk_potential'") {
-        ana_disk_potential_condinit();
-    } else if (condinit_kind == "orzag_tang" || condinit_kind == "'orzag_tang'") {
-        orzag_tang_condinit();
-    } else {
-        region_condinit();
+    for (int il = 1; il <= grid_.nlevelmax; ++il) {
+        region_condinit(il);
     }
 }
 
-void Initializer::orzag_tang_condinit() {
-    real_t gamma = config_.get_double("hydro_params", "gamma", 1.6666667);
-    real_t pi = std::acos(-1.0);
-    real_t B0 = 1.0 / std::sqrt(4.0 * pi);
+void Initializer::region_condinit(int ilevel) {
+    int nreg = config_.get_int("init_params", "nregion", 0);
+    if (nreg == 0) return;
 
-    for (int i = 1; i <= grid_.ncell; ++i) {
-        real_t x_cell[3];
-        grid_.get_cell_center(i, x_cell);
-        
-        int ilevel = 1;
-        if (i > grid_.ncoarse) {
-            int igrid = (i - grid_.ncoarse - 1) % grid_.ngridmax + 1;
-            int ifather = grid_.father[igrid - 1];
-            ilevel = 2;
-            while (ifather > grid_.ncoarse) {
-                ilevel++;
-                int igrid_father = (ifather - grid_.ncoarse - 1) % grid_.ngridmax + 1;
-                ifather = grid_.father[igrid_father - 1];
-            }
-        }
-        real_t dx = 1.0 / static_cast<real_t>(1 << (ilevel - 1));
-
-        real_t xc = x_cell[0], yc = x_cell[1];
-        real_t xl = xc - 0.5 * dx, xr = xc + 0.5 * dx;
-        real_t yl = yc - 0.5 * dx, yr = yc + 0.5 * dx;
-
-        real_t d = 25.0 / (36.0 * pi);
-        real_t u = -std::sin(2.0 * pi * yc);
-        real_t v = std::sin(2.0 * pi * xc);
-        real_t w = 0.0;
-        real_t p = 5.0 / (12.0 * pi);
-
-        auto get_Ar = [&](real_t xx, real_t yy) {
-            return B0 * (std::cos(4.0 * pi * xx) / (4.0 * pi) + std::cos(2.0 * pi * yy) / (2.0 * pi));
-        };
-
-        real_t Bx_l = (get_Ar(xl, yr) - get_Ar(xl, yl)) / dx;
-        real_t Bx_r = (get_Ar(xr, yr) - get_Ar(xr, yl)) / dx;
-        real_t By_l = (get_Ar(xl, yl) - get_Ar(xr, yl)) / dx;
-        real_t By_r = (get_Ar(xl, yr) - get_Ar(xr, yr)) / dx;
-
-        grid_.uold(i, 1) = d;
-        grid_.uold(i, 2) = d * u;
-        grid_.uold(i, 3) = d * v;
-        grid_.uold(i, 4) = d * w;
-        
-        real_t Bx_avg = 0.5 * (Bx_l + Bx_r);
-        real_t By_avg = 0.5 * (By_l + By_r);
-        real_t Bz_avg = 0.0;
-
-        real_t e_kin = 0.5 * d * (u*u + v*v + w*w);
-        real_t e_mag = 0.5 * (Bx_avg*Bx_avg + By_avg*By_avg + Bz_avg*Bz_avg);
-        grid_.uold(i, 5) = p / (gamma - 1.0) + e_kin + e_mag;
-
-#ifdef MHD
-        grid_.uold(i, 6) = Bx_l;
-        grid_.uold(i, 7) = By_l;
-        grid_.uold(i, 8) = 0.0;
-        grid_.uold(i, grid_.nvar - 2) = Bx_r;
-        grid_.uold(i, grid_.nvar - 1) = By_r;
-        grid_.uold(i, grid_.nvar) = 0.0;
-#endif
-        grid_.cpu_map[i] = 1;
-    }
-    std::cout << "[Initializer] Applied Orszag-Tang ICs." << std::endl;
-}
-
-void Initializer::ana_disk_potential_condinit() {
-    region_condinit();
-    std::string param_str = config_.get("poisson_params", "gravity_params", "");
-    real_t a1 = 1.42e-3, a2 = 5.49e-4, z0 = 0.18e3;
-    if (!param_str.empty()) {
-        std::replace(param_str.begin(), param_str.end(), 'd', 'e');
-        std::replace(param_str.begin(), param_str.end(), 'D', 'e');
-        std::replace(param_str.begin(), param_str.end(), ',', ' ');
-        std::stringstream ss(param_str); ss >> a1 >> a2 >> z0;
-    }
-    real_t sl = config_.get_double("units_params", "units_length", 1.0), st = config_.get_double("units_params", "units_time", 1.0), sv = sl / st;
-    real_t kpc2cm = 3.085677581282e21, pc2cm = 3.085677581282e18, Myr2sec = 3.15576e13;
-    a1 = a1 * kpc2cm / (Myr2sec * Myr2sec) / sl * (st * st); a2 = a2 / (Myr2sec * Myr2sec) * (st * st); z0 = z0 * pc2cm / sl;
-    real_t t0 = 8000.0, mu = config_.get_double("cooling_params", "mu_gas", 1.4), gam = config_.get_double("hydro_params", "gamma", 1.4);
-    real_t kB = 1.3806490e-16, mH = 1.6605390e-24, cs2 = (kB * t0 / (mu * mH)) / (sv * sv);
-    real_t a1r = a1 / (4.0 * M_PI * cs2) * z0 * z0, a2r = a2 / (2.0 * M_PI * cs2);
-
-    for (int ic = 1; ic <= grid_.ncpu; ++ic) {
-        for (int il = 1; il <= grid_.nlevelmax; ++il) {
-            int ig = grid_.headl(ic, il);
-            while (ig > 0) {
-                for (int c = 1; ic <= constants::twotondim; ++c) {
-                    int id = grid_.ncoarse + (c - 1) * grid_.ngridmax + ig;
-                    real_t x_cell[3]; grid_.get_cell_center(id, x_cell);
-                    real_t x = x_cell[NDIM-1]; // Use last dimension for vertical
-                    real_t z = (x - 0.5) * params::boxlen;
-                    real_t rho = a1r / std::pow(1.0 + std::pow(z / z0, 2), 1.5) + a2r;
-                    grid_.uold(id, 1) = rho;
-                    for (int d = 1; d <= NDIM; ++d) grid_.uold(id, 1 + d) = 0.0;
-                    grid_.uold(id, 5) = (rho * cs2) / (gam - 1.0);
-                }
-                ig = grid_.next[ig - 1];
-            }
-        }
-    }
-}
-
-void Initializer::region_condinit() {
-    int nreg = config_.get_int("init_params", "nregion", 1);
-    real_t gam = config_.get_double("hydro_params", "gamma", 1.4);
-    int nener = config_.get_int("hydro_params", "nener", 0);
+    real_t gam = grid_.gamma;
     
-    auto parse = [&](const std::string& k) {
-        std::vector<real_t> v; std::string s = config_.get("init_params", k, "");
-        if (s.empty()) return v;
-        std::replace(s.begin(), s.end(), 'd', 'e'); std::replace(s.begin(), s.end(), 'D', 'e'); std::replace(s.begin(), s.end(), ',', ' ');
-        std::stringstream ss(s); real_t val; while (ss >> val) v.push_back(val); return v;
+    std::vector<std::string> reg_type(nreg);
+    std::vector<double> x_c(nreg, 0.5), y_c(nreg, 0.5), z_c(nreg, 0.5);
+    std::vector<double> lx(nreg, 1.0), ly(nreg, 1.0), lz(nreg, 1.0);
+    std::vector<double> dr(nreg, 1.0), ur(nreg, 0.0), vr(nreg, 0.0), wr(nreg, 0.0), pr(nreg, 1.0);
+
+    auto get_list = [&](const std::string& block, const std::string& key) -> std::vector<std::string> {
+        std::string val = config_.get(block, key, "");
+        std::vector<std::string> res;
+        std::stringstream ss(val);
+        std::string item;
+        while (std::getline(ss, item, ',')) {
+            res.push_back(config_.trim(item));
+        }
+        return res;
     };
 
-    auto drs = parse("d_region"), prs = parse("p_region"), urs = parse("u_region"), vrs = parse("v_region"), wrs = parse("w_region");
-    auto Ars = parse("A_region"), Brs = parse("B_region"), Crs = parse("C_region"), xcs = parse("x_center"), lxs = parse("length_x");
-    auto ycs = parse("y_center"), lys = parse("length_y"), zcs = parse("z_center"), lzs = parse("length_z");
+    auto dr_list = get_list("init_params", "d_region");
+    auto ur_list = get_list("init_params", "u_region");
+    auto vr_list = get_list("init_params", "v_region");
+    auto wr_list = get_list("init_params", "w_region");
+    auto pr_list = get_list("init_params", "p_region");
+    auto xc_list = get_list("init_params", "x_center");
+    auto lx_list = get_list("init_params", "length_x");
 
-    if (nener == 0) {
-        for (int k = 1; k <= 10; ++k) if (!config_.get("init_params", "prad_region(" + std::to_string(k) + ",1)", "").empty()) nener = std::max(nener, k);
+    auto reg_type_list = get_list("init_params", "region_type");
+
+    for(int i=1; i<=nreg; ++i) {
+        reg_type[i-1] = (i <= (int)reg_type_list.size()) ? reg_type_list[i-1] : "square";
+        if (i <= (int)dr_list.size()) dr[i-1] = std::stod(dr_list[i-1]);
+        if (i <= (int)ur_list.size()) ur[i-1] = std::stod(ur_list[i-1]);
+        if (i <= (int)vr_list.size()) vr[i-1] = std::stod(vr_list[i-1]);
+        if (i <= (int)wr_list.size()) wr[i-1] = std::stod(wr_list[i-1]);
+        if (i <= (int)pr_list.size()) pr[i-1] = std::stod(pr_list[i-1]);
+        if (i <= (int)xc_list.size()) x_c[i-1] = std::stod(xc_list[i-1]);
+        if (i <= (int)lx_list.size()) lx[i-1] = std::stod(lx_list[i-1]);
     }
-    std::vector<std::vector<real_t>> prads(nreg, std::vector<real_t>(nener, 0.0));
-    for (int r = 0; r < nreg; ++r) for (int e = 0; e < nener; ++e) {
-        prads[r][e] = config_.get_double("init_params", "prad_region(" + std::to_string(e + 1) + "," + std::to_string(r + 1) + ")", 0.0);
-    }
 
-    real_t db = !drs.empty() ? drs[0] : 1.0, pb = !prs.empty() ? prs[0] : 1e-5, ub = !urs.empty() ? urs[0] : 0.0, vb = !vrs.empty() ? vrs[0] : 0.0, wb = !wrs.empty() ? wrs[0] : 0.0;
-    real_t Ab = !Ars.empty() ? Ars[0] : 0.0, Bb = !Brs.empty() ? Brs[0] : 0.0, Cb = !Crs.empty() ? Crs[0] : 0.0;
 
-    for (int i = 1; i <= grid_.ncell; ++i) {
-        real_t x_cell[3]; grid_.get_cell_center(i, x_cell);
-        real_t xp = x_cell[0] * params::boxlen, yp = x_cell[1] * params::boxlen, zp = x_cell[2] * params::boxlen;
-        int rm = 0;
-        for (int r = 1; r < nreg; ++r) {
-            real_t xc = (r < (int)xcs.size()) ? xcs[r] : 0.0, lx = (r < (int)lxs.size()) ? lxs[r] : 1e10;
-            real_t yc = (r < (int)ycs.size()) ? ycs[r] : 0.0, ly = (r < (int)lys.size()) ? lys[r] : 1e10;
-            real_t zc = (r < (int)zcs.size()) ? zcs[r] : 0.0, lz = (r < (int)lzs.size()) ? lzs[r] : 1e10;
-            
-            bool match = (std::abs(xp - xc) <= 0.5 * lx);
-            if (NDIM > 1) match = match && (std::abs(yp - yc) <= 0.5 * ly);
-            if (NDIM > 2) match = match && (std::abs(zp - zc) <= 0.5 * lz);
-            
-            if (match) rm = r;
+
+
+    auto apply_to_cell = [&](int idc, real_t x, real_t y, real_t z) {
+        for (int ir = 0; ir < nreg; ++ir) {
+            bool match = false;
+            if (reg_type[ir] == "square") {
+                bool xm = std::abs(x - x_c[ir]) <= 0.5 * lx[ir] + 1e-10;
+                bool ym = (NDIM < 2) || (std::abs(y - y_c[ir]) <= 0.5 * ly[ir] + 1e-10);
+                bool zm = (NDIM < 3) || (std::abs(z - z_c[ir]) <= 0.5 * lz[ir] + 1e-10);
+                if (xm && ym && zm) match = true;
+            }
+            if (match) {
+                grid_.uold(idc, 1) = dr[ir];
+                grid_.uold(idc, 2) = dr[ir] * ur[ir];
+                grid_.uold(idc, 3) = dr[ir] * vr[ir];
+                grid_.uold(idc, 4) = dr[ir] * wr[ir];
+                real_t e_kin = 0.5 * dr[ir] * (ur[ir]*ur[ir] + vr[ir]*vr[ir] + wr[ir]*wr[ir]);
+                real_t e_int = pr[ir] / (gam - 1.0);
+                grid_.uold(idc, 5) = e_kin + e_int;
+#ifdef RAMSES_NENER
+                int nener = RAMSES_NENER;
+#else
+                int nener = config_.get_int("hydro_params", "nener", 0);
+#endif
+                for(int ie=1; ie<=nener; ++ie) {
+                    std::stringstream ss; ss << "prad_region(" << ie << "," << ir+1 << ")";
+                    real_t p_rad = config_.get_double("init_params", ss.str(), 0.0);
+                    if (p_rad > 0) {
+                        real_t e_rad = p_rad / (gam - 1.0);
+                        grid_.uold(idc, 5 + ie) = e_rad;
+                        grid_.uold(idc, 5) += e_rad;
+                    }
+                }
+            }
         }
+    };
 
-        real_t d = (rm < (int)drs.size()) ? drs[rm] : db, p = (rm < (int)prs.size()) ? prs[rm] : pb, u = (rm < (int)urs.size()) ? urs[rm] : ub, v = (rm < (int)vrs.size()) ? vrs[rm] : vb, w = (rm < (int)wrs.size()) ? wrs[rm] : wb;
-        real_t A = (rm < (int)Ars.size()) ? Ars[rm] : Ab, B = (rm < (int)Brs.size()) ? Brs[rm] : Bb, C = (rm < (int)Crs.size()) ? Crs[rm] : Cb;
-
-        grid_.uold(i, 1) = d; grid_.uold(i, 2) = d * u; grid_.uold(i, 3) = d * v; grid_.uold(i, 4) = d * w;
-        grid_.uold(i, 5) = p / (gam - 1.0) + 0.5 * d * (u*u + v*v + w*w) + 0.5 * (A*A + B*B + C*C);
-
-        int iv = 6;
-#ifdef MHD
-        grid_.uold(i, iv++) = A; grid_.uold(i, iv++) = B; grid_.uold(i, iv++) = C;
-#endif
-        for (int e = 0; e < nener; ++e) grid_.uold(i, iv++) = prads[rm][e];
-#ifdef MHD
-        grid_.uold(i, grid_.nvar - 2) = A; grid_.uold(i, grid_.nvar - 1) = B; grid_.uold(i, grid_.nvar) = C;
-#endif
-        grid_.cpu_map[i] = 1;
+    if (ilevel == 1) {
+        for (int i = 1; i <= grid_.ncoarse; ++i) {
+            int idx = i - 1;
+            int iz = idx / (grid_.nx * grid_.ny); idx %= (grid_.nx * grid_.ny);
+            int iy = idx / grid_.nx;
+            int ix = idx % grid_.nx;
+            real_t dx_coarse = grid_.boxlen / std::max({grid_.nx, grid_.ny, grid_.nz});
+            real_t x = (ix + 0.5) * dx_coarse, y = (iy + 0.5) * dx_coarse, z = (iz + 0.5) * dx_coarse;
+            apply_to_cell(i, x, y, z);
+        }
+    } else {
+        int myid = 1;
+        int igrid = grid_.get_headl(myid, ilevel);
+        while (igrid > 0) {
+            for (int ic = 1; ic <= constants::twotondim; ++ic) {
+                int idc = grid_.ncoarse + (ic - 1) * grid_.ngridmax + igrid;
+                real_t dx = grid_.boxlen / (real_t)(grid_.nx * (1 << (ilevel - 1)));
+                int ix = (ic - 1) & 1, iy = ((ic - 1) & 2) >> 1, iz = ((ic - 1) & 4) >> 2;
+                int ixyz[3] = {ix, iy, iz};
+                real_t x = grid_.xg[0 * grid_.ngridmax + (igrid - 1)] + (ixyz[0] - 0.5) * dx;
+                real_t y = (NDIM < 2) ? 0.5 : (grid_.xg[1 * grid_.ngridmax + (igrid - 1)] + (ixyz[1] - 0.5) * dx);
+                real_t z = (NDIM < 3) ? 0.5 : (grid_.xg[2 * grid_.ngridmax + (igrid - 1)] + (ixyz[2] - 0.5) * dx);
+                apply_to_cell(idc, x, y, z);
+            }
+            igrid = grid_.next[igrid - 1];
+        }
     }
-    std::cout << "[Initializer] Applied ICs (nvar=" << grid_.nvar << ")." << std::endl;
 }
 
 } // namespace ramses

@@ -4,7 +4,6 @@
 #include <algorithm>
 #include <iostream>
 #include <set>
-#include <string>
 
 namespace ramses {
 
@@ -68,16 +67,13 @@ std::string Config::get(const std::string& block, const std::string& key, const 
         if (k_it != b_it->second.end()) return k_it->second;
     }
     
-    std::string full_key = block + ":" + key;
-    if (warned_keys.find(full_key) == warned_keys.end()) {
-        std::cerr << "[Config] Warning: Key " << key << " not found in block " << block << ". Using default: " << default_val << std::endl;
-        warned_keys.insert(full_key);
-    }
+    // Key not found, return default_val
     return default_val;
 }
 
 int Config::get_int(const std::string& block, const std::string& key, int default_val) const {
-    std::string val = get(block, key);
+    std::string val = get(block, key, "NOT_FOUND");
+    if (val == "NOT_FOUND") return default_val;
     if (val.empty()) return default_val;
     size_t star_pos = val.find('*');
     if (star_pos != std::string::npos) val = val.substr(star_pos + 1);
@@ -85,7 +81,8 @@ int Config::get_int(const std::string& block, const std::string& key, int defaul
 }
 
 double Config::get_double(const std::string& block, const std::string& key, double default_val) const {
-    std::string val = get(block, key);
+    std::string val = get(block, key, "NOT_FOUND");
+    if (val == "NOT_FOUND") return default_val;
     if (val.empty()) return default_val;
     std::replace(val.begin(), val.end(), 'd', 'e');
     std::replace(val.begin(), val.end(), 'D', 'e');
@@ -93,10 +90,10 @@ double Config::get_double(const std::string& block, const std::string& key, doub
 }
 
 bool Config::get_bool(const std::string& block, const std::string& key, bool default_val) const {
-    std::string val = to_lower(get(block, key));
-    if (val.empty()) return default_val;
-    if (val == ".true." || val == "t" || val == "true" || val == "1") return true;
-    return false;
+    std::string val = to_lower(get(block, key, default_val ? "true" : "false"));
+    if (val == "true" || val == ".true." || val == "t" || val == "1") return true;
+    if (val == "false" || val == ".false." || val == "f" || val == "0") return false;
+    return default_val;
 }
 
 std::vector<std::string> Config::get_string_array(const std::string& block, const std::string& key) const {

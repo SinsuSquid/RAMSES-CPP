@@ -3,7 +3,7 @@ layout: default
 title: Home
 ---
 
-<img src="https://github.com/SinsuSquid/RAMSES-CPP/blob/main/logo/Sia-chan_logo.png?raw=true" style="width: 300px; height: auto; float: right; margin-left: 20px;">
+<img src="https://github.com/SinsuSquid/RAMSES-CPP/blob/main/logo/Sia-chan.png?raw=true" style="width: 300px; height: auto; float: right; margin-left: 20px;">
 
 # RAMSES-CPP Documentation
 
@@ -13,21 +13,20 @@ Welcome to the documentation for **RAMSES-CPP**, a high-performance, modern C++1
 
 RAMSES-CPP aims to provide a functional and physically consistent alternative to the original Fortran implementation of RAMSES, while maintaining strict bit-perfect parity in data structures and I/O. By porting to C++, we open the door to modern software engineering practices, easier integration with C/C++ libraries, and potentially improved performance and maintainability.
 
-## 🚀 Current Status: Production-Ready Core
+## 🚀 Current Status: Stable Hydro Core
 
-The project has reached a production-ready milestone for its core hydrodynamics and gravity solvers. It is capable of executing full 3D simulations (e.g., Sedov Blast) with recursive sub-cycling and high-fidelity physics.
+The project has achieved a major milestone in its core Adaptive Mesh Refinement (AMR) system. After a comprehensive restoration phase, the engine now supports full recursive refinement up to `levelmax=10` with correct grid connectivity. The 1D and 3D Hydro solvers are fully functional and maintain bit-perfect parity with legacy RAMSES-2025 results.
 
 ### Key Features
-- **Core AMR Engine:** Bit-perfect port of the linked-list octree structure.
-- **3D Unsplit Godunov Solver:** Full directional flux integration with strict conservation.
-- **Advanced Hydrodynamics:** HLLC and LLF Riemann solvers with MUSCL-Hancock 2nd-order reconstruction and TVD slope limiters (MinMod, MonCen).
-- **Magnetohydrodynamics (MHD):** Ported HLLD and LLF Riemann solvers with Flux-CT for $\nabla \cdot B = 0$ maintenance.
-- **Radiative Transfer (RT):** M1 closure scheme with HLL advection and photo-ionization coupling.
-- **Gas Chemistry:** Semi-implicit iterative solver for Hydrogen/Helium ionization and heating.
+- **Restored AMR Engine:** $O(1)$ constant-time neighbor lookups using a pointer-based `nbor` system, enabling seamless refinement across grid boundaries.
+- **Advanced Initializer:** Fully supports complex namelist lists and multi-region setups with coordinate-accurate grid placement.
+- **High-Order Hydro:** MUSCL-Hancock 2nd-order reconstruction with HLLC, HLL, and LLF Riemann solvers.
+- **Level-Wide Caching:** Performance-optimized MUSCL implementation that caches interface states, reducing redundant computations.
+- **Magnetohydrodynamics (MHD):** Ported HLLD/CT solver (currently undergoing synchronization with the new `AmrGrid` API).
+- **Radiative Transfer (RT):** M1 closure scheme with photo-ionization coupling (currently undergoing synchronization).
 - **Self-Gravity:** Multigrid Poisson solver with iterative Gauss-Seidel smoothing.
-- **N-Body Dynamics:** Full Particle-Mesh (CIC) mass assignment and advection logic.
-- **MPI Parallelization:** Domain decomposition using Hilbert curve repartitioning.
-- **Legacy Ecosystem Parity:** 100% compatible with existing Fortran Namelists (`.nml`), test suites, and visualization tools (`visu_ramses.py`).
+- **MPI Parallelization:** Hilbert Space-Filling Curve domain decomposition (active development for full multi-process parity).
+- **Legacy Ecosystem Parity:** 100% compatible with existing Fortran Namelists (`.nml`) and visualization tools (`visu_ramses.py`).
 
 ## Contents
 

@@ -16,12 +16,12 @@ The `Simulation` class is the central driver. It manages the global time-steppin
     - Managing recursive level-stepping.
 
 ### 2. `AmrGrid` (The Data Structure)
-`AmrGrid` encapsulates the linked-list octree structure. In RAMSES-CPP, this is implemented as a collection of `Oct` and `Grid` structures, mimicking the Fortran memory layout but with C++ container management where appropriate.
+`AmrGrid` encapsulates the linked-list octree structure. In RAMSES-CPP, this is implemented as a collection of vectors (e.g., `son`, `father`, `nbor`), mimicking the Fortran memory layout but with C++ container management.
 - **Level Indexing:** The grid uses **0-based level indexing** (Level 0 = Coarse Grid), ensuring consistency across all solvers.
 - **Path:** `src/AmrGrid.cpp`, `include/ramses/AmrGrid.hpp`
 - **Key Responsibilities:**
     - Storing cell and grid data.
-    - Neighbor lookups and tree traversal.
+    - **Neighbor Connectivity:** Maintains a dedicated `nbor` array that stores pre-calculated neighbor pointers for every grid, enabling constant-time ($O(1)$) traversal.
     - Handling periodic and physical boundaries.
 
 ### 3. `TreeUpdater` (Grid Evolution)
@@ -69,16 +69,27 @@ Implements Radiative Transfer using the M1 closure scheme.
 - **`MpiManager`**: A singleton that handles MPI initialization and provides wrappers for common collective operations.
 - **`LoadBalancer`**: Implements domain decomposition using the Hilbert Space-Filling Curve. It ensures spatial locality and provides full physical state migration (including Hydro/MHD variables) between MPI ranks.
 
+## Performance and Optimizations
+
+RAMSES-CPP incorporates several key optimizations to ensure high-performance execution:
+
+1. **O(1) Grid Connectivity:** RAMSES-CPP utilizes a dedicated `nbor` array within `AmrGrid` to store direct neighbor pointers (indices) for every grid. This mirrors the legacy pointer logic, ensuring that finding a neighbor cell across grid boundaries is a constant-time operation ($O(1)$), which is essential for efficient gradient calculation and AMR refinement.
+2. **Advanced Initializer:** The `Initializer` features a robust namelist parser capable of handling comma-separated lists and multi-dimensional array inputs (e.g., `d_region`, `prad_region`). It performs coordinate-accurate placement of child grids during the initial refinement phase, ensuring no mesh overlaps.
+3. **Level-Wide State Caching:** During the MUSCL reconstruction phase, interface states (`qm`, `qp`) are cached across entire AMR levels. This eliminates redundant slope calculations for shared cell interfaces, significantly improving high-order simulation performance.
+
 ## Data Flow
 
-1. **Initialization:** `Simulation` reads parameters and calls `Initializer` to set up the initial conditions on the `AmrGrid`.
+1. **Initialization:** `Simulation` reads parameters and calls `Initializer` to set up the initial conditions on the `AmrGrid`. It performs an iterative refinement pass up to `levelmax` based on initial gradients.
 2. **Main Loop:** 
-    - `Simulation` determines the time step `dt`.
-    - Physics solvers (`HydroSolver`/`MhdSolver`) update the cell states.
-    - `TreeUpdater` checks for refinement criteria and updates the grid structure.
-    - `PoissonSolver` (if enabled) computes the gravitational potential.
-    - `RamsesWriter` periodically saves the state to disk.
-3. **Sub-cycling:** The code recursively steps through AMR levels, ensuring that finer levels are updated more frequently with smaller time steps.
+    - `Simulation` determines the global Courant time step `dt` by scanning across all active leaf cells.
+    - `Simulation::amr_step` is called recursively starting from `levelmin`.
+    - `RamsesWriter` periodically saves the state to disk, producing bit-perfect binary snapshots.
+3. **Recursive AMR Step (`amr_step`):**
+    - **Refinement:** At the beginning of the step, `TreeUpdater` generates new fine grids for the current level and its children.
+    - **Recursive Sub-cycling:** The code recursively steps into finer levels, applying the `nsubcycle` factor.
+    - **Physics Update:** Physics solvers (`HydroSolver`/`MhdSolver`) update the cell states using MUSCL-Hancock reconstruction and Riemann solvers.
+    - **Restriction:** States are restricted from fine cells to their father cells to maintain conservation.
+    - **Flagging:** At the end of the step, `TreeUpdater` marks cells for refinement based on relative gradients for the *next* time step.
 
 ## I/O Parity
 

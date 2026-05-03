@@ -11,11 +11,34 @@ void RiemannSolver::solve_llf(const real_t ql[], const real_t qr[], real_t flux[
     real_t ul[5], ur[5];
     prim_to_cons(ql, ul, gamma);
     prim_to_cons(qr, ur, gamma);
-    real_t al = std::sqrt(gamma * ql[4] / ql[0]);
-    real_t ar = std::sqrt(gamma * qr[4] / qr[0]);
+    real_t al = std::sqrt(gamma * ql[4] / std::max(ql[0], 1e-10));
+    real_t ar = std::sqrt(gamma * qr[4] / std::max(qr[0], 1e-10));
     real_t a_max = std::max(std::abs(ql[1]) + al, std::abs(qr[1]) + ar);
     for (int i = 0; i < 5; ++i) {
         flux[i] = 0.5 * (fl[i] + fr[i]) - 0.5 * a_max * (ur[i] - ul[i]);
+    }
+}
+
+void RiemannSolver::solve_hll(const real_t ql[], const real_t qr[], real_t flux[], real_t gamma) {
+    real_t fl[5], fr[5];
+    compute_flux(ql, fl, gamma);
+    compute_flux(qr, fr, gamma);
+    real_t ul_vec[5], ur_vec[5];
+    prim_to_cons(ql, ul_vec, gamma);
+    prim_to_cons(qr, ur_vec, gamma);
+    
+    real_t al = std::sqrt(gamma * std::max(ql[4], 0.0) / std::max(ql[0], 1e-10));
+    real_t ar = std::sqrt(gamma * std::max(qr[4], 0.0) / std::max(qr[0], 1e-10));
+    
+    real_t sl = std::min(0.0, std::min(ql[1] - al, qr[1] - ar));
+    real_t sr = std::max(0.0, std::max(ql[1] + al, qr[1] + ar));
+    
+    if (sr - sl < 1e-20) {
+        for (int i = 0; i < 5; ++i) flux[i] = 0.5 * (fl[i] + fr[i]);
+    } else {
+        for (int i = 0; i < 5; ++i) {
+            flux[i] = (sr * fl[i] - sl * fr[i] + sr * sl * (ur_vec[i] - ul_vec[i])) / (sr - sl);
+        }
     }
 }
 
@@ -35,9 +58,15 @@ void RiemannSolver::solve_hllc(const real_t ql[], const real_t qr[], real_t flux
     real_t cl = std::sqrt(gamma * pl / rl);
     real_t cr = std::sqrt(gamma * pr / rr);
 
-    // Wave speed estimates (Davis)
-    real_t sl = std::min(ul, ur) - std::max(cl, cr);
-    real_t sr = std::max(ul, ur) + std::max(cl, cr);
+    // Einfeldt wave speed estimates for robustness
+    real_t sl = std::min(ul - cl, ur - cr);
+    real_t sr = std::max(ul + cl, ur + cr);
+    
+    // Ensure the wave speeds are symmetric enough for zero velocity
+    if (std::abs(ul) < 1e-10 && std::abs(ur) < 1e-10) {
+        real_t cmax = std::max(cl, cr);
+        sl = -cmax; sr = cmax;
+    }
 
     if (sl > 0.0) {
         compute_flux(ql, flux, gamma);
@@ -51,7 +80,7 @@ void RiemannSolver::solve_hllc(const real_t ql[], const real_t qr[], real_t flux
         real_t pstar = (rcr * pl + rcl * pr + rcl * rcr * (ul - ur)) / (rcr + rcl);
 
         if (ustar > 0.0) {
-            real_t rstarl = rl * (sl - ul) / (sl - ustar);
+            real_t rstarl = rl * (sl - ul) / (std::min(sl - ustar, -1e-10));
             real_t qstarl[5] = {rstarl, ustar, ql[2], ql[3], pstar};
             real_t fl[5], ul_vec[5], ustarl_vec[5];
             compute_flux(ql, fl, gamma);
@@ -59,7 +88,7 @@ void RiemannSolver::solve_hllc(const real_t ql[], const real_t qr[], real_t flux
             prim_to_cons(qstarl, ustarl_vec, gamma);
             for (int i = 0; i < 5; ++i) flux[i] = fl[i] + sl * (ustarl_vec[i] - ul_vec[i]);
         } else {
-            real_t rstarr = rr * (sr - ur) / (sr - ustar);
+            real_t rstarr = rr * (sr - ur) / (std::max(sr - ustar, 1e-10));
             real_t qstarr[5] = {rstarr, ustar, qr[2], qr[3], pstar};
             real_t fr[5], ur_vec[5], ustarr_vec[5];
             compute_flux(qr, fr, gamma);

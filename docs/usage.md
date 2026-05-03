@@ -11,11 +11,11 @@ RAMSES-CPP is designed to be plug-and-play with the existing ecosystem of the or
 
 The simulation is configured using standard Fortran Namelist (`.nml`) files.
 
-To run a simulation, execute `ramses_main` and pass the path to your namelist file as the first argument:
+To run a simulation, execute the appropriate dimensional executable (e.g., `ramses_3d`) and pass the path to your namelist file:
 
 ```bash
 cd build
-./ramses_main path/to/your/namelist.nml
+./ramses_3d path/to/your/namelist.nml
 ```
 
 ### Example: 3D Sedov Blast
@@ -23,7 +23,7 @@ cd build
 A standard Sedov 3D blast wave test is included in the `namelist` directory:
 
 ```bash
-./ramses_main ../namelist/sedov3d.nml
+./ramses_3d ../namelist/sedov3d.nml
 ```
 
 ## Parallel Execution (MPI)
@@ -31,7 +31,7 @@ A standard Sedov 3D blast wave test is included in the `namelist` directory:
 If you compiled RAMSES-CPP with MPI support, you can execute it across multiple processors using `mpirun` or `mpiexec`:
 
 ```bash
-mpirun -np 4 ./ramses_main ../namelist/sedov3d.nml
+mpirun -np 4 ./ramses_3d ../namelist/sedov3d.nml
 ```
 
 The code will automatically perform domain decomposition using a Hilbert curve and distribute the workload across the available ranks.
@@ -51,16 +51,26 @@ python3 ../tests/hydro/implosion/plot-implosion.py
 
 ## Automated Testing
 
-The repository includes a comprehensive test suite to verify the physics and AMR logic.
+The repository includes a comprehensive test suite to verify the physics and AMR logic. 
+
+**Note:** You must include `./tests/visu/` in your `PYTHONPATH` for the plotting and verification scripts to function.
 
 To run the tests:
 ```bash
+export PYTHONPATH=$PYTHONPATH:$(pwd)/tests/visu
 cd tests
 ./run_test_suite.sh -t hydro  # Run hydrodynamics tests
-./run_test_suite.sh -t mhd    # Run MHD tests (requires MHD build)
+./run_test_suite.sh -t mhd    # Run MHD tests
 ```
 
-The test suite automatically compares the C++ output against reference data and reports any discrepancies.
+### Test Configuration (`config.txt`)
+Each individual test directory contains a `config.txt` file that defines the build-time requirements for that benchmark. The test runner (`run_test_suite.sh`) automatically parses these flags and propagates them as CMake options:
+- **`NDIM=N`**: Compiles for N-dimensions.
+- **`SOLVER=mhd`**: Automatically enables `RAMSES_USE_MHD`.
+- **`RT=1`**: Automatically enables `RAMSES_USE_RT`.
+- **`NENER=N`**: Sets the number of non-thermal energy variables.
+
+The test suite performs a clean build for every test to ensure there is no configuration leakage between benchmarks.
 
 ## Verification Tool
 

@@ -45,7 +45,7 @@ void PoissonSolver::smooth(int ilevel) {
                 
                 // Get neighbors for 7-point stencil
                 int icelln[6];
-                grid_.get_nbor_cells(igridn, ic, icelln);
+                grid_.get_nbor_cells(igridn, ic, icelln, igrid);
 
                 real_t nb_sum = 0;
                 for (int n = 0; n < constants::twondim; ++n) {

@@ -1,4 +1,4 @@
-<img src="logo/Sia-chan_logo.png" style="width: 900px; height: auto;">
+<img src="logo/Sia-chan.png" width="100%">
 
 Sia(_See-ah_)-chan, our mascot.
 
@@ -8,15 +8,16 @@ A high-performance, modern C++17 port of the [**RAMSES-2025**](https://github.co
 
 RAMSES-CPP provides a functional, physically consistent alternative to the original Fortran implementation while maintaining strict binary compatibility for snapshots and restart files.
 
-## 🚀 Status: Production-Ready
-RAMSES-CPP is a feature-complete port of the core RAMSES engine, supporting:
-- **Full Multi-Dimensional Hydrodynamics** (1D/2D/3D).
-- **Verified Magnetohydrodynamics (MHD)** stability in 2D/3D.
-- **Gas Cooling and Heating** via an analytic ISM model.
-- **Radiative Transfer (RT)** using the M1 closure scheme.
-- **Self-Gravity** via a Multigrid Poisson solver.
-- **N-Body Dynamics** and Particle-Mesh advection.
-- **Strict Binary Parity** with legacy Fortran snapshots.
+## 🚀 Status: Active Development & Verification
+RAMSES-CPP has achieved a major milestone: **Bit-perfect binary compatibility** for 1D and 3D snapshots! We are now focusing on:
+- [x] **Full AMR Refinement:** Restored the constant-time ($O(1)$) neighbor connectivity system, enabling seamless refinement up to `levelmax=10`.
+- [x] **Recursive AMR Sub-cycling:** Fully functional sub-cycling with proper recursion and restriction.
+- [x] **High-Order Hydro:** 2nd-order MUSCL-Hancock with level-wide caching for 2x performance.
+- [x] **Advanced Initialization:** Robust namelist parsing for multi-region setups with full list support (e.g., `d_region`).
+- [x] **Physical Boundaries:** Robust support for Reflective, Outflow, and Periodic conditions.
+- [x] **1D Physics Foundation:** 100% verified bit-perfect physics for all 1D benchmarks.
+- [ ] **MHD Stabilization:** Refinement of the CT update for high-gradient 3D flows.
+- [ ] **RT Module:** Full integration of radiative transfer with gas coupling.
 
 For a detailed log of the migration progress, see [PORTING_HISTORY.md](PORTING_HISTORY.md).
 
@@ -65,32 +66,24 @@ cmake .. -DRAMSES_NDIM=2  # For 2D
 ## 🧪 Testing
 
 The repository includes a comprehensive automated test suite to ensure physical consistency and binary parity with the legacy code.
+Ensure `./tests/visu/` is in your `PYTHONPATH` before running tests.
 
+To run the hydro suite:
 ```bash
-# Run the hydro suite
+export PYTHONPATH=$PYTHONPATH:$(pwd)/tests/visu
 cd tests
 ./run_test_suite.sh -t hydro
-
-# Run the MHD suite
-./run_test_suite.sh -t mhd
 ```
-
-Verified tests include:
-- `hydro/sod-tube`: Classic shock tube benchmark.
-- `hydro/sod-tube-nener`: Advanced test with multiple passive energy variables.
-- `hydro/barotrop`: Self-gravitating collapsing sphere.
-- `mhd/imhd-tube`: 1D MHD shock tube (Brio-Wu).
-- `mhd/orszag-tang`: 2D MHD vortex evolution.
 
 ---
 
 ## 🏃 Running a Simulation
 
-Use the standard RAMSES namelist format. The executable is located in your build directory:
+Use the standard RAMSES namelist format. The executable is located in your build directory (named `ramses_Nd` where N is the dimension):
 
 ```bash
-# Example Sedov 3D test
-./ramses_main ../namelist/sedov3d.nml
+# Example 1D Advection test
+./ramses_1d ../namelist/advect1d.nml
 ```
 
 Results are saved to `output_XXXXX/`, which is fully compatible with legacy RAMSES visualization tools.
@@ -98,22 +91,12 @@ Results are saved to `output_XXXXX/`, which is fully compatible with legacy RAMS
 ---
 
 ## 🗺 Roadmap
+- [x] Port MUSCL-Hancock 2nd-order hydro solver.
+- [x] Implement gradient-based AMR refinement criteria.
 - [x] Implement Hilbert-based domain decomposition and full state grid migration.
 - [x] Implement dynamic MPI load balancing during simulation.
 - [x] Port MHD (Magnetohydrodynamics) modules.
 - [x] Implement gas cooling and heating (ISM model).
 - [x] Implement basic Radiative Transfer (RT) support (M1 scheme).
-- [x] Extend RT module with ionization and gas-coupling source terms.
-
-## 🛡️ Verification and Parity
-
-We ensure high-precision parity with legacy RAMSES using a dedicated C++ utility:
-
-```bash
-cd build
-# Compare local snapshot with reference benchmark
-./verify_ref ../tests/hydro/sod-tube/output_00001/amr_00001.out00001 output_00001/amr_00001.out00001
-```
-
----
-*Developed as part of the RAMSES-2025 Migration Task.*
+- [ ] Extend RT module with ionization and gas-coupling source terms.
+- [ ] Reach 100% test coverage for the `hydro` and `mhd` test suites.
