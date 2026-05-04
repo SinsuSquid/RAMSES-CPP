@@ -206,4 +206,18 @@ The RAMSES-2025 C++ port is now a **fully functional, production-ready, and test
 - **Refluxing (Conservation):** Implemented coarse-fine interface synchronization. Added Flux Correction for Hydro (mass/energy/momentum) and EMF Averaging for MHD to maintain $\nabla \cdot B = 0$ across refinement boundaries.
 - **High-Order Prolongation:** Upgraded grid refinement interpolation from simple injection to Monotonized Central (MC) slope-limited interpolation, ensuring physical consistency and sharp gradient capturing in newly created fine cells.
 - **Tooling Restoration:** Restored `tectonic` to the operational environment (`PATH`), enabling automated PDF generation for the test suite.
-- **Status:** Phase 2 (2D Expansion) core solver and IO are fully stabilized; Orszag-Tang benchmark produces high-resolution leaf counts (~40,000 cells) with perfect snapshot alignment and boundary conservation; transitioning to Phase 3 (Final Scalar & RT Verification).
+### [2026-05-04] - Phase 3: Passive Scalar Verification & IO Parity
+- **Passive Scalar Logic:** Corrected `HydroSolver::ctoprim` and `trace` to distinguish between non-thermal energy and passive mass fractions. Passive scalars are now correctly advected without affecting thermodynamics.
+- **Complex Initial Conditions:** Upgraded `Initializer::region_condinit` to support `var_region` (scalars) and `exp_region` (diamond/super-ellipsoid shapes), matching the legacy `init_flow_fine.f90` behavior.
+- **Robust IO Parity:** Completely refactored `RamsesWriter::write_amr` to match the exact record sequence and byte-grouping of legacy RAMSES. Fixed coordinate records and neighbor/son lists to be dimensionality-aware (e.g., writing 4 sons in 2D, 8 in 3D).
+- **Visualization Bridge:** Patched `visu_ramses.py` to handle binary headers in particle-free snapshots, preventing crash during diagnostic analysis.
+- **Test Success:** Successfully executed and plotted the `mixing-scalar` 2D benchmark, confirming correct initialization and transport of multiple passive variables.
+- **Status:** Phase 3 Part 1 (Scalar Verification) complete; transitioning to Part 2 (RT M1 Transport).
+
+## Phase 19: Radiation Hydrodynamics (RT) Core Implementation
+
+### [2026-05-04] - RT Solver Initialization
+- **Eigenvalue Loading:** Verified `RtSolver::initialize` correctly loads HLL eigenvalues from `hll_evals.list`.
+- **Infrastructure:** Prepared `rt_godfine1` for M1 transport logic implementation.
+- **Status:** Foundations for RT are solid; ready to implement the M1 closure scheme.
+

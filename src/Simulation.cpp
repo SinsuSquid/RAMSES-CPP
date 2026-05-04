@@ -33,9 +33,20 @@ void Simulation::initialize(const std::string& nml_path) {
     int ncpu = 1; 
     real_t gamma = config_.get_double("hydro_params", "gamma", 1.4);
     grid_.gamma = gamma;
-    int nvar = 5 + nener_;
+    
+    // Calculate nvar: 5 (hydro) + nener (non-thermal energy) + npassive
+    int npassive = 0;
+    std::string var_s = config_.get("init_params", "var_region", "");
+    if (!var_s.empty()) {
+        std::stringstream ss(var_s); std::string item;
+        while (std::getline(ss, item, ',')) npassive++;
+    }
+    int nreg = config_.get_int("init_params", "nregion", 1);
+    if (nreg > 0) npassive /= nreg;
+
+    int nvar = 5 + nener_ + npassive;
 #ifdef MHD
-    nvar = 11 + nener_;
+    nvar = 11 + nener_ + npassive;
 #endif
     grid_.allocate(p::nx, p::ny, p::nz, ngridmax, nvar, ncpu, levelmax);
     grid_.nvar = nvar;

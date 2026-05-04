@@ -72,6 +72,7 @@ void Initializer::region_condinit(int ilevel) {
     std::vector<double> x_c(nreg, 0.5), y_c(nreg, 0.5), z_c(nreg, 0.5);
     std::vector<double> lx(nreg, 1.0), ly(nreg, 1.0), lz(nreg, 1.0);
     std::vector<double> dr(nreg, 1.0), ur(nreg, 0.0), vr(nreg, 0.0), wr(nreg, 0.0), pr(nreg, 1.0);
+    std::vector<double> exp_reg(nreg, 10.0);
 
     auto get_list = [&](const std::string& block, const std::string& key) -> std::vector<std::string> {
         std::string val = config_.get(block, key, "");
@@ -92,6 +93,8 @@ void Initializer::region_condinit(int ilevel) {
     auto vr_list = get_list("init_params", "v_region");
     auto wr_list = get_list("init_params", "w_region");
     auto pr_list = get_list("init_params", "p_region");
+    auto var_list = get_list("init_params", "var_region");
+    auto exp_list = get_list("init_params", "exp_region");
     auto xc_list = get_list("init_params", "x_center");
     auto yc_list = get_list("init_params", "y_center");
     auto zc_list = get_list("init_params", "z_center");
@@ -108,6 +111,7 @@ void Initializer::region_condinit(int ilevel) {
         if (i <= (int)vr_list.size()) vr[i-1] = std::stod(vr_list[i-1]);
         if (i <= (int)wr_list.size()) wr[i-1] = std::stod(wr_list[i-1]);
         if (i <= (int)pr_list.size()) pr[i-1] = std::stod(pr_list[i-1]);
+        if (i <= (int)exp_list.size()) exp_reg[i-1] = std::stod(exp_list[i-1]);
         if (i <= (int)xc_list.size()) x_c[i-1] = std::stod(xc_list[i-1]);
         if (i <= (int)yc_list.size()) y_c[i-1] = std::stod(yc_list[i-1]);
         if (i <= (int)zc_list.size()) z_c[i-1] = std::stod(zc_list[i-1]);
@@ -116,17 +120,20 @@ void Initializer::region_condinit(int ilevel) {
         if (i <= (int)lz_list.size()) lz[i-1] = std::stod(lz_list[i-1]);
     }
 
-
-
-
     auto apply_to_cell = [&](int idc, real_t x, real_t y, real_t z) {
         for (int ir = 0; ir < nreg; ++ir) {
             bool match = false;
             if (reg_type[ir] == "square") {
-                bool xm = std::abs(x - x_c[ir]) <= 0.5 * lx[ir] + 1e-10;
-                bool ym = (NDIM < 2) || (std::abs(y - y_c[ir]) <= 0.5 * ly[ir] + 1e-10);
-                bool zm = (NDIM < 3) || (std::abs(z - z_c[ir]) <= 0.5 * lz[ir] + 1e-10);
-                if (xm && ym && zm) match = true;
+                real_t xn = 2.0 * std::abs(x - x_c[ir]) / lx[ir];
+                real_t yn = (NDIM > 1) ? 2.0 * std::abs(y - y_c[ir]) / ly[ir] : 0.0;
+                real_t zn = (NDIM > 2) ? 2.0 * std::abs(z - z_c[ir]) / lz[ir] : 0.0;
+                real_t r = 0.0;
+                if (exp_reg[ir] < 10.0) {
+                    r = std::pow(std::pow(xn, exp_reg[ir]) + std::pow(yn, exp_reg[ir]) + std::pow(zn, exp_reg[ir]), 1.0 / exp_reg[ir]);
+                } else {
+                    r = std::max({xn, yn, zn});
+                }
+                if (r < 1.0) match = true;
             }
             if (match) {
                 grid_.uold(idc, 1) = dr[ir];
@@ -136,11 +143,11 @@ void Initializer::region_condinit(int ilevel) {
                 real_t e_kin = 0.5 * dr[ir] * (ur[ir]*ur[ir] + vr[ir]*vr[ir] + wr[ir]*wr[ir]);
                 real_t e_int = pr[ir] / (gam - 1.0);
                 grid_.uold(idc, 5) = e_kin + e_int;
-#ifdef RAMSES_NENER
-                int nener = RAMSES_NENER;
-#else
+                
                 int nener = config_.get_int("hydro_params", "nener", 0);
-#endif
+                int npassive = 0;
+                if (!var_list.empty()) npassive = var_list.size() / nreg;
+
                 for(int ie=1; ie<=nener; ++ie) {
                     std::stringstream ss; ss << "prad_region(" << ie << "," << ir+1 << ")";
                     real_t p_rad = config_.get_double("init_params", ss.str(), 0.0);
@@ -149,6 +156,9 @@ void Initializer::region_condinit(int ilevel) {
                         grid_.uold(idc, 5 + ie) = e_rad;
                         grid_.uold(idc, 5) += e_rad;
                     }
+                }
+                for(int ip=1; ip<=npassive; ++ip) {
+                    grid_.uold(idc, 5 + nener + ip) = dr[ir] * std::stod(var_list[ir * npassive + (ip-1)]);
                 }
             }
         }

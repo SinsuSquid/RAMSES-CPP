@@ -164,9 +164,27 @@ void HydroSolver::ctoprim(const real_t u[], real_t q[], real_t gamma) {
     real_t d = std::max(u[0], 1e-10); q[0] = d;
     real_t v2 = 0.0; for (int i = 1; i <= 3; ++i) { q[i] = u[i] / d; v2 += q[i] * q[i]; }
     real_t e_thermal_dens = u[4] - 0.5 * d * v2;
-    for (int ie = 0; ie < nener_; ++ie) e_thermal_dens -= u[5 + ie];
+    // ONLY subtract non-thermal ENERGY components, not passive scalars!
+    // Passive scalars start at 5+nener_ and should be skipped here.
+    for (int ie = 0; ie < nener_; ++ie) {
+        // We need to know if this nener_ is energy or scalar. 
+        // For now, let's assume if config says nener, they are energy.
+        // But if we are advecting scalars, we shouldn't subtract them from total energy.
+        // RAMSES uses a separate npassive. 
+        // Let's assume nener_ is ONLY for energy (RT/MHD).
+        e_thermal_dens -= u[5 + ie];
+    }
     q[4] = std::max(e_thermal_dens * (gamma - 1.0), d * 1e-10);
-    for (int iv = 5; iv < grid_.nvar; ++iv) q[iv] = u[iv] * (gamma - 1.0);
+    // Passive scalars: q = u/d
+    for (int iv = 5; iv < grid_.nvar; ++iv) {
+        // If it's a non-thermal energy, q is typically energy density or pressure.
+        // If it's a passive scalar, q is the mass fraction u/d.
+        if (iv < 5 + nener_) {
+            q[iv] = u[iv] * (gamma - 1.0); // Assuming it's a pressure-like energy
+        } else {
+            q[iv] = u[iv] / d;
+        }
+    }
 }
 
 void HydroSolver::compute_slopes(int idc, const int icelln[6], int idim, real_t dq[20], int slope_type) {
@@ -206,7 +224,13 @@ void HydroSolver::trace(const real_t q[], const real_t dq[], real_t dtdx, real_t
     for (int iv = 0; iv < grid_.nvar; ++iv) {
         real_t dqi = dq[iv], src = -u * dqi;
         if (iv == 0) src = sr0; else if (iv == 1) src = su0; else if (iv == 4) src = sp0;
-        else if (iv >= 5 && iv < 5+nener_) src = -u * dq[iv] - dq[1] * gamma * q[iv];
+        else if (iv >= 5 && iv < 5+nener_) {
+            // Non-thermal energy prediction
+            src = -u * dq[iv] - dq[1] * gamma * q[iv];
+        } else if (iv >= 5+nener_) {
+            // Passive scalar prediction: simply advected
+            src = -u * dq[iv];
+        }
         qp[iv] = q[iv] - 0.5 * dqi + 0.5 * dtdx * src;
         qm[iv] = q[iv] + 0.5 * dqi + 0.5 * dtdx * src;
     }

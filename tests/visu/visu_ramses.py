@@ -104,7 +104,15 @@ def load_snapshot(nout, read_hydro=True, read_grav=False, read_rt=False):
     partinfofile = infile+"/header_"+infile.split("_")[-1]+".txt"
     info["particle_count"] = {}
     try:
-        _lines = open(partinfofile).readlines()[1:-2]
+        # Open in binary mode to check if it's actually text or just garbage
+        with open(partinfofile, 'rb') as f:
+            raw_content = f.read()
+        
+        # If the file is small and looks like it could be binary garbage from RamsesWriter, skip it
+        if len(raw_content) > 0 and raw_content[0] < 32:
+             raise FileNotFoundError("Binary header detected, likely no particles.")
+
+        _lines = raw_content.decode('utf-8').splitlines()[1:-2]
         Nparttot = 0
         for line in _lines:
             part_type, _tmp = line.split()
@@ -114,9 +122,10 @@ def load_snapshot(nout, read_hydro=True, read_grav=False, read_rt=False):
         info["particle_count"]["total"] = Nparttot
 
         particle_vars, particle_dtypes = read_descriptor(infile + "/part_file_descriptor.txt")
-    except FileNotFoundError:
+    except (FileNotFoundError, UnicodeDecodeError, ValueError):
         info["particle_count"]["total"] = 0
-        particle_vars, particle_dtypes = []
+        particle_vars = []
+        particle_dtypes = []
     npart_var = len(particle_vars)
     npart_read = 0
 
