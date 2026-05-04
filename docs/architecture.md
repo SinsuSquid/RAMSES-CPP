@@ -31,6 +31,7 @@ The `Simulation` class is the central driver. It manages the global time-steppin
     - Refining cells based on gradients or user-defined criteria.
     - Smoothing the refinement map (ensuring no more than 2:1 level jumps).
     - Updating the octree topology.
+    - **Prolongation (MC Interpolation):** Applies Monotonized Central (MC) slope limiters to primitive variables during grid creation to ensure physically consistent, high-resolution data in newly refined child cells.
 
 ### 4. `HydroSolver` and `MhdSolver` (The Physics)
 These classes implement the Godunov-type solvers for fluid dynamics.
@@ -40,6 +41,7 @@ These classes implement the Godunov-type solvers for fluid dynamics.
     - MUSCL-Hancock reconstruction.
     - Riemann solver execution (HLLC, LLF, HLLD).
     - Flux integration and cell state updates.
+    - **Refluxing:** Synchronizes fluxes across coarse-fine AMR boundaries to guarantee mass, momentum, and energy conservation. For MHD, this involves averaging fine-level Electromotive Forces (EMFs) to maintain $\nabla \cdot B = 0$ at level interfaces.
     - (MHD) Constrained Transport (CT) for $\nabla \cdot B = 0$.
 
 ### 5. `PoissonSolver` (Gravity)

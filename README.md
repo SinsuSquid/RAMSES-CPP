@@ -11,10 +11,12 @@ RAMSES-CPP provides a functional, physically consistent alternative to the origi
 ## 🚀 Status: Phase 2 Complete (2D Expansion)
 RAMSES-CPP has successfully transitioned to multi-dimensional physics! We have achieved:
 - [x] **2D Physical Parity:** Verified 100% correctness for 2D hydro and MHD sweeps, including robust dimensional rotation.
-- [x] **High-Resolution MHD:** Successfully executed the Orszag-Tang benchmark with full AMR refinement (~35,000 leaf cells), achieving machine-precision divergence maintenance.
+- [x] **High-Resolution MHD:** Successfully executed the Orszag-Tang benchmark with full AMR refinement (~40,000 leaf cells), achieving machine-precision divergence maintenance.
 - [x] **Snapshot Bit-Perfection:** Achieved bit-perfect binary parity for AMR and Hydro snapshots across all dimensions, ensuring full compatibility with legacy visualization scripts.
 - [x] **Magnetic-Aware AMR:** Integrated magnetic energy gradient thresholds into the refinement engine for precise shock capturing.
+- [x] **Conservation & Accuracy:** Implemented Refluxing at AMR boundaries and upgraded to Monotonized Central (MC) interpolation for sharp, physically consistent gradients.
 - [x] **2nd-Order Predictor:** Implemented 2nd-order MUSCL-Hancock time prediction for all physics modules.
+- [x] **Tooling Restoration:** Restored `tectonic` for automated PDF test report generation.
 
 We are now entering Phase 3: **Final Scalar & RT Verification**.
 
