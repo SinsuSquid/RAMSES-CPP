@@ -63,12 +63,11 @@ void RamsesWriter::write_amr(const AmrGrid& grid, const SnapshotInfo& info) {
             cr = grid.headl(ic, il); for (int i = 0; i < nca; ++i) { id[i] = cr; cr = grid.next[cr - 1]; } write_record_internal(file, id.data(), nca); // ind_grid
             cr = grid.headl(ic, il); for (int i = 0; i < nca; ++i) { id[i] = grid.next[cr - 1]; cr = grid.next[cr - 1]; } write_record_internal(file, id.data(), nca); // next
             cr = grid.headl(ic, il); for (int i = 0; i < nca; ++i) { id[i] = grid.prev[cr - 1]; cr = grid.next[cr - 1]; } write_record_internal(file, id.data(), nca); // prev
-            for (int d = 0; d < NDIM; ++d) { std::vector<double> xg(nca); cr = grid.headl(ic, il); for (int i = 0; i < nca; ++i) { xg[i] = grid.xg[d * grid.ngridmax + cr - 1]; cr = grid.next[cr - 1]; } write_record_internal(file, xg.data(), nca); }
+            for (int d = 0; d < 3; ++d) { std::vector<double> xg(nca, 0.0); if(d < NDIM) { cr = grid.headl(ic, il); for (int i = 0; i < nca; ++i) { xg[i] = grid.xg[d * grid.ngridmax + cr - 1]; cr = grid.next[cr - 1]; } } write_record_internal(file, xg.data(), nca); }
             cr = grid.headl(ic, il); for (int i = 0; i < nca; ++i) { id[i] = grid.father[cr - 1]; cr = grid.next[cr - 1]; } write_record_internal(file, id.data(), nca);
-            for (int d = 0; d < 2 * NDIM; ++d) { cr = grid.headl(ic, il); for (int i = 0; i < nca; ++i) { id[i] = grid.nbor[d * grid.ngridmax + cr - 1]; cr = grid.next[cr - 1]; } write_record_internal(file, id.data(), nca); }
-            for (int d = 0; d < (1 << NDIM); ++d) { cr = grid.headl(ic, il); for (int i = 0; i < nca; ++i) { id[i] = grid.son[grid.ncoarse + d * grid.ngridmax + cr - 1]; cr = grid.next[cr - 1]; } write_record_internal(file, id.data(), nca); }
-            for (int d = 0; d < (1 << NDIM); ++d) { cr = grid.headl(ic, il); for (int i = 0; i < nca; ++i) { id[i] = grid.cpu_map[grid.ncoarse + d * grid.ngridmax + cr - 1]; cr = grid.next[cr - 1]; } write_record_internal(file, id.data(), nca); }
-            for (int d = 0; d < (1 << NDIM); ++d) { cr = grid.headl(ic, il); for (int i = 0; i < nca; ++i) { id[i] = grid.flag1[grid.ncoarse + d * grid.ngridmax + cr - 1]; cr = grid.next[cr - 1]; } write_record_internal(file, id.data(), nca); }
+            for (int d = 0; d < 8; ++d) { std::vector<int32_t> son(nca, 0); if(d < (1 << NDIM)) { cr = grid.headl(ic, il); for (int i = 0; i < nca; ++i) { son[i] = grid.son[grid.ncoarse + d * grid.ngridmax + cr - 1]; cr = grid.next[cr - 1]; } } write_record_internal(file, son.data(), nca); }
+            for (int d = 0; d < 6; ++d) { std::vector<int32_t> nbor(nca, 0); if(d < 6) { cr = grid.headl(ic, il); for (int i = 0; i < nca; ++i) { nbor[i] = grid.nbor[d * grid.ngridmax + cr - 1]; cr = grid.next[cr - 1]; } } write_record_internal(file, nbor.data(), nca); }
+            cr = grid.headl(ic, il); for (int i = 0; i < nca; ++i) { id[i] = grid.cpu_map[cr - 1]; cr = grid.next[cr - 1]; } write_record_internal(file, id.data(), nca);
         }
     }
     file.close();

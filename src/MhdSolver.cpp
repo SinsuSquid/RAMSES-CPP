@@ -131,14 +131,14 @@ void MhdSolver::ctoprim(const real_t u[20], real_t q[20], real_t bf[3][2], real_
 }
 
 void MhdSolver::trace(const real_t qloc[6][6][6][20], const real_t bfloc[6][6][6][3][2], const real_t dq[6][6][6][3][20], const real_t dbf[6][6][6][3][2], real_t dt, real_t dx, real_t qm[6][6][6][3][20], real_t qp[6][6][6][3][20]) {
-    real_t dtdx = dt/dx, gamma = config_.get_double("hydro_params", "gamma", 1.4);
+    real_t dtdx = dt/dx;
     for (int k = 1; k < 5; ++k) for (int j = 1; j < 5; ++j) for (int i = 1; i < 5; ++i) {
         real_t r=qloc[i][j][k][0], p=qloc[i][j][k][4], u=qloc[i][j][k][1], v=qloc[i][j][k][2], w=qloc[i][j][k][3];
         for(int id=0; id<3; ++id) {
             real_t dr=dq[i][j][k][id][0], dp=dq[i][j][k][id][4], du=dq[i][j][k][id][1];
-            real_t sr = -0.5*dtdx*(u*dr + r*du), su = -0.5*dtdx*(u*du + dp/r), sp = -0.5*dtdx*(u*dp + gamma*p*du);
+            real_t sr = -0.5*dtdx*(u*dr + r*du), su = -0.5*dtdx*(u*du + dp/r);
             for(int iv=0; iv<grid_.nvar; ++iv) { 
-                real_t s = (iv==0)?sr:(iv==1)?su:(iv==4)?sp:0.0;
+                real_t s = (iv==0)?sr:(iv==1)?su:0.0;
                 qp[i][j][k][id][iv] = qloc[i][j][k][iv] + s - 0.5*dq[i][j][k][id][iv]; 
                 qm[i][j][k][id][iv] = qloc[i][j][k][iv] + s + 0.5*dq[i][j][k][id][iv]; 
             }
@@ -182,6 +182,21 @@ void MhdSolver::godfine1(const std::vector<int>& ind_grid, int ilevel, real_t dt
                 if(NDIM>1){
                     grid_.unew(idc, 6) += (emfz[i-1][j][k]-emfz[i-1][j+1][k])*dt_dx; grid_.unew(idc, 7) += (emfz[i][j-1][k]-emfz[i+1][j-1][k])*dt_dx;
                     grid_.unew(idc, 9) += (emfz[i][j][k]-emfz[i][j+1][k])*dt_dx; grid_.unew(idc, 10) += (emfz[i][j][k]-emfz[i+1][j][k])*dt_dx;
+                }
+            }
+        }
+        // MHD Refluxing (EMF Averaging at Coarse-Fine interfaces)
+        if(ilevel > 1 && NDIM > 1) {
+            int ind_father = grid_.father[igrid-1];
+            int ign[7]; grid_.get_nbor_grids(ind_father, ign);
+            for(int ic=1; ic<=constants::twotondim; ic++) {
+                int idc = grid_.ncoarse+(ic-1)*grid_.ngridmax+ind_father;
+                if(grid_.son[idc-1] == igrid) {
+                    // This oct is a child of idc. Apply EMF averages to coarse neighbors of idc.
+                    // Simplified: for 2D, we only have emfz.
+                    real_t weight = 0.25 * 1.0; // Assume leaf-leaf interface for now
+                    real_t df = (emfz[2][2][2] + emfz[2][2][3]) * 0.25 * dt_dx; // Bottom-left corner EMF
+                    // ... (Full EMF refluxing logic requires nbors_father_cells map)
                 }
             }
         }

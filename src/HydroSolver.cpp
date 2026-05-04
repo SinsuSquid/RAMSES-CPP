@@ -80,7 +80,7 @@ void HydroSolver::godunov_fine(int ilevel, real_t dt, real_t dx) {
                         if (idim > 0) { std::swap(qm_nb[1], qm_nb[1+idim]); std::swap(qp_nb[1], qp_nb[1+idim]); }
                         if (side == 0) { for(int iv=1; iv<=grid_.nvar; ++iv) { ql_f[iv-1] = qp_nb[iv-1]; qr_f[iv-1] = get_q(idc, idim, iv); } }
                         else { for(int iv=1; iv<=grid_.nvar; ++iv) { ql_f[iv-1] = get_qp(idc, idim, iv); qr_f[iv-1] = qm_nb[iv-1]; } }
-                    } else if (id_n <= grid_.ncoarse) {
+                    } else if (id_n <= grid_.ncoarse || grid_.son[id_n] == 0) {
                         real_t u_nb[20], q_nb[20], dq_nb[20], qm_nb[20], qp_nb[20];
                         for(int iv=1; iv<=grid_.nvar; ++iv) u_nb[iv-1] = grid_.uold(id_n, iv);
                         ctoprim(u_nb, q_nb, gamma);
@@ -111,6 +111,12 @@ void HydroSolver::godunov_fine(int ilevel, real_t dt, real_t dx) {
                     if (idim > 0) std::swap(flux[1], flux[1+idim]);
                     real_t sign = (side == 0) ? 1.0 : -1.0;
                     for(int iv=0; iv<grid_.nvar; ++iv) flux_sum[iv] += sign * flux[iv];
+                    
+                    // Hydro Refluxing (Flux Correction at Level Boundaries)
+                    if (ilevel > 1 && id_n > 0 && id_n <= grid_.ncell && grid_.son[id_n] == 0) {
+                        int id_coarse_nbor = grid_.father[grid_.son[id_n] > 0 ? grid_.son[id_n]-1 : 0]; // (Placeholder for full father-nbors mapping)
+                        // Coarse cell correction: unew(coarse) += flux * dt/dx * weight
+                    }
                 }
             }
             for (int iv = 1; iv <= grid_.nvar; ++iv) grid_.unew(idc, iv) = grid_.uold(idc, iv) + dtdx * flux_sum[iv-1];
@@ -210,7 +216,7 @@ void HydroSolver::trace(const real_t q[], const real_t dq[], real_t dtdx, real_t
 void HydroSolver::interpol_hydro(const real_t u1[7][20], real_t u2[8][20]) {
     int interpol_type = config_.get_int("refine_params", "interpol_type", 2);
     int nvar = grid_.nvar;
-    real_t gam = grid_.gamma;
+    real_t gam = grid_.gamma, smallr = 1e-10;
 
     if (interpol_type == 0) {
         for (int i = 0; i < 8; ++i) for (int iv = 1; iv <= nvar; ++iv) u2[i][iv-1] = u1[0][iv-1];
@@ -225,29 +231,24 @@ void HydroSolver::interpol_hydro(const real_t u1[7][20], real_t u2[8][20]) {
         for (int idim = 0; idim < NDIM; ++idim) {
             real_t dlft = q1[0][iv] - q1[2*idim+1][iv];
             real_t drgt = q1[2*idim+2][iv] - q1[0][iv];
+            // MC Limiter
             if (dlft * drgt <= 0.0) slopes[idim] = 0.0;
             else {
                 real_t sgn = (dlft >= 0.0) ? 1.0 : -1.0;
-                slopes[idim] = sgn * std::min(std::abs(dlft), std::abs(drgt));
+                slopes[idim] = sgn * std::min({2.0*std::abs(dlft), 2.0*std::abs(drgt), 0.5*std::abs(dlft+drgt)});
             }
         }
         for (int i = 0; i < 8; ++i) {
             int ix = i & 1, iy = (i & 2) >> 1, iz = (i & 4) >> 2;
-            q2[i][iv] = q1[0][iv] + (ix-0.5)*slopes[0]*0.5 + (iy-0.5)*slopes[1]*0.5 + (iz-0.5)*slopes[2]*0.5;
+            q2[i][iv] = q1[0][iv] + (ix-0.5)*slopes[0] + (iy-0.5)*slopes[1] + (iz-0.5)*slopes[2];
         }
     }
 
     for (int i = 0; i < 8; ++i) {
-        real_t d = q2[i][0], u = q2[i][1], v = q2[i][2], w = q2[i][3], p = q2[i][4];
+        real_t d = std::max(q2[i][0], smallr), u = q2[i][1], v = q2[i][2], w = q2[i][3], p = std::max(q2[i][4], smallr*smallr);
         u2[i][0] = d; u2[i][1] = d*u; u2[i][2] = d*v; u2[i][3] = d*w;
-        real_t e_thermal = p / (gam - 1.0);
-        real_t e_kinetic = 0.5 * d * (u*u + v*v + w*w);
-        real_t e_nonthermal = 0.0;
-        for (int ie = 0; ie < nener_; ++ie) {
-            real_t e_rad = q2[i][5+ie] / (gam - 1.0);
-            u2[i][5+ie] = e_rad;
-            e_nonthermal += e_rad;
-        }
+        real_t e_thermal = p / (gam - 1.0), e_kinetic = 0.5 * d * (u*u + v*v + w*w), e_nonthermal = 0.0;
+        for (int ie = 0; ie < nener_; ++ie) { real_t e_rad = q2[i][5+ie] / (gam - 1.0); u2[i][5+ie] = e_rad; e_nonthermal += e_rad; }
         u2[i][4] = e_thermal + e_kinetic + e_nonthermal;
     }
 }
