@@ -30,6 +30,9 @@ public:
     double get_double(const std::string& block, const std::string& key, double default_val = 0.0) const;
     bool get_bool(const std::string& block, const std::string& key, bool default_val = false) const;
     
+    std::vector<std::string> get_string_array(const std::string& block, const std::string& key) const;
+    std::vector<double> get_double_array(const std::string& block, const std::string& key) const;
+
     std::string trim(const std::string& s) const;
 
 private:

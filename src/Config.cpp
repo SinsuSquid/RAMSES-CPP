@@ -39,7 +39,7 @@ bool Config::parse(const std::string& filename) {
         if (line.empty()) continue;
 
         if (line[0] == '&') {
-            current_block = to_lower(line.substr(1));
+            current_block = to_lower(trim(line.substr(1)));
             continue;
         }
         if (line[0] == '/') {

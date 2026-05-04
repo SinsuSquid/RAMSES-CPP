@@ -1,6 +1,7 @@
 #include "ramses/Initializer.hpp"
 #include "ramses/AmrGrid.hpp"
 #include "ramses/Constants.hpp"
+#include "ramses/Parameters.hpp"
 #include <iostream>
 #include <vector>
 #include <algorithm>
@@ -10,8 +11,54 @@
 namespace ramses {
 
 void Initializer::apply_all() {
-    for (int il = 1; il <= grid_.nlevelmax; ++il) {
-        region_condinit(il);
+    namespace p = ramses::params;
+    std::string kind = config_.get("init_params", "condinit_kind", "region");
+    if (kind == "orzag_tang") {
+        real_t pi = std::acos(-1.0);
+        real_t B0 = 1.0 / std::sqrt(4.0 * pi);
+        real_t d0 = 25.0 / (36.0 * pi);
+        real_t p0 = 5.0 / (12.0 * pi);
+        real_t gamma = grid_.gamma;
+
+        for (int il = 1; il <= grid_.nlevelmax; ++il) {
+            int head = grid_.get_headl(1, il);
+            int igrid = head;
+            real_t dx = p::boxlen / (real_t)(p::nx * (1 << (il - 1)));
+            while (igrid > 0) {
+                for (int ic = 1; ic <= constants::twotondim; ++ic) {
+                    int idc = grid_.ncoarse + (ic - 1) * grid_.ngridmax + igrid - 1;
+                    int ixyz[3]; int idx = ic - 1; ixyz[2] = idx / 4; idx %= 4; ixyz[1] = idx / 2; ixyz[0] = idx % 2;
+                    real_t xc = grid_.xg[0 * grid_.ngridmax + igrid - 1] + (ixyz[0] - 0.5) * dx;
+                    real_t yc = (NDIM > 1) ? grid_.xg[1 * grid_.ngridmax + igrid - 1] + (ixyz[1] - 0.5) * dx : 0.5;
+                    
+                    real_t vx = -std::sin(2.0 * pi * yc);
+                    real_t vy = (NDIM > 1) ? std::sin(2.0 * pi * xc) : 0.0;
+                    
+                    grid_.uold(idc + 1, 1) = d0;
+                    grid_.uold(idc + 1, 2) = d0 * vx;
+                    grid_.uold(idc + 1, 3) = d0 * vy;
+                    grid_.uold(idc + 1, 4) = 0.0;
+
+                    // Magnetic field (face-centered)
+                    real_t xl = xc - 0.5 * dx, xr = xc + 0.5 * dx;
+                    real_t yl = yc - 0.5 * dx, yr = yc + 0.5 * dx;
+                    auto A = [&](real_t x, real_t y) { return B0 * (std::cos(4.0 * pi * x) / (4.0 * pi) + std::cos(2.0 * pi * y) / (2.0 * pi)); };
+                    
+                    grid_.uold(idc + 1, 6) = (A(xc, yr) - A(xc, yl)) / dx; // Bx_left
+                    grid_.uold(idc + 1, grid_.nvar - 2) = (A(xc, yr) - A(xc, yl)) / dx; // Bx_right (simplified)
+                    grid_.uold(idc + 1, 7) = (A(xl, yc) - A(xr, yc)) / dx; // By_left
+                    grid_.uold(idc + 1, grid_.nvar - 1) = (A(xl, yc) - A(xr, yc)) / dx; // By_right
+
+                    real_t em = 0.5 * (std::pow(grid_.uold(idc+1, 6), 2) + std::pow(grid_.uold(idc+1, 7), 2));
+                    grid_.uold(idc + 1, 5) = p0 / (gamma - 1.0) + 0.5 * d0 * (vx * vx + vy * vy) + em;
+                }
+                igrid = grid_.next[igrid - 1];
+            }
+        }
+    } else {
+        for (int il = 1; il <= grid_.nlevelmax; ++il) {
+            region_condinit(il);
+        }
     }
 }
 
@@ -32,7 +79,10 @@ void Initializer::region_condinit(int ilevel) {
         std::stringstream ss(val);
         std::string item;
         while (std::getline(ss, item, ',')) {
-            res.push_back(config_.trim(item));
+            item = config_.trim(item);
+            if (!item.empty() && (item.front() == '\'' || item.front() == '"')) item = item.substr(1);
+            if (!item.empty() && (item.back() == '\'' || item.back() == '"')) item.pop_back();
+            res.push_back(item);
         }
         return res;
     };
@@ -43,7 +93,11 @@ void Initializer::region_condinit(int ilevel) {
     auto wr_list = get_list("init_params", "w_region");
     auto pr_list = get_list("init_params", "p_region");
     auto xc_list = get_list("init_params", "x_center");
+    auto yc_list = get_list("init_params", "y_center");
+    auto zc_list = get_list("init_params", "z_center");
     auto lx_list = get_list("init_params", "length_x");
+    auto ly_list = get_list("init_params", "length_y");
+    auto lz_list = get_list("init_params", "length_z");
 
     auto reg_type_list = get_list("init_params", "region_type");
 
@@ -55,7 +109,11 @@ void Initializer::region_condinit(int ilevel) {
         if (i <= (int)wr_list.size()) wr[i-1] = std::stod(wr_list[i-1]);
         if (i <= (int)pr_list.size()) pr[i-1] = std::stod(pr_list[i-1]);
         if (i <= (int)xc_list.size()) x_c[i-1] = std::stod(xc_list[i-1]);
+        if (i <= (int)yc_list.size()) y_c[i-1] = std::stod(yc_list[i-1]);
+        if (i <= (int)zc_list.size()) z_c[i-1] = std::stod(zc_list[i-1]);
         if (i <= (int)lx_list.size()) lx[i-1] = std::stod(lx_list[i-1]);
+        if (i <= (int)ly_list.size()) ly[i-1] = std::stod(ly_list[i-1]);
+        if (i <= (int)lz_list.size()) lz[i-1] = std::stod(lz_list[i-1]);
     }
 
 

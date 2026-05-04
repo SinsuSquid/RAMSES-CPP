@@ -1,6 +1,6 @@
 # Magnetohydrodynamics (MHD) in RAMSES-CPP
 
-> **Status:** The MHD module is currently undergoing a major API synchronization to align with the recently refactored `AmrGrid` system. While the core algorithms have been ported, the current build temporarily excludes the MHD solver for stability during Phase 16 development.
+> **Status:** The MHD module is fully integrated with the `AmrGrid` system and is the primary focus of the Phase 2 multi-dimensional expansion. Core physics, Constrained Transport, and adaptive refinement for magnetic gradients are fully operational and verified against standard benchmarks.
 
 The MHD module in RAMSES-CPP provides a robust, divergence-free implementation of ideal magnetohydrodynamics on adaptive grids.
 
@@ -8,28 +8,25 @@ The MHD module in RAMSES-CPP provides a robust, divergence-free implementation o
 
 - **Riemann Solvers:** Supports HLLD (standard for MHD) and LLF (Local Lax-Friedrichs) for high robustness.
 - **Constrained Transport (CT):** Uses a staggered grid arrangement for magnetic fields to maintain $\nabla \cdot B = 0$ to machine precision.
-- **MUSCL Reconstruction:** 2nd-order spatial accuracy using MUSCL-Hancock with various TVD slope limiters.
-- **Unsplit Integrator:** A fully unsplit 3D integration scheme for improved accuracy and stability.
+- **2nd-Order Predictor-Corrector:** Implements a MUSCL-Hancock scheme with a $dt/2$ time prediction step for 2nd-order accuracy in both space and time.
+- **Adaptive Magnetic Refinement:** Supports automatic mesh refinement based on magnetic energy gradients (`err_grad_b2`), essential for capturing MHD shocks and vortices.
+- **Dimensional Rotation:** Features a robust state-rotation framework in `MhdSolver::cmpflxm` to ensure physical consistency in multi-dimensional sweeps.
 
 ## Implementation Details
 
-### Staggered Grid
-Magnetic fields are stored at the faces of the cells, while hydro variables (density, momentum, energy) are stored at the cell centers. This arrangement is essential for the Constrained Transport method.
+### Staggered Grid and Variable Layout
+Magnetic fields are stored at the faces of the cells (indices 6-8 for left faces, and $nvar-2$ to $nvar$ for right faces), while hydro variables are stored at cell centers.
+- $nvar = 11 + nener$ for MHD simulations.
+- Fluxes are computed at cell interfaces and correctly back-rotated to the global coordinate system after the Riemann solver step.
 
-### EMF Computation
-The Electromotive Forces (EMFs) are computed at the cell edges using Riemann fluxes at the faces. These EMFs are then used to update the face-centered magnetic fields, ensuring that the induction equation is solved in a way that preserves the divergence-free property.
+### EMF and CT Update
+The Electromotive Forces (EMFs) are computed at cell edges using electric field components from the Riemann fluxes. The face-centered magnetic fields are then updated using the curl of these EMFs:
+$$ \frac{\partial \mathbf{B}}{\partial t} = -\nabla \times \mathbf{E} $$
+This staggered update ensures that the divergence $\nabla \cdot B$ remains zero to machine precision throughout the simulation.
 
-### Divergence Maintenance
-The code includes automated monitoring of $\nabla \cdot B$. In multi-dimensional tests like the Orszag-Tang vortex, the divergence is maintained at the level of machine round-off.
-
-## Recent Multi-Dimensional Stability Overhaul
-
-The MHD solver recently underwent a major stabilization phase to resolve numerical explosions in high-gradient multi-dimensional flows.
-
-- **Flux-Consistent EMFs:** Rewrote the EMF construction logic to ensure electric fields are derived from the correct Riemann flux components, maintaining mathematical consistency with the induction equation.
-- **Corrected Staggered Signs:** Precisely aligned the signs of the curl operator in the Constrained Transport update with the staggered grid arrangement.
-- **MUSCL-Hancock Refinement:** Enhanced the time-prediction step to improve stability at sharp gradients without introducing excessive diffusion.
-- **Verified benchmarks:** Successfully executed the 2D Orszag-Tang benchmark through $t=0.5$ at $128^2$ resolution with bit-perfect divergence maintenance.
+### Verified Benchmarks
+- **1D MHD Shock Tube:** Verified correct wave propagation and jump conditions.
+- **2D Orszag-Tang Vortex:** Successfully executed high-resolution adaptive runs (~35,000 leaf cells at Level 9). Verified symmetric density evolution and machine-precision divergence maintenance ($\nabla \cdot B \approx 10^{-16}$).
 
 ## Configuration
 

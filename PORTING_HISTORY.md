@@ -195,3 +195,12 @@ The RAMSES-2025 C++ port is now a **fully functional, production-ready, and test
 - **Visualization Robustness:** Patched `visu_ramses.py` to handle missing particle files and prevent `UnboundLocalError`/`ValueError` during pure-hydro analysis.
 - **Sanitized Repository:** Untracked Python `__pycache__` artifacts from the Git index to respect `.gitignore`.
 - **Status:** 1D Hydro benchmarks are physically synchronized and visualization-compatible. Ready for 2D expansion.
+
+### [2026-05-04] - Phase 2: 2D Expansion & MHD Refinement
+- **MHD Flux Rotation:** Fixed `MhdSolver::cmpflxm` and `godfine1` to correctly rotate primitive states into the sweep direction and back-rotate fluxes into the global coordinate system. This resolved the "Stagnant Vortex" bug where momentum components were cross-contaminated.
+- **Magnetic-Aware Refinement:** Implemented the `err_grad_b2` magnetic energy gradient refinement criterion in `TreeUpdater::flag_fine`. Updated the simulation initialization to iteratively refine based on magnetic gradients, enabling high-resolution capture of the Orszag-Tang vortex from step zero.
+- **Snapshot Record-Parity:** Rewrote `RamsesWriter` to match the exact binary grouping and record sequence of legacy RAMSES, including 12-integer headers, grouped `nx,ny,nz`, `dt` tables, and 128-byte string padding. This achieved full synchronization with the hardcoded offsets in `visu_ramses.py`.
+- **Induction Consistency:** Corrected the EMF signs and corner indexing in the staggered magnetic field update, ensuring divergence-free maintenance ($\nabla \cdot B = 0$) in multi-dimensional sweeps.
+- **2nd-Order Time Accuracy:** Upgraded the `trace` predictor in the MHD solver to include a $dt/2$ time step, providing consistent 2nd-order accuracy in both space and time.
+- **Macro Harmonization:** Linked CMake `RAMSES_USE_MHD` to the preprocessor `MHD` macro, activating specialized magnetic refinement and pressure logic in the AMR engine.
+- **Status:** Phase 2 (2D Expansion) core solver and IO are stabilized; Orszag-Tang benchmark produces high-resolution leaf counts (~35,000 cells); transitioning to final scalar/NENER verification.

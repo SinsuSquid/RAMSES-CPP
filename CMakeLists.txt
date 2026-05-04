@@ -49,12 +49,22 @@ add_library(ramses_lib STATIC
     src/SlopeLimiter.cpp
     src/Muscl.cpp
     src/PoissonSolver.cpp
+    src/MhdSolver.cpp
+    src/RtSolver.cpp
+    src/RtChemistry.cpp
     src/MpiManager.cpp
     src/Parameters.cpp
 )
 
 if(RAMSES_USE_MPI)
     target_link_libraries(ramses_lib PUBLIC MPI::MPI_CXX)
+endif()
+
+if(RAMSES_USE_MHD)
+    target_compile_definitions(ramses_lib PUBLIC MHD)
+endif()
+if(RAMSES_USE_RT)
+    target_compile_definitions(ramses_lib PUBLIC RT)
 endif()
 
 # Main executable

@@ -35,9 +35,10 @@ void Simulation::initialize(const std::string& nml_path) {
     grid_.gamma = gamma;
     int nvar = 5 + nener_;
 #ifdef MHD
-    nvar = 8 + nener_;
+    nvar = 11 + nener_;
 #endif
     grid_.allocate(p::nx, p::ny, p::nz, ngridmax, nvar, ncpu, levelmax);
+    grid_.nvar = nvar;
     updater_.set_interpol_hook([this](const real_t u1[7][20], real_t u2[8][20]){
 #ifdef MHD
         mhd_.interpol_mhd(u1, u2);
@@ -48,24 +49,14 @@ void Simulation::initialize(const std::string& nml_path) {
     
     for (int il = 1; il < levelmax; ++il) {
         initializer_.apply_all();
-        if (il < levelmin) {
-            if (il == 1) { for(int i=0; i<grid_.ncoarse; ++i) grid_.flag1[i] = 1; }
-            else {
-                int myid = 1;
-                int ig = grid_.get_headl(myid, il);
-                while(ig > 0) {
-                    for(int ic=1; ic<=constants::twotondim; ++ic) {
-                        int idc = grid_.ncoarse + (ic-1)*grid_.ngridmax + ig - 1;
-                        grid_.flag1[idc] = 1;
-                    }
-                    ig = grid_.next[ig-1];
-                }
-            }
-        } else {
-            updater_.flag_fine(il, config_.get_double("refine_params", "err_grad_d", 0.05), 0, 0);
-        }
+        real_t ed = config_.get_double("refine_params", "err_grad_d", 0.05);
+        real_t ep = config_.get_double("refine_params", "err_grad_p", 0.0);
+        real_t ev = config_.get_double("refine_params", "err_grad_u", 0.0);
+        real_t eb2 = config_.get_double("refine_params", "err_grad_b2", ep);
+        updater_.flag_fine(il, ed, ep, ev, eb2);
         updater_.make_grid_fine(il);
     }
+    nstep_ = 0; // Reset step counter
     initializer_.apply_all();
 
     grid_.nboundary = config_.get_int("boundary_params", "nboundary", 0);
@@ -76,6 +67,10 @@ void Simulation::initialize(const std::string& nml_path) {
         };
         grid_.ibound_min = parse_vec(config_.get("boundary_params", "ibound_min", ""));
         grid_.ibound_max = parse_vec(config_.get("boundary_params", "ibound_max", ""));
+        grid_.jbound_min = parse_vec(config_.get("boundary_params", "jbound_min", ""));
+        grid_.jbound_max = parse_vec(config_.get("boundary_params", "jbound_max", ""));
+        grid_.kbound_min = parse_vec(config_.get("boundary_params", "kbound_min", ""));
+        grid_.kbound_max = parse_vec(config_.get("boundary_params", "kbound_max", ""));
         grid_.bound_type = parse_vec(config_.get("boundary_params", "bound_type", ""));
     }
 
@@ -88,6 +83,20 @@ void Simulation::initialize(const std::string& nml_path) {
         std::stringstream ss(tout_s); double val; while (ss >> val) tout_.push_back(val);
         if (!tout_.empty()) tend_ = tout_.back();
     }
+
+    std::vector<std::string> nsub_s = config_.get_string_array("run_params", "nsubcycle");
+    nsubcycle_.assign(grid_.nlevelmax, 1);
+    int curr_l = 0;
+    for (const std::string& s : nsub_s) {
+        size_t star = s.find('*');
+        if (star != std::string::npos) {
+            int count = std::stoi(s.substr(0, star));
+            int val = std::stoi(s.substr(star + 1));
+            for (int i = 0; i < count && curr_l < grid_.nlevelmax; ++i) nsubcycle_[curr_l++] = val;
+        } else if (!s.empty()) {
+            if (curr_l < grid_.nlevelmax) nsubcycle_[curr_l++] = std::stoi(s);
+        }
+    }
 }
 
 void Simulation::run() {
@@ -96,7 +105,7 @@ void Simulation::run() {
     int iout = 0, snapshot_count = 2;
     while (t_ < tend_ && nstep_ < nstepmax_) {
         nstep_++; real_t dt = 1e30;
-        for (int il = p::levelmin; il <= grid_.nlevelmax; ++il) {
+        for (int il = 1; il <= grid_.nlevelmax; ++il) {
             if (grid_.count_grids_at_level(il) == 0) continue;
             real_t dx = p::boxlen / (real_t)(p::nx * (1 << (il - 1)));
 #ifdef MHD
@@ -107,10 +116,24 @@ void Simulation::run() {
             dt = std::min(dt, ldt);
         }
         if (iout < (int)tout_.size() && t_ + dt >= tout_[iout]) {
-            dt = tout_[iout] - t_; amr_step(p::levelmin, dt); t_ += dt;
+            dt = tout_[iout] - t_;
+        }
+        
+        // Global refinement sweep (Single Pass)
+        real_t ed = config_.get_double("refine_params", "err_grad_d", 0.05);
+        real_t ep = config_.get_double("refine_params", "err_grad_p", 0.0);
+        real_t ev = config_.get_double("refine_params", "err_grad_u", 0.0);
+        real_t eb2 = config_.get_double("refine_params", "err_grad_b2", ep);
+        
+        for (int il = 1; il < grid_.nlevelmax; ++il) updater_.flag_fine(il, ed, ep, ev, eb2);
+        for (int il = 1; il < grid_.nlevelmax; ++il) {
+            updater_.make_grid_fine(il);
+            updater_.remove_grid_fine(il);
+        }
+
+        amr_step(1, dt); t_ += dt;
+        if (iout < (int)tout_.size() && t_ >= tout_[iout]) {
             dump_snapshot(snapshot_count++); iout++;
-        } else {
-            amr_step(p::levelmin, dt); t_ += dt;
         }
         if (nstep_ % ncontrol_ == 0) printf(" Step=%d t=%12.5e dt=%10.3e\n", nstep_, t_, dt);
     }
@@ -119,19 +142,17 @@ void Simulation::run() {
 
 void Simulation::amr_step(int ilevel, real_t dt, int icount) {
     if (ilevel > grid_.nlevelmax || grid_.count_grids_at_level(ilevel) == 0) return;
+    
     real_t dx = p::boxlen / (real_t)(p::nx * (1 << (ilevel - 1)));
 #ifdef MHD
     mhd_.godunov_fine(ilevel, dt, dx);
 #else
     hydro_.godunov_fine(ilevel, dt, dx);
 #endif
-    int nsub = 1; 
+    int nsub = (ilevel <= (int)nsubcycle_.size()) ? nsubcycle_[ilevel - 1] : 1;
     for (int i = 1; i <= nsub; ++i) amr_step(ilevel + 1, dt / nsub, i);
     updater_.restrict_fine(ilevel);
-    if (icount == nsub) {
-        updater_.flag_fine(ilevel, 0.05, 0, 0);
-        updater_.make_grid_fine(ilevel);
-    }
+    
 #ifdef MHD
     mhd_.set_uold(ilevel);
 #else
@@ -151,7 +172,7 @@ void Simulation::dump_snapshot(int iout) {
     RamsesWriter writer_amr(get_path("amr", ".out")); writer_amr.write_amr(grid_, info);
     RamsesWriter writer_hydro(get_path("hydro", ".out")); writer_hydro.write_hydro(grid_, info);
     std::stringstream ssi; ssi << dir << "/info_" << std::setfill('0') << std::setw(5) << iout << ".txt";
-    RamsesWriter writer_header(ssi.str()); writer_header.write_header(info);
+    RamsesWriter writer_header(ssi.str()); writer_header.write_header(grid_, info);
     std::stringstream ssh; ssh << dir << "/header_" << std::setfill('0') << std::setw(5) << iout << ".txt";
     RamsesWriter writer_header_file(ssh.str()); writer_header_file.write_header_file(grid_, info);
     RamsesWriter writer_desc(dir + "/hydro_file_descriptor.txt"); writer_desc.write_hydro_descriptor(grid_, info);

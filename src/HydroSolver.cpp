@@ -2,6 +2,7 @@
 #include "ramses/MpiManager.hpp"
 #include "ramses/RiemannSolver.hpp"
 #include "ramses/Parameters.hpp"
+#include "ramses/Constants.hpp"
 #include <iostream>
 #include <algorithm>
 #include <cmath>
@@ -66,9 +67,9 @@ void HydroSolver::godunov_fine(int ilevel, real_t dt, real_t dx) {
                     real_t ql_f[20], qr_f[20], flux[20];
                     
                     if (id_n <= 0) {
-                        int ibound = (idim == 0) ? ((side == 0) ? 1 : 2) : (idim == 1) ? ((side == 0) ? 3 : 4) : ((side == 0) ? 5 : 6);
+                        int ibound = -id_n;
                         int btype = 1;
-                        if (grid_.nboundary > 0 && ibound <= (int)grid_.bound_type.size()) btype = grid_.bound_type[ibound - 1];
+                        if (ibound > 0 && ibound <= (int)grid_.bound_type.size()) btype = grid_.bound_type[ibound - 1];
                         real_t u_nb[20], q_nb[20], qm_nb[20], qp_nb[20];
                         for(int iv=1; iv<=grid_.nvar; ++iv) u_nb[iv-1] = grid_.uold(idc, iv);
                         if (btype == 1) u_nb[1 + idim] *= -1.0;
@@ -141,11 +142,12 @@ void HydroSolver::set_unew(int ilevel) {
 void HydroSolver::set_uold(int ilevel) {
     int myid = MpiManager::instance().rank() + 1;
     int igrid = grid_.get_headl(myid, ilevel);
+    int n2d_val = (1 << NDIM);
     while (igrid > 0) {
-        for (int ic = 1; ic <= constants::twotondim; ++ic) {
-            int idc = grid_.ncoarse + (ic - 1) * grid_.ngridmax + igrid;
-            if (grid_.son[idc] == 0) {
-                for (int iv = 1; iv <= grid_.nvar; ++iv) grid_.uold(idc, iv) = grid_.unew(idc, iv);
+        for (int ic = 1; ic <= n2d_val; ++ic) {
+            int idc = grid_.ncoarse + (ic - 1) * grid_.ngridmax + igrid - 1;
+            for (int iv = 1; iv <= grid_.nvar; ++iv) {
+                grid_.uold(idc + 1, iv) = grid_.unew(idc + 1, iv);
             }
         }
         igrid = grid_.next[igrid - 1];
@@ -163,10 +165,24 @@ void HydroSolver::ctoprim(const real_t u[], real_t q[], real_t gamma) {
 
 void HydroSolver::compute_slopes(int idc, const int icelln[6], int idim, real_t dq[20], int slope_type) {
     int id_l = icelln[idim * 2], id_r = icelln[idim * 2 + 1];
-    if (id_l <= 0) id_l = idc; if (id_r <= 0) id_r = idc;
-    real_t ql[20], qc[20], qr[20], u_l[20], u_c[20], u_r[20];
-    for(int iv=1; iv<=grid_.nvar; ++iv) { u_l[iv-1]=grid_.uold(id_l, iv); u_c[iv-1]=grid_.uold(idc, iv); u_r[iv-1]=grid_.uold(id_r, iv); }
-    ctoprim(u_l, ql, grid_.gamma); ctoprim(u_c, qc, grid_.gamma); ctoprim(u_r, qr, grid_.gamma);
+    real_t ql[20], qc[20], qr[20], u_c[20];
+    for(int iv=1; iv<=grid_.nvar; ++iv) u_c[iv-1]=grid_.uold(idc, iv);
+    ctoprim(u_c, qc, grid_.gamma);
+
+    auto get_nb_q = [&](int id_n, int side, real_t q_nb[20]) {
+        if (id_n > 0) {
+            real_t u_nb[20]; for(int iv=1; iv<=grid_.nvar; ++iv) u_nb[iv-1]=grid_.uold(id_n, iv);
+            ctoprim(u_nb, q_nb, grid_.gamma);
+        } else {
+            for(int iv=0; iv<grid_.nvar; ++iv) q_nb[iv] = qc[iv];
+            int ibound = -id_n;
+            int btype = 1;
+            if (ibound > 0 && ibound <= (int)grid_.bound_type.size()) btype = grid_.bound_type[ibound - 1];
+            if (btype == 1) q_nb[1 + idim] *= -1.0;
+        }
+    };
+    get_nb_q(id_l, 0, ql); get_nb_q(id_r, 1, qr);
+
     for (int iv = 0; iv < grid_.nvar; ++iv) {
         real_t dlft = qc[iv] - ql[iv], drgt = qr[iv] - qc[iv];
         if (dlft * drgt <= 0.0) dq[iv] = 0.0;
@@ -217,7 +233,7 @@ void HydroSolver::interpol_hydro(const real_t u1[7][20], real_t u2[8][20]) {
         }
         for (int i = 0; i < 8; ++i) {
             int ix = i & 1, iy = (i & 2) >> 1, iz = (i & 4) >> 2;
-            q2[i][iv] = q1[0][iv] + (ix-0.5)*slopes[0] + (iy-0.5)*slopes[1] + (iz-0.5)*slopes[2];
+            q2[i][iv] = q1[0][iv] + (ix-0.5)*slopes[0]*0.5 + (iy-0.5)*slopes[1]*0.5 + (iz-0.5)*slopes[2]*0.5;
         }
     }
 

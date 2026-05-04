@@ -25,7 +25,7 @@ public:
     std::vector<real_t> f_vec; 
 
     int nboundary = 0;
-    std::vector<int> ibound_min, ibound_max, bound_type;
+    std::vector<int> ibound_min, ibound_max, jbound_min, jbound_max, kbound_min, kbound_max, bound_type;
 
     int get_headl(int icpu, int ilevel) const { return headl_vec[(ilevel-1)*ncpu + (icpu-1)]; }
     int headl(int icpu, int ilevel) const { return get_headl(icpu, ilevel); }
@@ -34,6 +34,7 @@ public:
 
     int headf, tailf, numbf;
     int get_free_grid();
+    void free_grid(int igrid);
     void add_to_level_list(int igrid, int ilevel);
     int count_grids_at_level(int ilevel) const;
 
@@ -46,6 +47,7 @@ public:
 
     void get_nbor_grids(int igrid, int ign[7]) const;
     void get_nbor_cells(const int ign[7], int ic, int icn[6], int igrid) const;
+    void get_27_cell_neighbors(int icell, int nbors[27]) const;
 };
 
 } // namespace ramses

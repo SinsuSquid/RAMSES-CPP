@@ -21,7 +21,7 @@ public:
                    hydro_(grid_, config_), 
                    mhd_(grid_, config_), 
                    poisson_(grid_, config_), 
-                   updater_(grid_), 
+                   updater_(grid_, config_), 
                    initializer_(grid_, config_) {}
 
     void initialize(const std::string& nml_path);

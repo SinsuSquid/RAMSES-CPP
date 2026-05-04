@@ -55,6 +55,22 @@ int AmrGrid::get_free_grid() {
     return igrid;
 }
 
+void AmrGrid::free_grid(int igrid) {
+    if (igrid <= 0) return;
+    if (tailf == 0) {
+        headf = igrid;
+        tailf = igrid;
+        prev[igrid - 1] = 0;
+        next[igrid - 1] = 0;
+    } else {
+        next[tailf - 1] = igrid;
+        prev[igrid - 1] = tailf;
+        next[igrid - 1] = 0;
+        tailf = igrid;
+    }
+    numbf++;
+}
+
 void AmrGrid::add_to_level_list(int igrid, int ilevel) {
     int myid = 1; // Simplification for serial
     int head = get_headl(myid, ilevel);
@@ -102,6 +118,60 @@ void AmrGrid::get_nbor_cells(const int ign[7], int ic, int icn[6], int igrid) co
             }
         }
     }
+}
+
+void AmrGrid::get_27_cell_neighbors(int icell, int nbors[27]) const {
+    // 1. Identify current cell level
+    int ilevel = 0;
+    if (icell > ncoarse) {
+        int curr_ig = ((icell - ncoarse - 1) % ngridmax) + 1;
+        int ind_f = father[curr_ig - 1];
+        while (ind_f > 0) {
+            ilevel++;
+            if (ind_f <= ncoarse) break;
+            curr_ig = ((ind_f - ncoarse - 1) % ngridmax) + 1;
+            ind_f = father[curr_ig - 1];
+        }
+    }
+
+    // 2. Find ancestors up to coarse grid
+    std::vector<int> ancestors; int curr_c = icell;
+    for(int l=ilevel; l>0; --l) {
+        ancestors.push_back(curr_c);
+        int ig = ((curr_c - ncoarse - 1) % ngridmax) + 1;
+        curr_c = father[ig-1];
+    }
+    std::reverse(ancestors.begin(), ancestors.end());
+
+    // 3. Find 27 neighbors at coarse level
+    int idx = curr_c - 1;
+    int iz = idx / (nx * ny); int iy = (idx % (nx * ny)) / nx; int ix = idx % nx;
+    int n_curr[27];
+    for(int k=-1; k<=1; ++k) for(int j=-1; j<=1; ++j) for(int i=-1; i<=1; ++i) {
+        int ni = ix + i, nj = iy + j, nk = iz + k;
+        // Periodic wrap
+        ni = (ni + nx) % nx; nj = (nj + ny) % ny; nk = (nk + nz) % nz;
+        n_curr[(k+1)*9 + (j+1)*3 + (i+1)] = 1 + ni + nj * nx + nk * nx * ny;
+    }
+
+    // 4. Descend back to ilevel
+    for(int l=1; l<=ilevel; ++l) {
+        int target_c = ancestors[l-1];
+        int pos = ((target_c - ncoarse - 1) / ngridmax) + 1;
+        int n_next[27];
+        for(int j=0; j<27; ++j) {
+            int f_idx = constants::lll[pos-1][j];
+            int c_pos = constants::mmm[pos-1][j];
+            int ifather_n = n_curr[f_idx-1];
+            if (ifather_n > 0 && son[ifather_n-1] > 0) {
+                n_next[j] = ncoarse + (c_pos - 1) * ngridmax + son[ifather_n-1];
+            } else {
+                n_next[j] = ifather_n;
+            }
+        }
+        for(int i=0; i<27; ++i) n_curr[i] = n_next[i];
+    }
+    for(int i=0; i<27; ++i) nbors[i] = n_curr[i];
 }
 
 } // namespace ramses
