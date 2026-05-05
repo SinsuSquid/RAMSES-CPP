@@ -47,17 +47,6 @@ void Simulation::initialize(const std::string& nml_path) {
     grid_.allocate(p::nx, p::ny, p::nz, ngridmax, nvar, ncpu, levelmax);
     grid_.nvar = nvar;
 
-    for (int i = 1; i <= grid_.ncoarse; ++i) {
-        int idx = i - 1;
-        int iz = idx / (p::nx * p::ny); idx %= (p::nx * p::ny);
-        int iy = idx / p::nx;
-        int ix = idx % p::nx;
-        real_t dx_coarse = p::boxlen / std::max({p::nx, p::ny, p::nz});
-        if (NDIM > 0) grid_.xg[0 * grid_.ngridmax + i - 1] = (ix + 0.5) * dx_coarse;
-        if (NDIM > 1) grid_.xg[1 * grid_.ngridmax + i - 1] = (iy + 0.5) * dx_coarse;
-        if (NDIM > 2) grid_.xg[2 * grid_.ngridmax + i - 1] = (iz + 0.5) * dx_coarse;
-    }
-    
     srand(1);
     updater_.set_interpol_hook([this](const real_t u1[7][20], real_t u2[8][20]){
 #ifdef MHD
@@ -96,6 +85,7 @@ void Simulation::initialize(const std::string& nml_path) {
         for (int il = 1; il < levelmax; ++il) {
             updater_.flag_fine(il, ed, ep, ev, eb2, evar, nexpand_.at(il));
             updater_.make_grid_fine(il);
+            updater_.remove_grid_fine(il);
         }
     }
     nstep_ = 0;
@@ -151,10 +141,10 @@ void Simulation::run() {
             real_t dx = p::boxlen / (real_t)(p::nx * (1 << (il - 1)));
             while(ig > 0) {
                 for(int ic=1; ic<=(1<<NDIM); ++ic) {
-                    int idc = grid_.ncoarse + (ic - 1) * grid_.ngridmax + ig;
-                    real_t d = std::max(grid_.uold(idc, 1), 1e-10), v2 = 0;
-                    for(int j=1; j<=NDIM; ++j) { real_t v = grid_.uold(idc, 1+j)/d; v2 += v*v; }
-                    real_t p = (grid_.uold(idc, 5) - 0.5*d*v2)*(grid_.gamma-1.0);
+                    int idc = grid_.ncoarse + (ic - 1) * grid_.ngridmax + ig - 1;
+                    real_t d = std::max(grid_.uold(idc + 1, 1), 1e-10), v2 = 0;
+                    for(int j=1; j<=NDIM; ++j) { real_t v = grid_.uold(idc + 1, 1+j)/d; v2 += v*v; }
+                    real_t p = (grid_.uold(idc + 1, 5) - 0.5*d*v2)*(grid_.gamma-1.0);
                     real_t c = std::sqrt(std::max(grid_.gamma*p/d, 1e-10));
                     min_dt = std::min(min_dt, courant * dx / (std::sqrt(v2) + c));
                 }
@@ -215,9 +205,8 @@ void Simulation::dump_snapshot(int iout) {
     std::stringstream ssd; ssd << "output_" << std::setfill('0') << std::setw(5) << iout;
     std::string dir = ssd.str(); mkdir(dir.c_str(), 0777);
     SnapshotInfo info; info.t = t_; info.nstep = nstep_; info.noutput = 100; info.iout = iout; info.gamma = grid_.gamma; info.nener = nener_;
-    int myid = 1;
     auto get_path = [&](const std::string& prefix, const std::string& ext) -> std::string {
-        std::stringstream ss; ss << dir << "/" << prefix << "_" << std::setfill('0') << std::setw(5) << iout << ext << std::setfill('0') << std::setw(5) << myid;
+        std::stringstream ss; ss << dir << "/" << prefix << "_" << std::setfill('0') << std::setw(5) << iout << ext << std::setfill('0') << std::setw(5) << 1;
         return ss.str();
     };
     RamsesWriter(get_path("amr", ".out")).write_amr(grid_, info);
