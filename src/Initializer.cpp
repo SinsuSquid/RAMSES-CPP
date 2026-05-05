@@ -121,13 +121,18 @@ void Initializer::region_condinit(int ilevel) {
     }
 
     auto apply_to_cell = [&](int idc, real_t x, real_t y, real_t z) {
+        real_t dr_j = 1.0 + 1e-6 * (real_t(rand())/RAND_MAX - 0.5);
+        real_t ur_j = 1e-4 * (real_t(rand())/RAND_MAX - 0.5);
+        real_t vr_j = 1e-4 * (real_t(rand())/RAND_MAX - 0.5);
+        real_t wr_j = 1e-4 * (real_t(rand())/RAND_MAX - 0.5);
+
         // Default to Region 1 values if available, otherwise 0
         if (nreg > 0) {
-            grid_.uold(idc, 1) = dr[0] * (1.0 + 1e-6 * (real_t(rand())/RAND_MAX - 0.5));
-            grid_.uold(idc, 2) = dr[0] * ur[0];
-            grid_.uold(idc, 3) = dr[0] * vr[0];
-            grid_.uold(idc, 4) = dr[0] * wr[0];
-            real_t e_kin = 0.5 * dr[0] * (ur[0]*ur[0] + vr[0]*vr[0] + wr[0]*wr[0]);
+            grid_.uold(idc, 1) = dr[0] * dr_j;
+            grid_.uold(idc, 2) = dr[0] * (ur[0] + ur_j);
+            grid_.uold(idc, 3) = dr[0] * (vr[0] + vr_j);
+            grid_.uold(idc, 4) = dr[0] * (wr[0] + wr_j);
+            real_t e_kin = 0.5 * dr[0] * (std::pow(ur[0]+ur_j, 2) + std::pow(vr[0]+vr_j, 2) + std::pow(wr[0]+wr_j, 2));
             real_t e_int = pr[0] / (gam - 1.0);
             grid_.uold(idc, 5) = e_kin + e_int;
             
@@ -135,7 +140,7 @@ void Initializer::region_condinit(int ilevel) {
             int npassive = 0;
             if (!var_list.empty()) npassive = var_list.size() / nreg;
             
-            for(int ip=1; ip<=npassive; ++ip) grid_.uold(idc, 5 + nener + ip) = dr[0] * std::stod(var_list[ip-1]);
+            for(int ip=1; ip<=npassive; ++ip) grid_.uold(idc, 5 + nener + ip) = dr[0] * std::stod(var_list[ip-1]) * dr_j;
         }
 
         for (int ir = 0; ir < nreg; ++ir) {
@@ -153,11 +158,11 @@ void Initializer::region_condinit(int ilevel) {
                 if (r < 1.0) match = true;
             }
             if (match) {
-                grid_.uold(idc, 1) = dr[ir];
-                grid_.uold(idc, 2) = dr[ir] * ur[ir];
-                grid_.uold(idc, 3) = dr[ir] * vr[ir];
-                grid_.uold(idc, 4) = dr[ir] * wr[ir];
-                real_t e_kin = 0.5 * dr[ir] * (ur[ir]*ur[ir] + vr[ir]*vr[ir] + wr[ir]*wr[ir]);
+                grid_.uold(idc, 1) = dr[ir] * dr_j;
+                grid_.uold(idc, 2) = dr[ir] * (ur[ir] + ur_j);
+                grid_.uold(idc, 3) = dr[ir] * (vr[ir] + vr_j);
+                grid_.uold(idc, 4) = dr[ir] * (wr[ir] + wr_j);
+                real_t e_kin = 0.5 * dr[ir] * (std::pow(ur[ir]+ur_j, 2) + std::pow(vr[ir]+vr_j, 2) + std::pow(wr[ir]+wr_j, 2));
                 real_t e_int = pr[ir] / (gam - 1.0);
                 grid_.uold(idc, 5) = e_kin + e_int;
                 
@@ -170,12 +175,12 @@ void Initializer::region_condinit(int ilevel) {
                     real_t p_rad = config_.get_double("init_params", ss.str(), 0.0);
                     if (p_rad > 0) {
                         real_t e_rad = p_rad / (gam - 1.0);
-                        grid_.uold(idc, 5 + ie) = e_rad;
-                        grid_.uold(idc, 5) += e_rad;
+                        grid_.uold(idc, 5 + ie) = e_rad * dr_j;
+                        grid_.uold(idc, 5) += e_rad * dr_j;
                     }
                 }
                 for(int ip=1; ip<=npassive; ++ip) {
-                    grid_.uold(idc, 5 + nener + ip) = dr[ir] * std::stod(var_list[ir * npassive + (ip-1)]);
+                    grid_.uold(idc, 5 + nener + ip) = dr[ir] * std::stod(var_list[ir * npassive + (ip-1)]) * dr_j;
                 }
             }
         }

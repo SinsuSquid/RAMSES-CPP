@@ -31,7 +31,6 @@ void Simulation::initialize(const std::string& nml_path) {
     real_t gamma = config_.get_double("hydro_params", "gamma", 1.4);
     grid_.gamma = gamma;
     
-    // Calculate nvar: 5 (hydro) + nener (non-thermal energy) + npassive
     int npassive = 0;
     std::string var_s = config_.get("init_params", "var_region", "");
     if (!var_s.empty()) {
@@ -47,6 +46,19 @@ void Simulation::initialize(const std::string& nml_path) {
 #endif
     grid_.allocate(p::nx, p::ny, p::nz, ngridmax, nvar, ncpu, levelmax);
     grid_.nvar = nvar;
+
+    for (int i = 1; i <= grid_.ncoarse; ++i) {
+        int idx = i - 1;
+        int iz = idx / (p::nx * p::ny); idx %= (p::nx * p::ny);
+        int iy = idx / p::nx;
+        int ix = idx % p::nx;
+        real_t dx_coarse = p::boxlen / std::max({p::nx, p::ny, p::nz});
+        if (NDIM > 0) grid_.xg[0 * grid_.ngridmax + i - 1] = (ix + 0.5) * dx_coarse;
+        if (NDIM > 1) grid_.xg[1 * grid_.ngridmax + i - 1] = (iy + 0.5) * dx_coarse;
+        if (NDIM > 2) grid_.xg[2 * grid_.ngridmax + i - 1] = (iz + 0.5) * dx_coarse;
+    }
+    
+    srand(1);
     updater_.set_interpol_hook([this](const real_t u1[7][20], real_t u2[8][20]){
 #ifdef MHD
         mhd_.interpol_mhd(u1, u2);
@@ -67,25 +79,26 @@ void Simulation::initialize(const std::string& nml_path) {
     }
     if (evar.empty() && npassive > 0) evar.assign(npassive, 0.05);
 
+    nexpand_.assign(32, 1);
     std::vector<std::string> nexp_s = config_.get_string_array("amr_params", "nexpand");
-    nexpand_.assign(grid_.nlevelmax, 1);
-    int curr_l = 0;
+    int curr_exp_l = 1;
     for (const auto& s : nexp_s) {
         if (s.find('*') != std::string::npos) {
             int count = std::stoi(s.substr(0, s.find('*'))), val = std::stoi(s.substr(s.find('*') + 1));
-            for (int i = 0; i < count && curr_l < grid_.nlevelmax; ++i) nexpand_[curr_l++] = val;
-        } else if (!s.empty()) { if (curr_l < grid_.nlevelmax) nexpand_[curr_l++] = std::stoi(s); }
+            for (int i = 0; i < count && curr_exp_l < 32; ++i) nexpand_[curr_exp_l++] = val;
+        } else if (!s.empty() && curr_exp_l < 32) { nexpand_[curr_exp_l++] = std::stoi(s); }
     }
+    int last_exp = (curr_exp_l > 1) ? nexpand_[curr_exp_l-1] : 1;
+    while(curr_exp_l < 32) nexpand_[curr_exp_l++] = last_exp;
 
-    // Multi-pass initial refinement loop
     for (int ipass = 1; ipass <= levelmax; ++ipass) {
         initializer_.apply_all();
         for (int il = 1; il < levelmax; ++il) {
-            updater_.flag_fine(il, ed, ep, ev, eb2, evar);
+            updater_.flag_fine(il, ed, ep, ev, eb2, evar, nexpand_.at(il));
             updater_.make_grid_fine(il);
         }
     }
-    nstep_ = 0; // Reset step counter
+    nstep_ = 0;
     initializer_.apply_all();
     for (int il = levelmax - 1; il >= 1; --il) updater_.restrict_fine(il);
 
@@ -104,58 +117,54 @@ void Simulation::initialize(const std::string& nml_path) {
         grid_.bound_type = parse_vec(config_.get("boundary_params", "bound_type", ""));
     }
 
-    t_ = 0.0; tend_ = config_.get_double("output_params", "tend", 1.0);
+    t_ = 0.0; tend_ = config_.get_double("output_params", "tout", 1.0);
     nstepmax_ = config_.get_int("run_params", "nstepmax", 1000000);
     ncontrol_ = config_.get_int("run_params", "ncontrol", 1);
+    
     std::string tout_s = config_.get("output_params", "tout", "");
     if (!tout_s.empty()) {
-        std::replace(tout_s.begin(), tout_s.end(), ',', ' ');
+        tout_.clear(); std::replace(tout_s.begin(), tout_s.end(), ',', ' ');
         std::stringstream ss(tout_s); double val; while (ss >> val) tout_.push_back(val);
         if (!tout_.empty()) tend_ = tout_.back();
     }
 
+    nsubcycle_.assign(32, 1);
     std::vector<std::string> nsub_s = config_.get_string_array("run_params", "nsubcycle");
-    nsubcycle_.assign(grid_.nlevelmax, 1);
-    curr_l = 0;
+    int curr_sub_l = 1;
     for (const auto& s : nsub_s) {
         if (s.find('*') != std::string::npos) {
             int count = std::stoi(s.substr(0, s.find('*'))), val = std::stoi(s.substr(s.find('*') + 1));
-            for (int i = 0; i < count && curr_l < grid_.nlevelmax; ++i) nsubcycle_[curr_l++] = val;
-        } else if (!s.empty()) { if (curr_l < grid_.nlevelmax) nsubcycle_[curr_l++] = std::stoi(s); }
+            for (int i = 0; i < count && curr_sub_l < 32; ++i) nsubcycle_[curr_sub_l++] = val;
+        } else if (!s.empty() && curr_sub_l < 32) { nsubcycle_[curr_sub_l++] = std::stoi(s); }
     }
+    int last_sub = (curr_sub_l > 1) ? nsubcycle_[curr_sub_l-1] : 1;
+    while(curr_sub_l < 32) nsubcycle_[curr_sub_l++] = last_sub;
 }
 
 void Simulation::run() {
     int iout = 0, snapshot_count = 1;
     real_t courant = config_.get_double("hydro_params", "courant_factor", 0.8);
-    
     while (t_ < tend_ && nstep_ < nstepmax_) {
-        real_t dt = 1e10;
-        // Search for min density to estimate dt
-        real_t min_dt = 1e10;
+        real_t dt = 1e10, min_dt = 1e10;
         for (int il = 1; il <= grid_.nlevelmax; ++il) {
-            int myid = 1; int ig = grid_.get_headl(myid, il);
+            int ig = grid_.get_headl(1, il);
             real_t dx = p::boxlen / (real_t)(p::nx * (1 << (il - 1)));
             while(ig > 0) {
                 for(int ic=1; ic<=(1<<NDIM); ++ic) {
-                    int idc = grid_.ncoarse + (ic-1)*grid_.ngridmax + ig - 1;
-                    real_t d = std::max(grid_.uold(idc+1, 1), 1e-10);
-                    real_t v2 = 0; for(int j=1; j<=NDIM; ++j) { real_t v = grid_.uold(idc+1, 1+j)/d; v2 += v*v; }
-                    real_t p = (grid_.uold(idc+1, 5) - 0.5*d*v2)*(grid_.gamma-1.0); // Simplified
+                    int idc = grid_.ncoarse + (ic - 1) * grid_.ngridmax + ig;
+                    real_t d = std::max(grid_.uold(idc, 1), 1e-10), v2 = 0;
+                    for(int j=1; j<=NDIM; ++j) { real_t v = grid_.uold(idc, 1+j)/d; v2 += v*v; }
+                    real_t p = (grid_.uold(idc, 5) - 0.5*d*v2)*(grid_.gamma-1.0);
                     real_t c = std::sqrt(std::max(grid_.gamma*p/d, 1e-10));
-                    real_t v_max = std::sqrt(v2) + c;
-                    min_dt = std::min(min_dt, courant * dx / v_max);
+                    min_dt = std::min(min_dt, courant * dx / (std::sqrt(v2) + c));
                 }
                 ig = grid_.next[ig - 1];
             }
         }
         dt = min_dt;
-
-        if (iout < (int)tout_.size() && t_ + dt > tout_[iout]) {
-            dt = tout_[iout] - t_;
-        }
+        if (iout < (int)tout_.size() && t_ + dt > tout_[iout]) dt = tout_[iout] - t_;
+        if (t_ + dt > tend_) dt = tend_ - t_;
         
-        // Global refinement sweep
         real_t ed = config_.get_double("refine_params", "err_grad_d", 0.05);
         real_t ep = config_.get_double("refine_params", "err_grad_p", 0.0);
         real_t ev = config_.get_double("refine_params", "err_grad_u", 0.0);
@@ -166,20 +175,17 @@ void Simulation::run() {
             std::stringstream ss(evar_s); std::string item;
             while (std::getline(ss, item, ',')) evar.push_back(std::stod(item));
         }
-        int npassive = grid_.nvar - (11 + nener_);
-#ifndef MHD
-        npassive = grid_.nvar - (5 + nener_);
-#endif
-        if (evar.empty() && npassive > 0) evar.assign(npassive, 0.05);
+        int np = grid_.nvar - (nener_ + 5); 
+        if (evar.empty() && np > 0) evar.assign(np, 0.05);
 
         for (int il = 1; il < grid_.nlevelmax; ++il) {
-             updater_.flag_fine(il, ed, ep, ev, eb2, evar);
+             updater_.flag_fine(il, ed, ep, ev, eb2, evar, nexpand_.at(il));
              updater_.make_grid_fine(il);
              updater_.remove_grid_fine(il);
         }
-
         amr_step(1, dt); t_ += dt; nstep_++;
-        if (iout < (int)tout_.size() && t_ >= tout_[iout]) {
+        
+        if (iout < (int)tout_.size() && t_ >= tout_[iout] - 1e-12 * t_) {
             dump_snapshot(snapshot_count++); iout++;
         }
         if (nstep_ % ncontrol_ == 0) printf(" Step=%d t=%12.5e dt=%10.3e\n", nstep_, t_, dt);
@@ -189,17 +195,15 @@ void Simulation::run() {
 
 void Simulation::amr_step(int ilevel, real_t dt, int icount) {
     if (ilevel > grid_.nlevelmax || grid_.count_grids_at_level(ilevel) == 0) return;
-    
     real_t dx = p::boxlen / (real_t)(p::nx * (1 << (ilevel - 1)));
 #ifdef MHD
     mhd_.godunov_fine(ilevel, dt, dx);
 #else
     hydro_.godunov_fine(ilevel, dt, dx);
 #endif
-    int nsub = (ilevel <= (int)nsubcycle_.size()) ? nsubcycle_[ilevel - 1] : 1;
+    int nsub = (ilevel < 32) ? nsubcycle_.at(ilevel) : 1;
     for (int i = 1; i <= nsub; ++i) amr_step(ilevel + 1, dt / nsub, i);
     updater_.restrict_fine(ilevel);
-    
 #ifdef MHD
     mhd_.set_uold(ilevel);
 #else
@@ -218,12 +222,9 @@ void Simulation::dump_snapshot(int iout) {
     };
     RamsesWriter(get_path("amr", ".out")).write_amr(grid_, info);
     RamsesWriter(get_path("hydro", ".out")).write_hydro(grid_, info);
-    
     std::stringstream ssinfo; ssinfo << dir << "/info_" << std::setfill('0') << std::setw(5) << iout << ".txt";
     RamsesWriter(ssinfo.str()).write_header(grid_, info);
-    
     RamsesWriter(dir + "/hydro_file_descriptor.txt").write_hydro_descriptor(grid_, info);
-    
     std::stringstream ssh; ssh << dir << "/header_" << std::setfill('0') << std::setw(5) << iout << ".txt";
     RamsesWriter(ssh.str()).write_header_file(grid_, info);
 }

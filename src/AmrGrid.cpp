@@ -106,6 +106,7 @@ void AmrGrid::get_nbor_grids(int igrid, int ign[7]) const {
 
 void AmrGrid::get_nbor_cells(const int ign[7], int ic, int icn[6], int igrid) const {
     for (int i = 0; i < 6; ++i) icn[i] = 0;
+    if (igrid <= 0) return; // Coarse cells handled by caller
     for (int idim = 0; idim < NDIM; ++idim) {
         for (int inbor = 0; inbor < 2; ++inbor) {
             int ig_idx = constants::iii[idim][inbor][ic - 1];
