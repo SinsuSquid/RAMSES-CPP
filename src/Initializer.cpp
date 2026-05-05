@@ -122,9 +122,9 @@ void Initializer::region_condinit(int ilevel) {
 
     auto apply_to_cell = [&](int idc, real_t x, real_t y, real_t z) {
         real_t dr_j = 1.0 + 1e-6 * (real_t(rand())/RAND_MAX - 0.5);
-        real_t ur_j = 1e-4 * (real_t(rand())/RAND_MAX - 0.5);
-        real_t vr_j = 1e-4 * (real_t(rand())/RAND_MAX - 0.5);
-        real_t wr_j = 1e-4 * (real_t(rand())/RAND_MAX - 0.5);
+        real_t ur_j = 1e-2 * (real_t(rand())/RAND_MAX - 0.5);
+        real_t vr_j = 1e-2 * (real_t(rand())/RAND_MAX - 0.5);
+        real_t wr_j = 1e-2 * (real_t(rand())/RAND_MAX - 0.5);
 
         // Default to Region 1 values if available, otherwise 0
         if (nreg > 0) {
