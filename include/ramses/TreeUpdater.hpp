@@ -17,7 +17,7 @@ public:
     void make_grid_fine(int ilevel);
     void remove_grid_fine(int ilevel);
     void restrict_fine(int ilevel);
-    void flag_fine(int ilevel, real_t err_grad_d, real_t err_grad_p, real_t err_grad_v, real_t err_grad_b2 = -1.0);
+    void flag_fine(int ilevel, real_t err_grad_d, real_t err_grad_p, real_t err_grad_v, real_t err_grad_b2 = -1.0, const std::vector<real_t>& err_grad_var = {});
 
     using InterpolHook = std::function<void(const real_t u1[7][20], real_t u2[8][20])>;
     void set_interpol_hook(InterpolHook hook) { interpol_hook_ = hook; }

@@ -139,7 +139,7 @@ void TreeUpdater::restrict_fine(int ilevel) {
     }
 }
 
-void TreeUpdater::flag_fine(int ilevel, real_t ed, real_t ep, real_t ev, real_t eb2) {
+void TreeUpdater::flag_fine(int ilevel, real_t ed, real_t ep, real_t ev, real_t eb2, const std::vector<real_t>& evar) {
     int nexp = config_.get_int("amr_params", "nexpand", 0), myid = MpiManager::instance().rank() + 1, n2d = (1 << NDIM);
     int lmin = config_.get_int("amr_params", "levelmin", 1);
     
@@ -164,6 +164,7 @@ void TreeUpdater::flag_fine(int ilevel, real_t ed, real_t ep, real_t ev, real_t 
                 em_m = 0.5*(Ax*Ax+Ay*Ay+Az*Az);
 #endif
                 real_t pm = std::max((grid_.uold(idc+1, 5) - 0.5*dm*v2m - em_m)*(g-1.0), dm*fd), cm = std::sqrt(std::max(g*pm/dm, fd*fd));
+                
                 for (int idim = 0; idim < NDIM; ++idim) {
                     int il = icn[idim * 2], ir = icn[idim * 2 + 1];
                     real_t dl = (il > 0) ? grid_.uold(il, 1) : dm, dr = (ir > 0) ? grid_.uold(ir, 1) : dm, v2l=0, v2r=0, em_l=0, em_r=0;
@@ -187,6 +188,22 @@ void TreeUpdater::flag_fine(int ilevel, real_t ed, real_t ep, real_t ev, real_t 
                             real_t gr = 2.0 * std::max(std::abs(vr - vm) / (crr + cm + std::abs(vr) + std::abs(vm) + fd), std::abs(vm - vl) / (cm + cll + std::abs(vm) + std::abs(vl) + fd)); if (gr > ev) { grid_.flag1[idc] = 1; break; }
                         }
                     }
+                    if (!evar.empty()) {
+                        int nh = 5;
+#ifdef MHD
+                        nh = 11;
+#endif
+                        int nener = config_.get_int("hydro_params", "nener", 0);
+                        for (int iv = 0; iv < (int)evar.size(); ++iv) {
+                            if (evar[iv] <= 0) continue;
+                            int idx_v = nh + nener + iv + 1;
+                            real_t qm = grid_.uold(idc+1, idx_v)/dm;
+                            real_t ql = (il > 0) ? grid_.uold(il, idx_v)/dl : qm;
+                            real_t qr = (ir > 0) ? grid_.uold(ir, idx_v)/dr : qm;
+                            real_t gr = 2.0 * std::max(std::abs(qr - qm) / (std::abs(qr) + std::abs(qm) + fd), std::abs(qm - ql) / (std::abs(qm) + std::abs(ql) + fd));
+                            if (gr > evar[iv]) { grid_.flag1[idc] = 1; break; }
+                        }
+                    }
                     if (grid_.flag1[idc] == 1) break;
                 }
             }
@@ -195,27 +212,31 @@ void TreeUpdater::flag_fine(int ilevel, real_t ed, real_t ep, real_t ev, real_t 
     }
     auto smooth = [&]() {
         std::vector<int> tf;
-        for (int istep = 1; istep <= NDIM; ++istep) {
-            int thres = (istep == 1) ? 1 : 2;
-            int head = grid_.get_headl(myid, ilevel);
-            int ig_s = head;
-            while (ig_s > 0) {
-                int ign[7]; grid_.get_nbor_grids(ig_s, ign);
-                for (int ic = 1; ic <= n2d; ++ic) {
-                    int idc = grid_.ncoarse + (ic - 1) * grid_.ngridmax + ig_s - 1;
-                    if (grid_.flag1[idc] == 0) {
-                        int icn[6]; grid_.get_nbor_cells(ign, ic, icn, ig_s);
-                        int count = 0; for (int in = 0; in < 2 * NDIM; ++in) { if (icn[in] > 0) { if (grid_.flag1[icn[in]-1] == 1) count++; } else if (grid_.flag1[idc] == 1) count++; }
-                        if (count >= thres) tf.push_back(idc);
+        int head = grid_.get_headl(myid, ilevel);
+        int ig_s = head;
+        while (ig_s > 0) {
+            int ign[7]; grid_.get_nbor_grids(ig_s, ign);
+            for (int ic = 1; ic <= n2d; ++ic) {
+                int idc = grid_.ncoarse + (ic - 1) * grid_.ngridmax + ig_s - 1;
+                if (grid_.flag1[idc] == 0) {
+                    int icn[6]; grid_.get_nbor_cells(ign, ic, icn, ig_s);
+                    bool nbor_flagged = false;
+                    for (int in = 0; in < 2 * NDIM; ++in) {
+                        if (icn[in] > 0) {
+                            if (grid_.flag1[icn[in]-1] == 1) { nbor_flagged = true; break; }
+                        }
                     }
+                    if (nbor_flagged) tf.push_back(idc);
                 }
-                ig_s = grid_.next[ig_s - 1];
             }
-            for (int idx : tf) grid_.flag1[idx] = 1;
-            tf.clear();
+            ig_s = grid_.next[ig_s - 1];
         }
+        for (int idx : tf) grid_.flag1[idx] = 1;
     };
-    smooth(); for (int ie = 0; ie < nexp; ++ie) smooth();
+    
+    // Always perform at least one expansion step to match legacy behavior
+    int actual_nexp = std::max(1, nexp);
+    for (int ie = 0; ie < actual_nexp; ++ie) smooth();
 }
 
 } // namespace ramses

@@ -121,6 +121,23 @@ void Initializer::region_condinit(int ilevel) {
     }
 
     auto apply_to_cell = [&](int idc, real_t x, real_t y, real_t z) {
+        // Default to Region 1 values if available, otherwise 0
+        if (nreg > 0) {
+            grid_.uold(idc, 1) = dr[0];
+            grid_.uold(idc, 2) = dr[0] * ur[0];
+            grid_.uold(idc, 3) = dr[0] * vr[0];
+            grid_.uold(idc, 4) = dr[0] * wr[0];
+            real_t e_kin = 0.5 * dr[0] * (ur[0]*ur[0] + vr[0]*vr[0] + wr[0]*wr[0]);
+            real_t e_int = pr[0] / (gam - 1.0);
+            grid_.uold(idc, 5) = e_kin + e_int;
+            
+            int nener = config_.get_int("hydro_params", "nener", 0);
+            int npassive = 0;
+            if (!var_list.empty()) npassive = var_list.size() / nreg;
+            
+            for(int ip=1; ip<=npassive; ++ip) grid_.uold(idc, 5 + nener + ip) = dr[0] * std::stod(var_list[ip-1]);
+        }
+
         for (int ir = 0; ir < nreg; ++ir) {
             bool match = false;
             if (reg_type[ir] == "square") {

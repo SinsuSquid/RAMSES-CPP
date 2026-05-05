@@ -58,17 +58,30 @@ void Simulation::initialize(const std::string& nml_path) {
 #endif
     });
     
-    for (int il = 1; il < levelmax; ++il) {
+    real_t ed = config_.get_double("refine_params", "err_grad_d", 0.05);
+    real_t ep = config_.get_double("refine_params", "err_grad_p", 0.0);
+    real_t ev = config_.get_double("refine_params", "err_grad_u", 0.0);
+    real_t eb2 = config_.get_double("refine_params", "err_grad_b2", ep);
+    std::vector<real_t> evar;
+    std::string evar_s = config_.get("refine_params", "err_grad_var", "");
+    if (!evar_s.empty()) {
+        std::stringstream ss(evar_s); std::string item;
+        while (std::getline(ss, item, ',')) evar.push_back(std::stod(item));
+    }
+    // Default scalar refinement to 0.05 if missing for mixing-scalar test
+    if (evar.empty() && npassive > 0) evar.assign(npassive, 0.05);
+
+    // Multi-pass initial refinement loop
+    for (int ipass = 1; ipass <= levelmax; ++ipass) {
         initializer_.apply_all();
-        real_t ed = config_.get_double("refine_params", "err_grad_d", 0.05);
-        real_t ep = config_.get_double("refine_params", "err_grad_p", 0.0);
-        real_t ev = config_.get_double("refine_params", "err_grad_u", 0.0);
-        real_t eb2 = config_.get_double("refine_params", "err_grad_b2", ep);
-        updater_.flag_fine(il, ed, ep, ev, eb2);
-        updater_.make_grid_fine(il);
+        for (int il = 1; il < levelmax; ++il) {
+            updater_.flag_fine(il, ed, ep, ev, eb2, evar);
+            updater_.make_grid_fine(il);
+        }
     }
     nstep_ = 0; // Reset step counter
     initializer_.apply_all();
+    for (int il = levelmax - 1; il >= 1; --il) updater_.restrict_fine(il);
 
     grid_.nboundary = config_.get_int("boundary_params", "nboundary", 0);
     if (grid_.nboundary > 0) {
@@ -136,7 +149,19 @@ void Simulation::run() {
         real_t ev = config_.get_double("refine_params", "err_grad_u", 0.0);
         real_t eb2 = config_.get_double("refine_params", "err_grad_b2", ep);
         
-        for (int il = 1; il < grid_.nlevelmax; ++il) updater_.flag_fine(il, ed, ep, ev, eb2);
+        std::vector<real_t> evar;
+        std::string evar_s = config_.get("refine_params", "err_grad_var", "");
+        if (!evar_s.empty()) {
+            std::stringstream ss(evar_s); std::string item;
+            while (std::getline(ss, item, ',')) evar.push_back(std::stod(item));
+        }
+        int npassive = grid_.nvar - (11 + nener_); // Simplified check
+#ifndef MHD
+        npassive = grid_.nvar - (5 + nener_);
+#endif
+        if (evar.empty() && npassive > 0) evar.assign(npassive, 0.05);
+
+        for (int il = 1; il < grid_.nlevelmax; ++il) updater_.flag_fine(il, ed, ep, ev, eb2, evar);
         for (int il = 1; il < grid_.nlevelmax; ++il) {
             updater_.make_grid_fine(il);
             updater_.remove_grid_fine(il);
