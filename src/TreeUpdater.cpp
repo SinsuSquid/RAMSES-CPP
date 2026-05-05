@@ -234,8 +234,8 @@ void TreeUpdater::flag_fine(int ilevel, real_t ed, real_t ep, real_t ev, real_t 
         for (int idx : tf) grid_.flag1[idx] = 1;
     };
     
-    // Always perform at least one expansion step to match legacy behavior
-    int actual_nexp = std::max(1, nexp);
+    // Perform expansion steps as specified in nexpand (defaulting to 1 if 0)
+    int actual_nexp = (nexp > 0) ? nexp : 1;
     for (int ie = 0; ie < actual_nexp; ++ie) smooth();
 }
 

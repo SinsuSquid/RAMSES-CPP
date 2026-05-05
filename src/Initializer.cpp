@@ -123,7 +123,7 @@ void Initializer::region_condinit(int ilevel) {
     auto apply_to_cell = [&](int idc, real_t x, real_t y, real_t z) {
         // Default to Region 1 values if available, otherwise 0
         if (nreg > 0) {
-            grid_.uold(idc, 1) = dr[0];
+            grid_.uold(idc, 1) = dr[0] * (1.0 + 1e-6 * (real_t(rand())/RAND_MAX - 0.5));
             grid_.uold(idc, 2) = dr[0] * ur[0];
             grid_.uold(idc, 3) = dr[0] * vr[0];
             grid_.uold(idc, 4) = dr[0] * wr[0];
