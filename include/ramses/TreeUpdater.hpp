@@ -19,7 +19,7 @@ public:
     void restrict_fine(int ilevel);
     void flag_fine(int ilevel, real_t err_grad_d, real_t err_grad_p, real_t err_grad_v, real_t err_grad_b2 = -1.0, const std::vector<real_t>& err_grad_var = {}, int nexpand = 1);
 
-    using InterpolHook = std::function<void(const real_t u1[7][20], real_t u2[8][20])>;
+    using InterpolHook = std::function<void(const real_t u1[7][64], real_t u2[8][64])>;
     void set_interpol_hook(InterpolHook hook) { interpol_hook_ = hook; }
 
 private:

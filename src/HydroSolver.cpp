@@ -107,7 +107,7 @@ void HydroSolver::godunov_fine(int ilevel, real_t dt, real_t dx) {
                     for(int iv=0; iv<grid_.nvar; ++iv) flux_sum[iv] += sign * flux[iv];
                 }
             }
-            for (int iv = 1; iv <= grid_.nvar; ++iv) grid_.unew(idc_0 + 1, iv) = grid_.uold(idc_0 + 1, iv) + dtdx * flux_sum[iv-1];
+            for (int iv = 1; iv <= nvar_hydro_; ++iv) grid_.unew(idc_0 + 1, iv) = grid_.uold(idc_0 + 1, iv) + dtdx * flux_sum[iv-1];
             real_t d_curr = std::max(grid_.unew(idc_0 + 1, 1), 1e-10); grid_.unew(idc_0 + 1, 1) = d_curr;
             real_t v2_curr = 0.0; for(int i=1; i<=3; ++i) { real_t v = grid_.unew(idc_0 + 1, 1+i)/d_curr; v2_curr += v*v; }
             real_t ei_curr = grid_.unew(idc_0 + 1, 5) - 0.5*d_curr*v2_curr;
@@ -186,9 +186,9 @@ void HydroSolver::trace(const real_t q[], const real_t dq[], real_t dtdx, real_t
     }
 }
 
-void HydroSolver::interpol_hydro(const real_t u1[7][20], real_t u2[8][20]) {
+void HydroSolver::interpol_hydro(const real_t u1[7][64], real_t u2[8][64]) {
     int nvar = grid_.nvar; real_t gam = grid_.gamma;
-    real_t q1[7][20], q2[8][20];
+    real_t q1[7][64], q2[8][64];
     for (int i = 0; i < 7; ++i) ctoprim(u1[i], q1[i], gam);
     for (int iv = 0; iv < nvar; ++iv) {
         real_t slopes[3] = {0,0,0};

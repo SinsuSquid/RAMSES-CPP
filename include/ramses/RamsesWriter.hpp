@@ -40,6 +40,8 @@ public:
     void write_header(const AmrGrid& grid, const SnapshotInfo& info);
     void write_header_file(const AmrGrid& grid, const SnapshotInfo& info);
     void write_hydro_descriptor(const AmrGrid& grid, const SnapshotInfo& info);
+    void write_rt(const AmrGrid& grid, const SnapshotInfo& info, int nGroups, real_t rt_c);
+    void write_rt_descriptor(const AmrGrid& grid, const SnapshotInfo& info, int nGroups);
 
 private:
     template <typename T>

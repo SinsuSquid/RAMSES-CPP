@@ -120,7 +120,7 @@ void MhdSolver::gather_stencil(int igrid, int ilevel, LocalStencil& stencil) {
     }
 }
 
-void MhdSolver::ctoprim(const real_t u[20], real_t q[20], real_t bf[3][2], real_t gamma) {
+void MhdSolver::ctoprim(const real_t u[64], real_t q[64], real_t bf[3][2], real_t gamma) {
     real_t d = std::max(u[0], 1e-10); q[0]=d; q[1]=u[1]/d; q[2]=u[2]/d; q[3]=u[3]/d;
     bf[0][0]=u[5]; bf[1][0]=u[6]; bf[2][0]=u[7];
     int nvp = grid_.nvar - 3; bf[0][1]=u[nvp+0]; bf[1][1]=u[nvp+1]; bf[2][1]=u[nvp+2];
@@ -130,7 +130,7 @@ void MhdSolver::ctoprim(const real_t u[20], real_t q[20], real_t bf[3][2], real_
     for (int iv=8; iv<nvp; ++iv) q[iv]=u[iv]/d;
 }
 
-void MhdSolver::trace(const real_t qloc[6][6][6][20], const real_t bfloc[6][6][6][3][2], const real_t dq[6][6][6][3][20], const real_t dbf[6][6][6][3][2], real_t dt, real_t dx, real_t qm[6][6][6][3][20], real_t qp[6][6][6][3][20]) {
+void MhdSolver::trace(const real_t qloc[6][6][6][64], const real_t bfloc[6][6][6][3][2], const real_t dq[6][6][6][3][64], const real_t dbf[6][6][6][3][2], real_t dt, real_t dx, real_t qm[6][6][6][3][64], real_t qp[6][6][6][3][64]) {
     real_t dtdx = dt/dx;
     for (int k = 1; k < 5; ++k) for (int j = 1; j < 5; ++j) for (int i = 1; i < 5; ++i) {
         real_t r=qloc[i][j][k][0], p=qloc[i][j][k][4], u=qloc[i][j][k][1], v=qloc[i][j][k][2], w=qloc[i][j][k][3];
@@ -146,10 +146,10 @@ void MhdSolver::trace(const real_t qloc[6][6][6][20], const real_t bfloc[6][6][6
     }
 }
 
-void MhdSolver::cmpflxm(const real_t qm[6][6][6][3][20], const real_t qp[6][6][6][3][20], const real_t bfloc[6][6][6][3][2], int idim, real_t gamma, real_t flux[6][6][6][20]) {
+void MhdSolver::cmpflxm(const real_t qm[6][6][6][3][64], const real_t qp[6][6][6][3][64], const real_t bfloc[6][6][6][3][2], int idim, real_t gamma, real_t flux[6][6][6][64]) {
     for (int k=1; k<5; ++k) for (int j=1; j<5; ++j) for (int i=1; i<5; ++i) {
         int ni=i+(idim==0), nj=j+(idim==1), nk=k+(idim==2); real_t qL[8], qR[8], f[9];
-        auto fl = [&](real_t* q, const real_t s[20], real_t bn) { q[0]=s[0]; q[1]=s[4]; q[2]=s[1+idim]; q[3]=bn; q[4]=s[1+(idim+1)%3]; q[5]=s[5+(idim+1)%3]; q[6]=s[1+(idim+2)%3]; q[7]=s[5+(idim+2)%3]; };
+        auto fl = [&](real_t* q, const real_t s[64], real_t bn) { q[0]=s[0]; q[1]=s[4]; q[2]=s[1+idim]; q[3]=bn; q[4]=s[1+(idim+1)%3]; q[5]=s[5+(idim+1)%3]; q[6]=s[1+(idim+2)%3]; q[7]=s[5+(idim+2)%3]; };
         fl(qL, qm[i][j][k][idim], bfloc[i][j][k][idim][1]); fl(qR, qp[ni][nj][nk][idim], bfloc[ni][nj][nk][idim][0]);
         if (config_.get("hydro_params", "riemann", "hlld") == "llf") llf(qL, qR, f, gamma); else hlld(qL, qR, f, gamma);
         flux[i][j][k][0]=f[0]; flux[i][j][k][1]=f[1]; flux[i][j][k][2]=f[2]; flux[i][j][k][4]=f[4]; flux[i][j][k][6]=f[6]; flux[i][j][k][5]=f[5]; flux[i][j][k][7]=f[7];
@@ -160,13 +160,13 @@ void MhdSolver::godfine1(const std::vector<int>& ind_grid, int ilevel, real_t dt
     real_t gamma = config_.get_double("hydro_params", "gamma", 1.4), dt_dx = dt/dx;
     for (int igrid : ind_grid) {
         gather_stencil(igrid, ilevel, *stencil_ptr_);
-        real_t qloc[6][6][6][20], bfloc[6][6][6][3][2], dq[6][6][6][3][20]={0}, dbf[6][6][6][3][2]={0};
+        real_t qloc[6][6][6][64], bfloc[6][6][6][3][2], dq[6][6][6][3][64]={0}, dbf[6][6][6][3][2]={0};
         for(int k=0; k<6; ++k) for(int j=0; j<6; ++j) for(int i=0; i<6; ++i) ctoprim(stencil_ptr_->uloc[i][j][k], qloc[i][j][k], bfloc[i][j][k], gamma);
         int st = config_.get_int("hydro_params", "slope_type", 1);
         for(int k=1; k<5; ++k) for(int j=1; j<5; ++j) for(int i=1; i<5; ++i) {
             for(int iv=0; iv<grid_.nvar; ++iv) { dq[i][j][k][0][iv]=SlopeLimiter::compute_slope(qloc[i-1][j][k][iv],qloc[i][j][k][iv],qloc[i+1][j][k][iv],st); if(NDIM>1) dq[i][j][k][1][iv]=SlopeLimiter::compute_slope(qloc[i][j-1][k][iv],qloc[i][j][k][iv],qloc[i][j+1][k][iv],st); }
         }
-        real_t qm[6][6][6][3][20], qp[6][6][6][3][20], fluxes[3][6][6][6][20]={0}, emfz[6][6][6]={0};
+        real_t qm[6][6][6][3][64], qp[6][6][6][3][64], fluxes[3][6][6][6][64]={0}, emfz[6][6][6]={0};
         trace(qloc, bfloc, dq, dbf, dt, dx, qm, qp);
         for(int d=0; d<NDIM; ++d) cmpflxm(qm, qp, bfloc, d, gamma, fluxes[d]);
         for(int k=1; k<6; ++k) for(int j=1; j<6; ++j) for(int i=1; i<6; ++i) if(NDIM>1) emfz[i][j][k]=0.25*(fluxes[0][i][j][k][6]+fluxes[0][i][j-1][k][6]-fluxes[1][i][j][k][5]-fluxes[1][i-1][j][k][5]);
@@ -175,7 +175,7 @@ void MhdSolver::godfine1(const std::vector<int>& ind_grid, int ilevel, real_t dt
             if(icp<=(1<<NDIM)) {
                 for(int d=0; d<NDIM; ++d) {
                     int il=i-(d==0), jl=j-(d==1), kl=k-(d==2);
-                    real_t fL[20], fR[20]; for(int iv=0; iv<20; ++iv) { fL[iv]=fluxes[d][il][jl][kl][iv]; fR[iv]=fluxes[d][i][j][k][iv]; }
+                    real_t fL[64], fR[64]; for(int iv=0; iv<20; ++iv) { fL[iv]=fluxes[d][il][jl][kl][iv]; fR[iv]=fluxes[d][i][j][k][iv]; }
                     grid_.unew(idc, 1) += (fL[0]-fR[0])*dt_dx; grid_.unew(idc, 5) += (fL[1]-fR[1])*dt_dx;
                     grid_.unew(idc, 1+d+1) += (fL[2]-fR[2])*dt_dx; grid_.unew(idc, 1+(d+1)%3+1) += (fL[4]-fR[4])*dt_dx; grid_.unew(idc, 1+(d+2)%3+1) += (fL[6]-fR[6])*dt_dx;
                 }

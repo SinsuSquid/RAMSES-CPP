@@ -283,6 +283,41 @@ def load_snapshot(nout, read_hydro=True, read_grav=False, read_rt=False):
         nlines4 = 6
         nstrin4 = 0
 
+        # Read coarse level
+        if k == 0:
+            for ind in range(twotondim):
+                iz=int((ind)/4); iy=int((ind-4*iz)/2); ix=int((ind-2*iy-4*iz))
+                xcent[ind,0]=(float(ix)-0.5)/nx; xcent[ind,1]=(float(iy)-0.5)/ny; xcent[ind,2]=(float(iz)-0.5)/nz
+
+            # Extract coarse cells
+            coarse_son = struct.unpack("%ii"%ncoarse, amrContent[4*ninteg1 + 8*(nlines1+nfloat1) + nstrin1 + 4 : 4*ninteg1 + 8*(nlines1+nfloat1) + nstrin1 + 4 + 4*ncoarse])
+            for i in range(ncoarse):
+                if coarse_son[i] == 0:
+                    # Leaf cell at coarse level
+                    leaf_var = np.zeros(nvar_read)
+                    for ivar in range(info["nvar"]):
+                        offset = 4*ninteg2 + 8*(nlines2+nfloat2+ivar*(ncoarse+1)) + 4 + 8*i
+                        leaf_var[ivar] = struct.unpack("d", hydroContent[offset:offset+8])[0]
+                    
+                    # Coordinates
+                    iz_c = int(i / (nx * ny)); iy_c = int((i - iz_c * nx * ny) / nx); ix_c = i % nx
+                    leaf_var[-5] = 1.0 # Level 1
+                    leaf_var[-4] = (float(ix_c) + 0.5) / float(nx) * info["boxlen"]
+                    leaf_var[-3] = (float(iy_c) + 0.5) / float(ny) * info["boxlen"]
+                    leaf_var[-2] = (float(iz_c) + 0.5) / float(nz) * info["boxlen"]
+                    leaf_var[-1] = (1.0 / float(max(nx,ny,nz))) * info["boxlen"]
+                    
+                    ncells_tot += 1
+                    npieces += 1
+                    data_pieces["piece"+str(npieces)] = leaf_var.reshape(1, nvar_read)
+
+        # Increment offsets for coarse level
+        nfloat2 += info["nvar"] * ncoarse
+        nlines2 += info["nvar"]
+        if read_rt:
+            # Coarse level RT? Need logic here if added.
+            pass
+
         # Loop over levels
         for ilevel in range(info["levelmax"]):
 

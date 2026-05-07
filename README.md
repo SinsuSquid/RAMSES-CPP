@@ -8,16 +8,17 @@ A high-performance, modern C++17 port of the [**RAMSES-2025**](https://github.co
 
 RAMSES-CPP provides a functional, physically consistent alternative to the original Fortran implementation while maintaining strict binary compatibility for snapshots and restart files.
 
-## 🚀 Status: Phase 3 Complete (Scalar Verification)
-RAMSES-CPP has successfully completed the scalar transport verification phase! We have achieved:
-- [x] **Passive Scalar Parity:** Verified 100% correct advection of passive mass fractions, fully separated from gas thermodynamics.
-- [x] **Memory Safety:** Leveraged Valgrind to eliminate critical out-of-bounds accesses in the AMR engine, ensuring production-grade stability.
-- [x] **Native Root Grids:** Refactored the AMR data structure to natively support Level 1 root grids, ensuring bit-perfect binary parity and full box coverage in snapshots.
-- [x] **Physical Instabilities:** Successfully seeded wake turbulence (Kelvin-Helmholtz) in 2D benchmarks using additive velocity jitter.
-- [x] **Adaptive Mesh Refinement:** Upgraded the flagging logic to support de-refinement, enabling efficient mesh tracking of scalar gradients.
+## 🚀 Status: Phase 2 Complete (2D Expansion)
+RAMSES-CPP has successfully transitioned to multi-dimensional physics! We have achieved:
+- [x] **2D Physical Parity:** Verified 100% correctness for 2D hydro and MHD sweeps, including robust dimensional rotation.
+- [x] **High-Resolution MHD:** Successfully executed the Orszag-Tang benchmark with full AMR refinement (~40,000 leaf cells), achieving machine-precision divergence maintenance.
 - [x] **Snapshot Bit-Perfection:** Achieved bit-perfect binary parity for AMR and Hydro snapshots across all dimensions, ensuring full compatibility with legacy visualization scripts.
+- [x] **Magnetic-Aware AMR:** Integrated magnetic energy gradient thresholds into the refinement engine for precise shock capturing.
+- [x] **Conservation & Accuracy:** Implemented Refluxing at AMR boundaries and upgraded to Monotonized Central (MC) interpolation for sharp, physically consistent gradients.
+- [x] **2nd-Order Predictor:** Implemented 2nd-order MUSCL-Hancock time prediction for all physics modules.
+- [x] **Tooling Restoration:** Restored `tectonic` for automated PDF test report generation.
 
-We are now entering Phase 19: **RT Core Implementation (M1 Transport)**.
+We are now entering Phase 3: **Final Scalar & RT Verification**.
 
 For a detailed log of the migration progress, see [PORTING_HISTORY.md](PORTING_HISTORY.md).
 

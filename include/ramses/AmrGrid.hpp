@@ -4,6 +4,7 @@
 #include "Types.hpp"
 #include <vector>
 #include <string>
+#include <functional>
 
 namespace ramses {
 
@@ -50,8 +51,16 @@ public:
     void get_nbor_grids(int igrid, int ign[7]) const;
     void get_nbor_cells(const int ign[7], int ic, int icn[6], int igrid) const;
     void get_27_cell_neighbors(int icell, int nbors[27]) const;
+    
+    // Interpolation hook
+    using InterpolHook = std::function<void(const real_t[7][64], real_t[8][64])>;
+    void set_interpol_hook(InterpolHook hook) { interpol_hook_ = hook; }
+    void interpol(const real_t u1[7][64], real_t u2[8][64]) const { if(interpol_hook_) interpol_hook_(u1, u2); }
 
     int nx, ny, nz;
+
+private:
+    InterpolHook interpol_hook_;
 };
 
 } // namespace ramses

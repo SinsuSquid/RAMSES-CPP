@@ -23,7 +23,8 @@ public:
     void add_gravity_source_terms(int ilevel, real_t dt);
     
     void set_nener(int nener) { nener_ = nener; }
-    void interpol_hydro(const real_t u1[7][20], real_t u2[8][20]);
+    void set_nvar_hydro(int nvar) { nvar_hydro_ = nvar; }
+    void interpol_hydro(const real_t u1[7][64], real_t u2[8][64]);
 
 private:
     void ctoprim(const real_t u[], real_t q[], real_t gamma);
@@ -33,6 +34,7 @@ private:
     AmrGrid& grid_;
     Config& config_;
     int nener_ = 0;
+    int nvar_hydro_ = 5;
     std::vector<real_t> qm_level_, qp_level_; 
 };
 

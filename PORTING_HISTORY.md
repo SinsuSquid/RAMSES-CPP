@@ -214,8 +214,12 @@ The RAMSES-2025 C++ port is now a **fully functional, production-ready, and test
 
 ## Phase 19: Radiation Hydrodynamics (RT) Core Implementation
 
-### [2026-05-04] - RT Solver Initialization
-- **Eigenvalue Loading:** Verified `RtSolver::initialize` correctly loads HLL eigenvalues from `hll_evals.list`.
-- **Infrastructure:** Prepared `rt_godfine1` for M1 transport logic implementation.
-- **Status:** Foundations for RT are solid; ready to implement the M1 closure scheme.
+### [2026-05-07] - RT M1 Closure & Stencil Integration
+- **M1 Closure Scheme:** Successfully implemented the M1 closure relation in the `RtSolver`. This includes the calculation of the Eddington pressure tensor and photon group fluxes.
+- **HLL Riemann Solver:** Ported the HLL Riemann solver for Radiative Transfer, including the interpolation of eigenvalues from the `hll_evals.list` table.
+- **Stencil Gathering:** Implemented a dimension-aware stencil gathering system in `RtSolver::rt_godfine1` to correctly handle local cell neighborhoods for the RT update.
+- **Chemistry & Ionization:** Integrated the `RtChemistry` module into the main simulation loop, enabling coupling between radiation field and gas ionization/heating.
+- **Snapshot Parity:** Enhanced `RamsesWriter` to support RT outputs (`rt_*.out`) and descriptors, ensuring compatibility with legacy visualization tools for radiation fields.
+- **Simulation Integration:** Fully integrated the `RtSolver` into the recursive `amr_step` loop, supporting sub-cycling and level-dependent updates.
+- **Status:** RT core is functional and integrated. Ready for multi-group validation and benchmark testing.
 

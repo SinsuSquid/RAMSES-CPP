@@ -70,7 +70,8 @@ void TreeUpdater::make_grid_fine(int ilevel) {
             }
         }
         
-        real_t u1[7][20] = {0}, u2[8][20] = {0}; 
+        real_t u1[7][64] = {0}, u2[8][64] = {0};
+ 
         for(int iv=1; iv<=grid_.nvar; ++iv) u1[0][iv-1] = grid_.uold(ic_coarse, iv);
         int icn_ref[6] = {0};
         if (ilevel > 1) {

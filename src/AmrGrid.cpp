@@ -100,6 +100,27 @@ void AmrGrid::get_nbor_cells(const int ign[7], int ic, int icn[6], int igrid) co
 
 void AmrGrid::get_27_cell_neighbors(int icell, int nbors[27]) const {
     for(int i=0; i<27; ++i) nbors[i] = 0;
+    if (icell <= 0) return;
+    
+    nbors[13] = icell;
+    int ig = (icell > ncoarse) ? ((icell - ncoarse - 1) % ngridmax) + 1 : 0;
+    int ic = (icell > ncoarse) ? ((icell - ncoarse - 1) / ngridmax) + 1 : icell;
+    
+    int ign[7];
+    if (ig > 0) get_nbor_grids(ig, ign);
+    else {
+        ign[0] = 0; // Coarse level
+        for(int i=1; i<=6; ++i) ign[i] = 0; // Needs coarse neighbor logic
+    }
+    
+    // Simplification: only fill 6 direct neighbors for now
+    int icn[6];
+    if (ig > 0) {
+        get_nbor_cells(ign, ic, icn, ig);
+        nbors[13+1] = icn[1]; nbors[13-1] = icn[0];
+        if (NDIM > 1) { nbors[13+3] = icn[3]; nbors[13-3] = icn[2]; }
+        if (NDIM > 2) { nbors[13+9] = icn[5]; nbors[13-9] = icn[4]; }
+    }
 }
 
 } // namespace ramses

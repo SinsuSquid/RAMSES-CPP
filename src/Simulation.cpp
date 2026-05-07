@@ -16,9 +16,19 @@ namespace p = ramses::params;
 void Simulation::initialize(const std::string& nml_path) {
     if (!config_.parse(nml_path)) return;
     
-    p::nx = config_.get_int("amr_params", "nx", 1);
-    p::ny = config_.get_int("amr_params", "ny", 1);
-    p::nz = config_.get_int("amr_params", "nz", 1);
+    namespace p = ramses::params;
+#ifdef RAMSES_NX
+    p::nx = RAMSES_NX;
+#endif
+#ifdef RAMSES_NY
+    p::ny = RAMSES_NY;
+#endif
+#ifdef RAMSES_NZ
+    p::nz = RAMSES_NZ;
+#endif
+    p::nx = config_.get_int("amr_params", "nx", p::nx);
+    p::ny = config_.get_int("amr_params", "ny", p::ny);
+    p::nz = config_.get_int("amr_params", "nz", p::nz);
     p::boxlen = config_.get_double("amr_params", "boxlen", 1.0);
     int ngridmax = config_.get_int("amr_params", "ngridmax", 1000);
     nener_ = config_.get_int("hydro_params", "nener", 0);
@@ -32,23 +42,47 @@ void Simulation::initialize(const std::string& nml_path) {
     grid_.gamma = gamma;
     
     int npassive = 0;
-    std::string var_s = config_.get("init_params", "var_region", "");
-    if (!var_s.empty()) {
-        std::stringstream ss(var_s); std::string item;
+    std::string npassive_s = config_.get("hydro_params", "npassive_var", "");
+    if (!npassive_s.empty()) {
+        std::stringstream ss(npassive_s); std::string item;
         while (std::getline(ss, item, ',')) npassive++;
     }
     int nreg = config_.get_int("init_params", "nregion", 1);
     if (nreg > 0) npassive /= nreg;
 
+    int nener = config_.get_int("hydro_params", "nener", 0);
+    nener_ = nener;
+    #ifdef RAMSES_NMETALS
+    npassive = RAMSES_NMETALS;
+    #endif
+    npassive = config_.get_int("hydro_params", "nmetals", npassive);
+
     int nvar = 5 + nener_ + npassive;
+
 #ifdef MHD
     nvar = 11 + nener_ + npassive;
 #endif
+#ifdef RT
+    rt_.initialize();
+    int nGroups = config_.get_int("rt_params", "nGroups", 0);
+    int nIons = 3; 
+    if (config_.get_bool("rt_params", "isH2", false)) nIons = 6;
+    else if (!config_.get_bool("rt_params", "isHe", true)) nIons = 1;
+    
+#ifdef RAMSES_NIONS
+    nIons = RAMSES_NIONS;
+#endif
+    nIons = config_.get_int("rt_params", "nIons", nIons);
+    rt_.set_nIons(nIons);
+
+    nvar += nIons + nGroups * (1 + NDIM);
+#endif
     grid_.allocate(p::nx, p::ny, p::nz, ngridmax, nvar, ncpu, levelmax);
     grid_.nvar = nvar;
+    hydro_.set_nvar_hydro(5 + nener_ + npassive); // New method to limit update
 
     srand(1);
-    updater_.set_interpol_hook([this](const real_t u1[7][20], real_t u2[8][20]){
+    updater_.set_interpol_hook([this](const real_t u1[7][64], real_t u2[8][64]){
 #ifdef MHD
         mhd_.interpol_mhd(u1, u2);
 #else
@@ -147,7 +181,15 @@ void Simulation::run() {
                     real_t p = (grid_.uold(idc + 1, 5) - 0.5*d*v2)*(grid_.gamma-1.0);
                     real_t c = std::sqrt(std::max(grid_.gamma*p/d, 1e-10));
                     min_dt = std::min(min_dt, courant * dx / (std::sqrt(v2) + c));
-                }
+                    #ifdef RT
+                    int nGroups = rt_.get_nGroups();
+                    if (nGroups > 0) {
+                        real_t dt_rt = 0.8 * dx / rt_.get_c_speed();
+                        min_dt = std::min(min_dt, dt_rt);
+                    }
+                    #endif
+                    }
+
                 ig = grid_.next[ig - 1];
             }
         }
@@ -191,6 +233,10 @@ void Simulation::amr_step(int ilevel, real_t dt, int icount) {
 #else
     hydro_.godunov_fine(ilevel, dt, dx);
 #endif
+#ifdef RT
+    rt_.godunov_fine(ilevel, dt, dx);
+    rt_.apply_source_terms(ilevel, dt);
+#endif
     int nsub = (ilevel < 32) ? nsubcycle_.at(ilevel) : 1;
     for (int i = 1; i <= nsub; ++i) amr_step(ilevel + 1, dt / nsub, i);
     updater_.restrict_fine(ilevel);
@@ -198,6 +244,9 @@ void Simulation::amr_step(int ilevel, real_t dt, int icount) {
     mhd_.set_uold(ilevel);
 #else
     hydro_.set_uold(ilevel);
+#endif
+#ifdef RT
+    rt_.set_uold(ilevel);
 #endif
 }
 
@@ -211,6 +260,13 @@ void Simulation::dump_snapshot(int iout) {
     };
     RamsesWriter(get_path("amr", ".out")).write_amr(grid_, info);
     RamsesWriter(get_path("hydro", ".out")).write_hydro(grid_, info);
+#ifdef RT
+    int nGroups = config_.get_int("rt_params", "nGroups", 0);
+    if (nGroups > 0) {
+        RamsesWriter(get_path("rt", ".out")).write_rt(grid_, info, nGroups, rt_.get_c_speed());
+        RamsesWriter(dir + "/rt_file_descriptor.txt").write_rt_descriptor(grid_, info, nGroups);
+    }
+#endif
     std::stringstream ssinfo; ssinfo << dir << "/info_" << std::setfill('0') << std::setw(5) << iout << ".txt";
     RamsesWriter(ssinfo.str()).write_header(grid_, info);
     RamsesWriter(dir + "/hydro_file_descriptor.txt").write_hydro_descriptor(grid_, info);

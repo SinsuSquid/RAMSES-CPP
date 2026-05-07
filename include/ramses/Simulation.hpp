@@ -8,6 +8,7 @@
 #include "TreeUpdater.hpp"
 #include "Config.hpp"
 #include "Initializer.hpp"
+#include "RtSolver.hpp"
 #include <vector>
 
 namespace ramses {
@@ -20,6 +21,7 @@ public:
     Simulation() : grid_(), 
                    hydro_(grid_, config_), 
                    mhd_(grid_, config_), 
+                   rt_(grid_, config_),
                    poisson_(grid_, config_), 
                    updater_(grid_, config_), 
                    initializer_(grid_, config_) {}
@@ -35,6 +37,7 @@ private:
     AmrGrid grid_;
     HydroSolver hydro_;
     MhdSolver mhd_;
+    RtSolver rt_;
     PoissonSolver poisson_;
     TreeUpdater updater_;
     Initializer initializer_;
