@@ -3,6 +3,9 @@
 #include "ramses/Parameters.hpp"
 #include "ramses/MpiManager.hpp"
 #include "ramses/RamsesWriter.hpp"
+#ifdef RAMSES_USE_MPI
+#include <mpi.h>
+#endif
 #include <iostream>
 #include <iomanip>
 #include <sstream>
@@ -54,7 +57,8 @@ void Simulation::initialize(const std::string& nml_path) {
     
     bool do_poisson = config_.get_bool("run_params", "poisson", false);
 
-    grid_.allocate(p::nx, p::ny, p::nz, ngridmax, nvar, 1, levelmax);
+    int ncpu = MpiManager::instance().size();
+    grid_.allocate(p::nx, p::ny, p::nz, ngridmax, nvar, ncpu, levelmax);
     if (nparttot > 0) grid_.resize_particles(nparttot);
     hydro_.set_nener(nener_);
     hydro_.set_nvar_hydro(5 + nener_ + npassive);
@@ -105,6 +109,11 @@ void Simulation::initialize(const std::string& nml_path) {
             updater_.make_grid_fine(il);
             updater_.remove_grid_fine(il);
         }
+        grid_.synchronize_level_counts();
+        if (MpiManager::instance().size() > 1) {
+            load_balancer_.calculate_hilbert_keys();
+            load_balancer_.balance();
+        }
         particles_.relink();
     }
 
@@ -152,7 +161,7 @@ void Simulation::run() {
             for (int il = grid_.nlevelmax; il >= 1; --il) rho_fine(il);
             
             for (int il = grid_.nlevelmax; il >= 2; --il) {
-                int myid = 1, n2d_val = (1 << NDIM);
+                int myid = MpiManager::instance().rank() + 1, n2d_val = (1 << NDIM);
                 int ig = grid_.get_headl(myid, il);
                 while (ig > 0) {
                     int id_p = grid_.father[ig - 1];
@@ -162,7 +171,7 @@ void Simulation::run() {
                             size_t idx = (size_t)grid_.ncoarse + (size_t)(ic - 1) * grid_.ngridmax + ig - 1;
                             sum += grid_.rho[idx];
                         }
-                        grid_.rho[id_p - 1] += sum / (real_t)constants::twotondim;
+                        grid_.rho[id_p - 1] += sum / (real_t)n2d_val;
                     }
                     ig = grid_.next[ig - 1];
                 }
@@ -197,7 +206,8 @@ void Simulation::run() {
                     }
                 }
             } else {
-                int ig = grid_.get_headl(1, il);
+                int myid = MpiManager::instance().rank() + 1;
+                int ig = grid_.get_headl(myid, il);
                 int n2d_val = (1 << NDIM);
                 while (ig > 0) {
                     for (int ic = 1; ic <= n2d_val; ++ic) {
@@ -219,7 +229,13 @@ void Simulation::run() {
             }
         }
 
-        real_t dt = min_dt;
+        real_t global_min_dt = min_dt;
+#ifdef RAMSES_USE_MPI
+        if (MpiManager::instance().size() > 1) {
+            MPI_Allreduce(&min_dt, &global_min_dt, 1, MPI_DOUBLE, MPI_MIN, MPI_COMM_WORLD);
+        }
+#endif
+        real_t dt = global_min_dt;
         if (iout < (int)tout_.size()) dt = std::min(dt, tout_[iout] - t_);
 
         amr_step(1, dt); t_ += dt; nstep_++;
@@ -287,7 +303,7 @@ void Simulation::amr_step(int ilevel, real_t dt, int icount) {
 }
 
 void Simulation::rho_fine(int ilevel) {
-    int myid = 1, n2d_val = (1 << NDIM);
+    int myid = MpiManager::instance().rank() + 1, n2d_val = (1 << NDIM);
     if (ilevel == 1) {
         for (int i = 1; i <= grid_.ncoarse; ++i) grid_.rho[i - 1] = 0.0;
     } else {
@@ -317,6 +333,14 @@ void Simulation::rho_fine(int ilevel) {
             }
         }
     }
+
+#ifdef RAMSES_USE_MPI
+    if (ilevel == 1 && MpiManager::instance().size() > 1) {
+        std::vector<real_t> global_rho(grid_.ncoarse);
+        MPI_Allreduce(grid_.rho.data(), global_rho.data(), grid_.ncoarse, MPI_DOUBLE, MPI_SUM, MPI_COMM_WORLD);
+        std::copy(global_rho.begin(), global_rho.end(), grid_.rho.begin());
+    }
+#endif
 }
 
 void Simulation::dump_snapshot(int iout) {

@@ -1,6 +1,7 @@
 #include "ramses/LoadBalancer.hpp"
 #include "ramses/MpiManager.hpp"
 #include "ramses/Hilbert.hpp"
+#include "ramses/Constants.hpp"
 #include <iostream>
 #include <algorithm>
 #include <map>
@@ -40,7 +41,7 @@ void LoadBalancer::calculate_hilbert_keys() {
         else if (NDIM == 2) Hilbert::hilbert2d(ix, iy, order, grid_.nlevelmax);
         else Hilbert::hilbert3d(ix, iy, iz, order, grid_.nlevelmax);
         
-        grid_.hilbert_keys[i] = order[0];
+        grid_.hilbert_keys[i-1] = order[0];
     };
 
     // 1. Coarse cells
@@ -72,7 +73,7 @@ void LoadBalancer::compute_new_cpu_map(std::vector<int>& cpu_map_new) {
     };
     std::vector<CellKey> leaf_cells;
     for (int i = 1; i <= grid_.ncell; ++i) {
-        if (grid_.son[i] == 0) leaf_cells.push_back({i, grid_.hilbert_keys[i]});
+        if (grid_.son[i-1] == 0) leaf_cells.push_back({i, grid_.hilbert_keys[i-1]});
     }
 
     std::sort(leaf_cells.begin(), leaf_cells.end(), [](const CellKey& a, const CellKey& b) {
@@ -87,7 +88,7 @@ void LoadBalancer::compute_new_cpu_map(std::vector<int>& cpu_map_new) {
     for (int icpu = 1; icpu <= mpi.size(); ++icpu) {
         int count = leaves_per_cpu + (icpu <= extra_leaves ? 1 : 0);
         for (int i = 0; i < count; ++i) {
-            cpu_map_new[leaf_cells[current_leaf].index] = icpu;
+            cpu_map_new[leaf_cells[current_leaf].index - 1] = icpu;
             current_leaf++;
         }
     }
@@ -99,7 +100,7 @@ void LoadBalancer::compute_new_cpu_map(std::vector<int>& cpu_map_new) {
                 int father_cell = grid_.father[igrid - 1];
                 if (father_cell > 0) {
                     int first_child = grid_.ncoarse + (1 - 1) * grid_.ngridmax + igrid;
-                    cpu_map_new[father_cell] = cpu_map_new[first_child];
+                    cpu_map_new[father_cell-1] = cpu_map_new[first_child-1];
                 }
                 igrid = grid_.next[igrid - 1];
             }
@@ -134,7 +135,7 @@ void LoadBalancer::move_grids(const std::vector<int>& cpu_map_new) {
         while (igrid > 0) {
             int next_grid = grid_.next[igrid - 1];
             int father_cell = grid_.father[igrid - 1];
-            int target_cpu = cpu_map_new[father_cell];
+            int target_cpu = cpu_map_new[father_cell-1];
 
             if (target_cpu != myid) {
                 OctPacket p;
@@ -142,8 +143,8 @@ void LoadBalancer::move_grids(const std::vector<int>& cpu_map_new) {
                 p.ilevel = ilevel;
                 grid_.get_cell_center(father_cell, p.father_x);
 
-                for (int d = 0; d < 3; ++d) p.xg[d] = (d < NDIM) ? grid_.get_xg(igrid, d + 1) : 0.0;
-                for (int n = 0; n < 6; ++n) p.nbor[n] = (n < 2*NDIM) ? grid_.get_nbor(igrid, n + 1) : 0;
+                for (int d = 0; d < 3; ++d) p.xg[d] = (d < NDIM) ? grid_.xg[d * grid_.ngridmax + igrid - 1] : 0.0;
+                for (int n = 0; n < 6; ++n) p.nbor[n] = (n < 2*NDIM) ? grid_.nbor[n * grid_.ngridmax + igrid - 1] : 0;
                 
                 for (int ic = 1; ic <= ncells_oct; ++ic) {
                     int idc = grid_.ncoarse + (ic - 1) * grid_.ngridmax + igrid;
@@ -151,12 +152,12 @@ void LoadBalancer::move_grids(const std::vector<int>& cpu_map_new) {
                         p.uold[(ic - 1) * 30 + (iv - 1)] = grid_.uold(idc, iv);
                         p.unew[(ic - 1) * 30 + (iv - 1)] = grid_.unew(idc, iv);
                     }
-                    p.hilbert_keys[ic - 1] = grid_.hilbert_keys[idc];
+                    p.hilbert_keys[ic - 1] = grid_.hilbert_keys[idc-1];
                 }
                 send_queues[target_cpu].push_back(p);
                 grids_to_remove.push_back(igrid);
                 remove_grid_from_list(igrid, ilevel, myid);
-                grid_.son[father_cell] = 0; // Clear son pointer on source
+                grid_.son[father_cell-1] = 0; // Clear son pointer on source
             }
             igrid = next_grid;
         }
@@ -193,21 +194,18 @@ void LoadBalancer::move_grids(const std::vector<int>& cpu_map_new) {
             for (const auto& p : recv_queues[i]) {
                 if (p.ilevel != il) continue;
                 
-                if (grid_.numbf <= 0) {
+                int igrid = grid_.get_free_grid();
+                if (igrid == 0) {
                     std::cerr << "[LoadBalancer] Error: No free grids available during migration!" << std::endl;
                     continue;
                 }
-                int igrid = grid_.headf;
-                grid_.headf = grid_.next[igrid - 1];
-                if (grid_.headf > 0) grid_.prev[grid_.headf - 1] = 0;
-                grid_.numbf--;
 
                 int father_cell = grid_.find_cell_by_coords(p.father_x, p.ilevel - 1);
                 grid_.father[igrid - 1] = father_cell;
-                grid_.son[father_cell] = igrid;
+                grid_.son[father_cell-1] = igrid;
 
-                for(int d=0; d<NDIM; ++d) grid_.get_xg(igrid, d+1) = p.xg[d];
-                for(int n=0; n<2*NDIM; ++n) grid_.get_nbor(igrid, n+1) = p.nbor[n];
+                for(int d=0; d<NDIM; ++d) grid_.xg[d * grid_.ngridmax + igrid - 1] = p.xg[d];
+                for(int n=0; n<2*NDIM; ++n) grid_.nbor[n * grid_.ngridmax + igrid - 1] = p.nbor[n];
                 
                 for (int ic = 1; ic <= ncells_oct; ++ic) {
                     int idc = grid_.ncoarse + (ic - 1) * grid_.ngridmax + igrid;
@@ -215,29 +213,20 @@ void LoadBalancer::move_grids(const std::vector<int>& cpu_map_new) {
                         grid_.uold(idc, iv) = p.uold[(ic - 1) * 30 + (iv - 1)];
                         grid_.unew(idc, iv) = p.unew[(ic - 1) * 30 + (iv - 1)];
                     }
-                    grid_.hilbert_keys[idc] = p.hilbert_keys[ic - 1];
-                    grid_.cpu_map[idc] = myid;
+                    grid_.hilbert_keys[idc-1] = p.hilbert_keys[ic - 1];
+                    grid_.cpu_map[idc-1] = myid;
                 }
 
-                int head = grid_.headl(myid, p.ilevel);
-                grid_.next[igrid - 1] = head;
-                if (head > 0) grid_.prev[head - 1] = igrid;
-                grid_.headl(myid, p.ilevel) = igrid;
-                grid_.prev[igrid - 1] = 0;
-                grid_.numbl(myid, p.ilevel)++;
+                grid_.add_to_level_list(igrid, p.ilevel);
             }
         }
     }
 #endif
 
-    for (int i = 1; i <= grid_.ncell; ++i) grid_.cpu_map[i] = cpu_map_new[i];
+    for (int i = 1; i <= grid_.ncell; ++i) grid_.cpu_map[i-1] = cpu_map_new[i-1];
 
     for (int igrid : grids_to_remove) {
-        grid_.next[igrid - 1] = grid_.headf;
-        if (grid_.headf > 0) grid_.prev[grid_.headf - 1] = igrid;
-        grid_.headf = igrid;
-        grid_.prev[igrid - 1] = 0;
-        grid_.numbf++;
+        grid_.free_grid(igrid);
     }
 }
 

@@ -2,6 +2,7 @@
 #include "ramses/AmrGrid.hpp"
 #include "ramses/Constants.hpp"
 #include "ramses/Parameters.hpp"
+#include "ramses/MpiManager.hpp"
 #include <iostream>
 #include <vector>
 #include <algorithm>
@@ -356,7 +357,7 @@ void Initializer::region_condinit(int ilevel) {
             apply_to_cell(i, x, y, z);
         }
     } else {
-        int myid = 1;
+        int myid = MpiManager::instance().rank() + 1;
         int igrid = grid_.get_headl(myid, ilevel);
         while (igrid > 0) {
             for (int ic = 1; ic <= constants::twotondim; ++ic) {

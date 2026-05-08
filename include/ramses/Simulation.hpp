@@ -11,6 +11,7 @@
 #include "RtSolver.hpp"
 #include "Cosmology.hpp"
 #include "ParticleSolver.hpp"
+#include "LoadBalancer.hpp"
 #include <vector>
 
 namespace ramses {
@@ -28,6 +29,7 @@ public:
                    updater_(grid_, config_), 
                    initializer_(grid_, config_),
                    particles_(grid_, config_),
+                   load_balancer_(grid_, config_),
                    cosmo_() {}
 
     void initialize(const std::string& nml_path);
@@ -47,6 +49,7 @@ private:
     TreeUpdater updater_;
     Initializer initializer_;
     ParticleSolver particles_;
+    LoadBalancer load_balancer_;
     Cosmology cosmo_;
 
     real_t t_ = 0.0;

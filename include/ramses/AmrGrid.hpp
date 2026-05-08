@@ -27,8 +27,13 @@ public:
     int headf, tailf, numbf;
 
     std::vector<real_t> rho, phi, f_vec;
+    std::vector<qdp_t> hilbert_keys;
     real_t f(int icell, int idim) const { return f_vec[(idim-1)*ncell + (icell-1)]; }
     real_t& f(int icell, int idim) { return f_vec[(idim-1)*ncell + (icell-1)]; }
+
+    // Coordinate utilities
+    void get_cell_center(int icell, real_t xc[3]) const;
+    int find_cell_by_coords(const real_t x[3], int level) const;
 
     // Particles
     int npart = 0, npartmax = 0;
@@ -53,16 +58,26 @@ public:
         if (ilevel < 1 || ilevel > nlevelmax) return 0;
         return headl_vec.at((ilevel-1)*ncpu + (icpu-1)); 
     }
+    int& headl(int icpu, int ilevel) { 
+        return headl_vec.at((ilevel-1)*ncpu + (icpu-1)); 
+    }
     int taill(int icpu, int ilevel) const { 
         if (ilevel < 1 || ilevel > nlevelmax) return 0;
+        return taill_vec.at((ilevel-1)*ncpu + (icpu-1)); 
+    }
+    int& taill(int icpu, int ilevel) { 
         return taill_vec.at((ilevel-1)*ncpu + (icpu-1)); 
     }
     int numbl(int icpu, int ilevel) const { 
         if (ilevel < 1 || ilevel > nlevelmax) return 0;
         return numbl_vec.at((ilevel-1)*ncpu + (icpu-1)); 
     }
+    int& numbl(int icpu, int ilevel) { 
+        return numbl_vec.at((ilevel-1)*ncpu + (icpu-1)); 
+    }
     int headl(int icpu, int ilevel) const { return get_headl(icpu, ilevel); }
     int count_grids_at_level(int ilevel) const;
+    void synchronize_level_counts();
 
     real_t& uold(int icell, int ivar) { return uold_vec[(ivar-1)*ncell + (icell-1)]; }
     real_t& unew(int icell, int ivar) { return unew_vec[(ivar-1)*ncell + (icell-1)]; }

@@ -64,6 +64,7 @@ add_library(ramses_lib STATIC
     src/ParticleSolver.cpp
     src/ParticleSystem.cpp
     src/Cosmology.cpp
+    src/LoadBalancer.cpp
 )
 
 if(RAMSES_USE_MPI)

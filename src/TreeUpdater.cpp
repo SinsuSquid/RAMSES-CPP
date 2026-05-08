@@ -32,7 +32,7 @@ void TreeUpdater::make_grid_fine(int ilevel) {
             if (grid_.flag1[ic - 1] == 1 && grid_.son[ic - 1] == 0) cells_to_refine.push_back(ic);
         }
     } else {
-        int ig = grid_.get_headl(myid, ilevel - 1);
+        int ig = grid_.get_headl(myid, ilevel);
         while (ig > 0) {
             for (int ic = 1; ic <= n2d; ++ic) {
                 int idc = grid_.ncoarse + (ic - 1) * grid_.ngridmax + ig - 1;
@@ -117,7 +117,7 @@ void TreeUpdater::make_grid_fine(int ilevel) {
 }
 
 void TreeUpdater::remove_grid_fine(int ilevel) {
-    int myid = 1, n2d = (1 << NDIM);
+    int myid = MpiManager::instance().rank() + 1, n2d = (1 << NDIM);
     if (ilevel >= grid_.nlevelmax) return;
     int ig = grid_.get_headl(myid, ilevel);
     while (ig > 0) {
@@ -139,7 +139,7 @@ void TreeUpdater::remove_grid_fine(int ilevel) {
 }
 
 void TreeUpdater::restrict_fine(int ilevel) {
-    int myid = 1, n2d = (1 << NDIM);
+    int myid = MpiManager::instance().rank() + 1, n2d = (1 << NDIM);
     int ig = grid_.get_headl(myid, ilevel);
     real_t twotondim = std::pow(2.0, NDIM);
     while (ig > 0) {
@@ -156,7 +156,7 @@ void TreeUpdater::restrict_fine(int ilevel) {
 }
 
 void TreeUpdater::flag_fine(int ilevel, real_t ed, real_t ep, real_t ev, real_t eb2, const std::vector<real_t>& evar, int nexp) {
-    int myid = 1, n2d = (1 << NDIM), lmin = config_.get_int("amr_params", "levelmin", 1);
+    int myid = MpiManager::instance().rank() + 1, n2d = (1 << NDIM), lmin = config_.get_int("amr_params", "levelmin", 1);
     if (ilevel == 1) {
         for (int i = 1; i <= grid_.ncoarse; ++i) {
             if (ilevel < lmin) { grid_.flag1[i-1] = 1; continue; }
@@ -166,7 +166,7 @@ void TreeUpdater::flag_fine(int ilevel, real_t ed, real_t ep, real_t ev, real_t 
             if (ed > 0 && d > ed) grid_.flag1[i-1] = 1;
         }
     } else {
-        int ig = grid_.get_headl(myid, ilevel - 1);
+        int ig = grid_.get_headl(myid, ilevel);
         while (ig > 0) {
             for (int ic = 1; ic <= n2d; ++ic) {
                 int idc = grid_.ncoarse + (ic - 1) * grid_.ngridmax + ig - 1;

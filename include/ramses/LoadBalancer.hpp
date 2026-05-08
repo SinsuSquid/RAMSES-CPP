@@ -2,7 +2,7 @@
 #define RAMSES_LOAD_BALANCER_HPP
 
 #include "AmrGrid.hpp"
-#include "ParticleSystem.hpp"
+#include "Config.hpp"
 #include <vector>
 
 namespace ramses {
@@ -12,7 +12,7 @@ namespace ramses {
  */
 class LoadBalancer {
 public:
-    LoadBalancer(AmrGrid& grid, ParticleSystem& ps) : grid_(grid), ps_(ps) {}
+    LoadBalancer(AmrGrid& grid, Config& config) : grid_(grid), config_(config) {}
 
     void balance();
 
@@ -35,7 +35,7 @@ private:
     void remove_grid_from_list(int igrid, int ilevel, int icpu);
 
     AmrGrid& grid_;
-    ParticleSystem& ps_;
+    Config& config_;
 };
 
 } // namespace ramses

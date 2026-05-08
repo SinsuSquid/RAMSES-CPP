@@ -14,7 +14,7 @@ void HydroSolver::godunov_fine(int ilevel, real_t dt, real_t dx) {
     int myid = MpiManager::instance().rank() + 1;
     std::vector<int> octs;
     if (ilevel > 1) {
-        int igrid = grid_.get_headl(myid, ilevel - 1);
+        int igrid = grid_.get_headl(myid, ilevel);
         while (igrid > 0) { octs.push_back(igrid); igrid = grid_.next[igrid - 1]; }
     }
     if (octs.empty() && ilevel > 1) return;
@@ -138,9 +138,9 @@ void HydroSolver::godunov_fine(int ilevel, real_t dt, real_t dx) {
 }
 
 void HydroSolver::set_unew(int ilevel) {
-    int myid = 1, n2d_val = (1 << NDIM);
+    int myid = MpiManager::instance().rank() + 1, n2d_val = (1 << NDIM);
     if (ilevel == 1) for (int i = 1; i <= grid_.ncoarse; ++i) for (int iv = 1; iv <= grid_.nvar; ++iv) grid_.unew(i, iv) = grid_.uold(i, iv);
-    int igrid = grid_.get_headl(myid, ilevel - 1);
+    int igrid = grid_.get_headl(myid, ilevel);
     while (igrid > 0) {
         for (int ic = 1; ic <= n2d_val; ++ic) {
             int idc = grid_.ncoarse + (ic - 1) * grid_.ngridmax + igrid;
@@ -151,9 +151,9 @@ void HydroSolver::set_unew(int ilevel) {
 }
 
 void HydroSolver::set_uold(int ilevel) {
-    int myid = 1, n2d_val = (1 << NDIM);
+    int myid = MpiManager::instance().rank() + 1, n2d_val = (1 << NDIM);
     if (ilevel == 1) for (int i = 1; i <= grid_.ncoarse; ++i) for (int iv = 1; iv <= grid_.nvar; ++iv) grid_.uold(i, iv) = grid_.unew(i, iv);
-    int igrid = grid_.get_headl(myid, ilevel - 1);
+    int igrid = grid_.get_headl(myid, ilevel);
     while (igrid > 0) {
         for (int ic = 1; ic <= n2d_val; ++ic) {
             int idc = grid_.ncoarse + (ic - 1) * grid_.ngridmax + igrid;
@@ -229,7 +229,8 @@ void HydroSolver::interpol_hydro(const real_t u1[7][64], real_t u2[8][64]) {
 }
 
 real_t HydroSolver::compute_courant_step(int ilevel, real_t dx, real_t gamma, real_t courant_factor) {
-    real_t dt_max = 1e30; int myid = 1; int igrid = grid_.get_headl(myid, ilevel - 1);
+    int myid = MpiManager::instance().rank() + 1;
+    real_t dt_max = 1e30; int igrid = grid_.get_headl(myid, ilevel);
     while (igrid > 0) {
         for (int ic = 1; ic <= constants::twotondim; ++ic) {
             int id = grid_.ncoarse + (ic - 1) * grid_.ngridmax + igrid;
@@ -252,7 +253,7 @@ real_t HydroSolver::compute_courant_step(int ilevel, real_t dx, real_t gamma, re
 void HydroSolver::get_diagnostics(int ilevel, real_t dx, real_t& min_d, real_t& max_v, real_t& min_t, real_t& max_t) {}
 
 void HydroSolver::add_gravity_source_terms(int ilevel, real_t dt) {
-    int myid = 1, n2d_val = (1 << NDIM);
+    int myid = MpiManager::instance().rank() + 1, n2d_val = (1 << NDIM);
     if (ilevel == 1) {
         for (int idc = 1; idc <= grid_.ncoarse; ++idc) {
             if (grid_.son[idc - 1] > 0) continue;
@@ -264,7 +265,7 @@ void HydroSolver::add_gravity_source_terms(int ilevel, real_t dt) {
             }
         }
     }
-    int igrid = grid_.get_headl(myid, ilevel - 1);
+    int igrid = grid_.get_headl(myid, ilevel);
     while (igrid > 0) {
         for (int ic = 1; ic <= n2d_val; ++ic) {
             int idc = grid_.ncoarse + (ic - 1) * grid_.ngridmax + igrid;
@@ -281,7 +282,7 @@ void HydroSolver::add_gravity_source_terms(int ilevel, real_t dt) {
 }
 
 void HydroSolver::synchro_hydro_fine(int ilevel, real_t dt) {
-    int myid = 1, n2d_val = (1 << NDIM);
+    int myid = MpiManager::instance().rank() + 1, n2d_val = (1 << NDIM);
     if (ilevel == 1) {
         for (int idc = 1; idc <= grid_.ncoarse; ++idc) {
             if (grid_.son[idc - 1] > 0) continue;
@@ -295,7 +296,7 @@ void HydroSolver::synchro_hydro_fine(int ilevel, real_t dt) {
             grid_.uold(idc, 5) = e_int + 0.5*d*v2_new;
         }
     }
-    int igrid = grid_.get_headl(myid, ilevel - 1);
+    int igrid = grid_.get_headl(myid, ilevel);
     while (igrid > 0) {
         for (int ic = 1; ic <= n2d_val; ++ic) {
             int idc = grid_.ncoarse + (ic - 1) * grid_.ngridmax + igrid;

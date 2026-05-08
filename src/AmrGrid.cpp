@@ -1,5 +1,9 @@
 #include "ramses/AmrGrid.hpp"
 #include "ramses/Constants.hpp"
+#include "ramses/MpiManager.hpp"
+#ifdef RAMSES_USE_MPI
+#include <mpi.h>
+#endif
 #include <algorithm>
 #include <cmath>
 #include <iostream>
@@ -142,7 +146,7 @@ void AmrGrid::free_grid(int igrid) {
 }
 
 void AmrGrid::add_to_level_list(int igrid, int ilevel) {
-    int myid = 1;
+    int myid = MpiManager::instance().rank() + 1;
     int head = get_headl(myid, ilevel);
     if (head == 0) {
         headl_vec[(ilevel - 1) * ncpu + (myid - 1)] = igrid;
@@ -160,6 +164,68 @@ int AmrGrid::count_grids_at_level(int ilevel) const {
     int total = 0;
     for (int i = 1; i <= ncpu; ++i) total += numbl(i, ilevel);
     return total;
+}
+
+void AmrGrid::synchronize_level_counts() {
+#ifdef RAMSES_USE_MPI
+    if (ncpu > 1) {
+        std::vector<int> global_numbl(ncpu * nlevelmax);
+        MPI_Allreduce(numbl_vec.data(), global_numbl.data(), ncpu * nlevelmax, MPI_INT, MPI_SUM, MPI_COMM_WORLD);
+        numbl_vec = std::move(global_numbl);
+    }
+#endif
+}
+
+void AmrGrid::get_cell_center(int icell, real_t xc[3]) const {
+    if (icell <= ncoarse) {
+        int idx = icell - 1;
+        int iz = idx / (nx * ny); idx %= (nx * ny);
+        int iy = idx / nx; int ix = idx % nx;
+        real_t dx_coarse = boxlen / std::max({nx, ny, nz});
+        xc[0] = (ix + 0.5) * dx_coarse;
+        xc[1] = (iy + 0.5) * dx_coarse;
+        xc[2] = (iz + 0.5) * dx_coarse;
+    } else {
+        int ig = ((icell - ncoarse - 1) % ngridmax) + 1;
+        int ic = ((icell - ncoarse - 1) / ngridmax) + 1;
+        int idc = (ic - 1);
+        int ix = idc & 1, iy = (idc & 2) >> 1, iz = (idc & 4) >> 2;
+        int ixyz[3] = {ix, iy, iz};
+        // We need level to compute dx. But we don't store level in cell!
+        // This is a problem. RAMSES usually knows the level from context.
+        // For now, let's assume level is 2 (first refined) if we don't know.
+        // Better: find level by traversing upward to coarse cell.
+        int level = 1; int curr_ig = ig;
+        while(curr_ig > 0) {
+            int father_cell = father[curr_ig-1];
+            if (father_cell <= ncoarse) break;
+            curr_ig = ((father_cell - ncoarse - 1) % ngridmax) + 1;
+            level++;
+        }
+        real_t dx = boxlen / (real_t)(nx * (1 << level));
+        for(int d=0; d<3; ++d) xc[d] = xg[d * ngridmax + ig - 1] + (ixyz[d] - 0.5) * dx;
+    }
+}
+
+int AmrGrid::find_cell_by_coords(const real_t x[3], int level) const {
+    real_t dx_coarse = boxlen / std::max({nx, ny, nz});
+    int ix = std::clamp((int)(x[0] / dx_coarse), 0, nx - 1);
+    int iy = std::clamp((int)(x[1] / dx_coarse), 0, ny - 1);
+    int iz = std::clamp((int)(x[2] / dx_coarse), 0, nz - 1);
+    int curr_cell = iz * nx * ny + iy * nx + ix + 1;
+
+    int curr_level = 1;
+    while (curr_level < level && son[curr_cell - 1] > 0) {
+        int ig = son[curr_cell - 1];
+        curr_level++;
+        real_t dx = boxlen / (real_t)(nx * (1 << (curr_level - 1)));
+        int ixc = (x[0] > xg[0 * ngridmax + ig - 1]) ? 1 : 0;
+        int iyc = (x[1] > xg[1 * ngridmax + ig - 1]) ? 1 : 0;
+        int izc = (x[2] > xg[2 * ngridmax + ig - 1]) ? 1 : 0;
+        int ic = izc * 4 + iyc * 2 + ixc + 1;
+        curr_cell = ncoarse + (ic - 1) * ngridmax + ig;
+    }
+    return curr_cell;
 }
 
 void AmrGrid::get_nbor_grids(int igrid, int ign[7]) const {
