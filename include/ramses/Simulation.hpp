@@ -9,6 +9,7 @@
 #include "Config.hpp"
 #include "Initializer.hpp"
 #include "RtSolver.hpp"
+#include "ParticleSolver.hpp"
 #include <vector>
 
 namespace ramses {
@@ -24,13 +25,15 @@ public:
                    rt_(grid_, config_),
                    poisson_(grid_, config_), 
                    updater_(grid_, config_), 
-                   initializer_(grid_, config_) {}
+                   initializer_(grid_, config_),
+                   particles_(grid_, config_) {}
 
     void initialize(const std::string& nml_path);
     void run();
 
 private:
     void amr_step(int ilevel, real_t dt, int icount = 1);
+    void rho_fine(int ilevel);
     void dump_snapshot(int iout);
     
     Config config_;
@@ -41,6 +44,7 @@ private:
     PoissonSolver poisson_;
     TreeUpdater updater_;
     Initializer initializer_;
+    ParticleSolver particles_;
 
     real_t t_ = 0.0;
     real_t tend_ = 1.0;

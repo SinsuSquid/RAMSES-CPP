@@ -21,6 +21,7 @@ public:
     real_t compute_courant_step(int ilevel, real_t dx, real_t gamma, real_t courant_factor);
     void get_diagnostics(int ilevel, real_t dx, real_t& min_d, real_t& max_v, real_t& min_t, real_t& max_t);
     void add_gravity_source_terms(int ilevel, real_t dt);
+    void synchro_hydro_fine(int ilevel, real_t dt);
     
     void set_nener(int nener) { nener_ = nener; }
     void set_nvar_hydro(int nvar) { nvar_hydro_ = nvar; }

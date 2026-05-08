@@ -26,14 +26,20 @@ public:
     std::vector<real_t> xg, uold_vec, unew_vec;
     int headf, tailf, numbf;
 
-    std::vector<real_t> rho, phi;
-    real_t f(int icell, int idim) const { return 0.0; }
-    real_t& f(int icell, int idim) { static real_t dummy; return dummy; }
+    std::vector<real_t> rho, phi, f_vec;
+    real_t f(int icell, int idim) const { return f_vec[(idim-1)*ncell + (icell-1)]; }
+    real_t& f(int icell, int idim) { return f_vec[(idim-1)*ncell + (icell-1)]; }
+
+    // Particles
+    int npart = 0, npartmax = 0;
+    std::vector<real_t> xp, vp, mp;
+    std::vector<int> idp, levelp, headp, nextp;
 
     std::vector<int> ibound_min, ibound_max, jbound_min, jbound_max, kbound_min, kbound_max, bound_type;
     int nboundary;
 
     void allocate(int nx, int ny, int nz, int ngridmax, int nvar, int ncpu, int nlevelmax);
+    void resize_particles(int new_npartmax);
     int get_free_grid();
     void free_grid(int igrid);
     void add_to_level_list(int igrid, int ilevel);

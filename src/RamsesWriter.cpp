@@ -356,6 +356,62 @@ void RamsesWriter::write_rt_descriptor(const AmrGrid& grid, const SnapshotInfo& 
     }
 }
 
+void RamsesWriter::write_particles(const AmrGrid& grid, const SnapshotInfo& info) {
+    std::ofstream file(filename_, std::ios::binary);
+    if (!file.is_open()) return;
+    int32_t ncpu = grid.ncpu, ndim = NDIM, npart = grid.npart;
+    write_record_internal(file, &ncpu, 1);
+    write_record_internal(file, &ndim, 1);
+    write_record_internal(file, &npart, 1);
+    
+    int32_t seed = 12345; write_record_internal(file, &seed, 1);
+    int32_t nstar = 0; real_t mstar = 0.0;
+    write_record_internal(file, &nstar, 1);
+    write_record_internal(file, &mstar, 1);
+    write_record_internal(file, &mstar, 1);
+    int32_t nsink = 0; write_record_internal(file, &nsink, 1);
+
+    if (npart > 0) {
+        for (int d = 0; d < NDIM; ++d) {
+            std::vector<double> buf(npart);
+            for (int i = 0; i < npart; ++i) buf[i] = grid.xp[d * grid.npartmax + i];
+            write_record_internal(file, buf.data(), npart);
+        }
+        for (int d = 0; d < NDIM; ++d) {
+            std::vector<double> buf(npart);
+            for (int i = 0; i < npart; ++i) buf[i] = grid.vp[d * grid.npartmax + i];
+            write_record_internal(file, buf.data(), npart);
+        }
+        {
+            std::vector<double> buf(npart);
+            for (int i = 0; i < npart; ++i) buf[i] = grid.mp[i];
+            write_record_internal(file, buf.data(), npart);
+        }
+        {
+            std::vector<int32_t> buf(npart);
+            for (int i = 0; i < npart; ++i) buf[i] = grid.idp[i];
+            write_record_internal(file, buf.data(), npart);
+        }
+        {
+            std::vector<int32_t> buf(npart);
+            for (int i = 0; i < npart; ++i) buf[i] = grid.levelp[i];
+            write_record_internal(file, buf.data(), npart);
+        }
+    }
+}
+
+void RamsesWriter::write_particles_descriptor(const AmrGrid& grid, const SnapshotInfo& info) {
+    std::ofstream file(filename_);
+    if (!file.is_open()) return;
+    file << "# version: 1" << std::endl;
+    int ivar = 1;
+    for(int d=1; d<=NDIM; ++d) file << ivar++ << ", position_" << (d==1?'x':(d==2?'y':'z')) << ", double" << std::endl;
+    for(int d=1; d<=NDIM; ++d) file << ivar++ << ", velocity_" << (d==1?'x':(d==2?'y':'z')) << ", double" << std::endl;
+    file << ivar++ << ", mass, double" << std::endl;
+    file << ivar++ << ", identity, int" << std::endl;
+    file << ivar++ << ", level, int" << std::endl;
+}
+
 void RamsesWriter::write_grav(const AmrGrid&, const SnapshotInfo&) {}
 
 } // namespace ramses

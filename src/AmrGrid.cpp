@@ -27,8 +27,19 @@ void AmrGrid::allocate(int nx_val, int ny_val, int nz_val, int ngridmax_val, int
     xg.assign(3 * ngridmax, 0.0);
     rho.assign(ncell, 0.0);
     phi.assign(ncell, 0.0);
+    f_vec.assign(3 * ncell, 0.0);
     uold_vec.assign(nvar * ncell, 0.0);
     unew_vec.assign(nvar * ncell, 0.0);
+
+    // Particles (default allocation, can be resized)
+    npart = 0; npartmax = ngridmax * 10; // Rule of thumb
+    xp.assign(3 * npartmax, 0.0);
+    vp.assign(3 * npartmax, 0.0);
+    mp.assign(npartmax, 0.0);
+    idp.assign(npartmax, 0);
+    levelp.assign(npartmax, 0);
+    headp.assign(ncell, 0);
+    nextp.assign(npartmax, 0);
 
     headf = 1; tailf = ngridmax;
     for (int i = 1; i <= ngridmax; ++i) {
@@ -36,6 +47,25 @@ void AmrGrid::allocate(int nx_val, int ny_val, int nz_val, int ngridmax_val, int
         prev[i - 1] = (i > 1) ? i - 1 : 0;
     }
     numbf = ngridmax;
+}
+
+void AmrGrid::resize_particles(int new_npartmax) {
+    if (new_npartmax <= npartmax) return;
+    std::vector<real_t> new_xp(3 * new_npartmax, 0.0);
+    std::vector<real_t> new_vp(3 * new_npartmax, 0.0);
+    for (int d = 0; d < 3; ++d) {
+        for (int i = 0; i < npart; ++i) {
+            new_xp[d * new_npartmax + i] = xp[d * npartmax + i];
+            new_vp[d * new_npartmax + i] = vp[d * npartmax + i];
+        }
+    }
+    xp = std::move(new_xp);
+    vp = std::move(new_vp);
+    mp.resize(new_npartmax, 0.0);
+    idp.resize(new_npartmax, 0);
+    levelp.resize(new_npartmax, 0);
+    nextp.resize(new_npartmax, 0);
+    npartmax = new_npartmax;
 }
 
 int AmrGrid::get_free_grid() {

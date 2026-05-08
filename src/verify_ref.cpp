@@ -48,6 +48,8 @@ int main(int argc, char** argv) {
     reader_loc_h.load_hydro(grid_loc);
 
     std::cout << "Comparing " << ref_amr << " and " << loc_amr << std::endl;
+    std::cout << "ncell ref=" << grid_ref.ncell << " loc=" << grid_loc.ncell << std::endl;
+    std::cout << "nvar ref=" << grid_ref.nvar << " loc=" << grid_loc.nvar << std::endl;
     
     // Simple comparison of cell counts and some values
     if (grid_ref.ncoarse != grid_loc.ncoarse) {
@@ -59,7 +61,7 @@ int main(int argc, char** argv) {
         for (int iv = 1; iv <= std::min(grid_ref.nvar, grid_loc.nvar); ++iv) {
             if (std::abs(grid_ref.uold(i + 1, iv) - grid_loc.uold(i + 1, iv)) > 1e-10) {
                 if (diff_count < 10) {
-                    std::cout << "Value diff at cell " << i+1 << " var " << iv << ": ref=" << grid_ref.uold(i+1, iv) << " loc=" << grid_loc.uold(i+1, iv) << std::endl;
+                    std::cout << "Value diff at cell " << i+1 << " (level " << (i < grid_ref.ncoarse ? 1 : 2) << ") var " << iv << ": ref=" << grid_ref.uold(i+1, iv) << " loc=" << grid_loc.uold(i+1, iv) << std::endl;
                 }
                 diff_count++;
             }

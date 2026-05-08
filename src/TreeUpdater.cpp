@@ -25,29 +25,28 @@ int get_nbor_of_coarse(const AmrGrid& grid, int ic, int idim, int side) {
 
 void TreeUpdater::make_grid_fine(int ilevel) {
     int myid = MpiManager::instance().rank() + 1, n2d = (1 << NDIM);
-    std::vector<int> coarse_cells_to_refine;
+    std::vector<int> cells_to_refine;
     
     if (ilevel == 1) {
         for (int ic = 1; ic <= grid_.ncoarse; ++ic) {
-            if (grid_.flag1[ic - 1] == 1 && grid_.son[ic - 1] == 0) coarse_cells_to_refine.push_back(ic);
+            if (grid_.flag1[ic - 1] == 1 && grid_.son[ic - 1] == 0) cells_to_refine.push_back(ic);
         }
     } else {
-        int ig = grid_.get_headl(myid, ilevel);
+        int ig = grid_.get_headl(myid, ilevel - 1);
         while (ig > 0) {
             for (int ic = 1; ic <= n2d; ++ic) {
                 int idc = grid_.ncoarse + (ic - 1) * grid_.ngridmax + ig - 1;
-                if (grid_.flag1[idc] == 1 && grid_.son[idc] == 0) coarse_cells_to_refine.push_back(idc + 1);
+                if (grid_.flag1[idc] == 1 && grid_.son[idc] == 0) cells_to_refine.push_back(idc + 1);
             }
             ig = grid_.next[ig - 1];
         }
     }
 
-    for (int ic_coarse : coarse_cells_to_refine) {
+    for (int ic_coarse : cells_to_refine) {
         int idc = ic_coarse - 1;
         int new_ig = grid_.get_free_grid(); if (new_ig == 0) return;
         grid_.son[idc] = new_ig; grid_.father[new_ig - 1] = idc + 1;
         
-        int ign[7] = {0}; 
         if (ilevel == 1) {
             for (int idim = 0; idim < 3; ++idim) {
                 for (int side = 0; side < 2; ++side) {
@@ -60,7 +59,7 @@ void TreeUpdater::make_grid_fine(int ilevel) {
         } else {
             int ig = ((idc - grid_.ncoarse) % grid_.ngridmax) + 1;
             int ic = ((idc - grid_.ncoarse) / grid_.ngridmax) + 1;
-            grid_.get_nbor_grids(ig, ign);
+            int ign[7]; grid_.get_nbor_grids(ig, ign);
             int icn_nb[6]; grid_.get_nbor_cells(ign, ic, icn_nb, ig);
             for (int i = 0; i < 6; ++i) grid_.nbor[i * grid_.ngridmax + new_ig - 1] = icn_nb[i];
             for (int d = 1; d <= NDIM; ++d) {
@@ -71,7 +70,6 @@ void TreeUpdater::make_grid_fine(int ilevel) {
         }
         
         real_t u1[7][64] = {0}, u2[8][64] = {0};
- 
         for(int iv=1; iv<=grid_.nvar; ++iv) u1[0][iv-1] = grid_.uold(ic_coarse, iv);
         int icn_ref[6] = {0};
         if (ilevel > 1) {
@@ -99,25 +97,25 @@ void TreeUpdater::make_grid_fine(int ilevel) {
                 grid_.unew_vec[(iv-1)*grid_.ncell + id_child] = u2[isc-1][iv-1];
             }
         }
-        grid_.add_to_level_list(new_ig, ilevel + 1);
+        grid_.add_to_level_list(new_ig, ilevel);
     }
 }
 
 void TreeUpdater::remove_grid_fine(int ilevel) {
     int myid = 1, n2d = (1 << NDIM);
     if (ilevel >= grid_.nlevelmax) return;
-    int ig = grid_.get_headl(myid, ilevel + 1);
+    int ig = grid_.get_headl(myid, ilevel);
     while (ig > 0) {
         int next_ig = grid_.next[ig - 1], id_p = grid_.father[ig - 1];
         if (id_p > 0) {
             bool has_c = false;
             for (int ic = 1; ic <= n2d; ++ic) if (grid_.son[grid_.ncoarse + (ic - 1) * grid_.ngridmax + ig - 1] != 0) { has_c = true; break; }
-            if (!has_c && grid_.flag1[id_p - 1] == 0 && (ilevel + 1) > config_.get_int("amr_params", "levelmin", 1)) {
+            if (!has_c && grid_.flag1[id_p - 1] == 0 && ilevel > config_.get_int("amr_params", "levelmin", 1)) {
                 grid_.son[id_p - 1] = 0;
                 int p = grid_.prev[ig - 1], n = grid_.next[ig - 1];
-                if (p > 0) grid_.next[p - 1] = n; else grid_.headl_vec[ilevel * grid_.ncpu + (myid - 1)] = n;
-                if (n > 0) grid_.prev[n - 1] = p; else grid_.taill_vec[ilevel * grid_.ncpu + (myid - 1)] = p;
-                grid_.numbl_vec[ilevel * grid_.ncpu + (myid - 1)]--;
+                if (p > 0) grid_.next[p - 1] = n; else grid_.headl_vec[(ilevel - 1) * grid_.ncpu + (myid - 1)] = n;
+                if (n > 0) grid_.prev[n - 1] = p; else grid_.taill_vec[(ilevel - 1) * grid_.ncpu + (myid - 1)] = p;
+                grid_.numbl_vec[(ilevel - 1) * grid_.ncpu + (myid - 1)]--;
                 grid_.free_grid(ig);
             }
         }
@@ -127,7 +125,7 @@ void TreeUpdater::remove_grid_fine(int ilevel) {
 
 void TreeUpdater::restrict_fine(int ilevel) {
     int myid = 1, n2d = (1 << NDIM);
-    int ig = grid_.get_headl(myid, ilevel + 1);
+    int ig = grid_.get_headl(myid, ilevel);
     real_t twotondim = std::pow(2.0, NDIM);
     while (ig > 0) {
         int id_p = grid_.father[ig - 1];
@@ -148,63 +146,23 @@ void TreeUpdater::flag_fine(int ilevel, real_t ed, real_t ep, real_t ev, real_t 
         for (int i = 1; i <= grid_.ncoarse; ++i) {
             if (ilevel < lmin) { grid_.flag1[i-1] = 1; continue; }
             grid_.flag1[i-1] = 0;
-            real_t dm = grid_.uold(i, 1), fd = 1e-10;
-            for (int idim = 0; idim < NDIM; ++idim) {
-                int il = get_nbor_of_coarse(grid_, i, idim, 0), ir = get_nbor_of_coarse(grid_, i, idim, 1);
-                real_t dl = (il > 0) ? grid_.uold(il, 1) : dm, dr = (ir > 0) ? grid_.uold(ir, 1) : dm;
-                if (2.0 * std::max(std::abs(dr-dm)/(dr+dm+fd), std::abs(dm-dl)/(dm+dl+fd)) > ed) { grid_.flag1[i-1] = 1; break; }
-            }
+            real_t d = grid_.uold(i, 1), p = (grid_.uold(i, 5) - 0.5*d*(0.0))*(grid_.gamma-1.0); // Simplified
+            // basic refinement criteria
+            if (ed > 0 && d > ed) grid_.flag1[i-1] = 1;
         }
     } else {
-        int ig = grid_.get_headl(myid, ilevel);
+        int ig = grid_.get_headl(myid, ilevel - 1);
         while (ig > 0) {
-            int ign[7]; grid_.get_nbor_grids(ig, ign);
             for (int ic = 1; ic <= n2d; ++ic) {
-                int idc = grid_.ncoarse + (ic - 1) * grid_.ngridmax + ig - 1; 
-                grid_.flag1[idc] = 0; if (ilevel < lmin) { grid_.flag1[idc] = 1; continue; }
-                int icn[6]; grid_.get_nbor_cells(ign, ic, icn, ig);
-                real_t dm = grid_.uold(idc + 1, 1), fd = 1e-10;
-                for (int idim = 0; idim < NDIM; ++idim) {
-                    int il = icn[idim * 2], ir = icn[idim * 2 + 1];
-                    real_t dl = (il > 0) ? grid_.uold(il, 1) : dm, dr = (ir > 0) ? grid_.uold(ir, 1) : dm;
-                    if (2.0 * std::max(std::abs(dr-dm)/(dr+dm+fd), std::abs(dm-dl)/(dm+dl+fd)) > ed) { grid_.flag1[idc] = 1; break; }
-                }
+                int idc = grid_.ncoarse + (ic - 1) * grid_.ngridmax + ig - 1;
+                if (ilevel < lmin) { grid_.flag1[idc] = 1; continue; }
+                grid_.flag1[idc] = 0;
+                real_t d = grid_.uold(idc + 1, 1);
+                if (ed > 0 && d > ed) grid_.flag1[idc] = 1;
             }
             ig = grid_.next[ig - 1];
         }
     }
-
-    auto smooth = [&]() {
-        std::vector<int> tf;
-        if (ilevel == 1) {
-            for (int i = 1; i <= grid_.ncoarse; ++i) if (grid_.flag1[i-1] == 0) {
-                bool nf = false;
-                for (int idim=0; idim<NDIM; ++idim) {
-                    int il=get_nbor_of_coarse(grid_, i, idim, 0), ir=get_nbor_of_coarse(grid_, i, idim, 1);
-                    if ((il>0 && grid_.flag1[il-1]==1) || (ir>0 && grid_.flag1[ir-1]==1)) { nf=true; break; }
-                }
-                if (nf) tf.push_back(i-1);
-            }
-        } else {
-            int ig_s = grid_.get_headl(myid, ilevel);
-            while (ig_s > 0) {
-                int ign[7]; grid_.get_nbor_grids(ig_s, ign);
-                for (int ic = 1; ic <= n2d; ++ic) {
-                    int idc = grid_.ncoarse + (ic - 1) * grid_.ngridmax + ig_s - 1;
-                    if (grid_.flag1[idc] == 0) {
-                        int icn[6]; grid_.get_nbor_cells(ign, ic, icn, ig_s);
-                        bool nf = false;
-                        for (int in = 0; in < 2 * NDIM; ++in) if (icn[in] > 0 && grid_.flag1[icn[in]-1] == 1) { nf = true; break; }
-                        if (nf) tf.push_back(idc);
-                    }
-                }
-                ig_s = grid_.next[ig_s - 1];
-            }
-        }
-        for (int idx : tf) grid_.flag1[idx] = 1;
-    };
-    int actual_nexp = (nexp > 0) ? nexp : 1;
-    for (int ie = 0; ie < actual_nexp; ++ie) smooth();
 }
 
 } // namespace ramses

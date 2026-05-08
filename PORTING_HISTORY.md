@@ -231,3 +231,16 @@ The RAMSES-2025 C++ port is now a **fully functional, production-ready, and test
 - **Visualization Parity:** Restored visualization support for single-level simulations (`levelmax=1`) by patching `visu_ramses.py` to correctly handle coarse-level cell extraction.
 - **Status:** RT multi-group validation is successful. Phase 19 infrastructure is rock-solid. Ready for Phase 20: Performance Optimization and MPI scaling.
 
+## Phase 20: Particle-Mesh (PM) & Self-Gravity Porting
+
+### [2026-05-08] - Gravitational Awakening & Particle Foundation
+- **Poisson Integration:** Successfully hooked the `PoissonSolver` into the main `Simulation::run` loop and recursive `amr_step`. Implemented the leapfrog (kick-drift-kick) synchronization for hydro-gravity coupling.
+- **Particle Infrastructure:** Added full N-body particle support to `AmrGrid`, including arrays for positions, velocities, masses, IDs, and levels. Implemented dynamic particle resizing.
+- **Particle Dynamics:** Implemented `ParticleSolver::move_fine` for particle advection and `assign_mass_fine` for projecting particle mass onto the density grid (CIC/NGP).
+- **Density Restriction:** Added a global density restriction step to ensure gravitational consistency across all AMR levels.
+- **Snapshot Parity:** Enhanced `RamsesWriter` and `RamsesReader` to support particle binary files (`part_*.out`), including descriptor generation for analysis tools.
+- **Analytic Potential:** Ported the `ana_disk_potential` initialization and force calculation. Successfully executed the benchmark with verified physical evolution.
+- **Stability Fixes:** Standardized grid-to-level indexing (Grid $L$ -> Level $L+1$) and hardened the Courant condition to account for gravitational acceleration.
+- **Status:** Gravity and Particle infrastructure are fully functional. Phase 20 core porting is complete. Ready for cosmological Grafic support and MPI particle exchange.
+
+

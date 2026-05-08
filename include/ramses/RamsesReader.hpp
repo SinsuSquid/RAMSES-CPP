@@ -13,6 +13,7 @@ public:
     RamsesReader(const std::string& filename);
     bool load_amr(AmrGrid& grid);
     bool load_hydro(AmrGrid& grid);
+    bool load_particles(AmrGrid& grid);
 
 private:
     template <typename T> void read_record(std::ifstream& f, T& data);

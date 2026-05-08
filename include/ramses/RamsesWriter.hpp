@@ -4,6 +4,7 @@
 #include "AmrGrid.hpp"
 #include <fstream>
 #include <string>
+#include <vector>
 #include <cstdint>
 
 namespace ramses {
@@ -42,12 +43,24 @@ public:
     void write_hydro_descriptor(const AmrGrid& grid, const SnapshotInfo& info);
     void write_rt(const AmrGrid& grid, const SnapshotInfo& info, int nGroups, real_t rt_c);
     void write_rt_descriptor(const AmrGrid& grid, const SnapshotInfo& info, int nGroups);
+    void write_particles(const AmrGrid& grid, const SnapshotInfo& info);
+    void write_particles_descriptor(const AmrGrid& grid, const SnapshotInfo& info);
 
 private:
     template <typename T>
-    void write_record_internal(std::ofstream& file, const T* data, size_t count);
+    void write_record_internal(std::ofstream& file, const T* data, size_t count) {
+        int32_t size = count * sizeof(T);
+        file.write((char*)&size, 4);
+        if (count > 0) file.write((char*)data, size);
+        file.write((char*)&size, 4);
+    }
+    
     template <typename T>
-    void write_record(const T* data, size_t count);
+    void write_record(const T* data, size_t count) {
+        std::ofstream file(filename_, std::ios::binary | std::ios::app);
+        write_record_internal(file, data, count);
+    }
+    
     std::string filename_;
 };
 

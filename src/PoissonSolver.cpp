@@ -126,8 +126,15 @@ void PoissonSolver::compute_force(int ilevel) {
         a2 = a2 / (Myr2sec * Myr2sec) * (scale_t * scale_t);
         z0 = z0 * pc2cm / scale_l;
 
+        if (ilevel == 1) {
+            for (int idc = 1; idc <= grid_.ncoarse; ++idc) {
+                // TODO: calculate x for coarse cells
+                for (int idim = 1; idim <= NDIM; ++idim) grid_.f(idc, idim) = 0.0;
+            }
+        }
+
         for (int icpu = 1; icpu <= grid_.ncpu; ++icpu) {
-            int igrid = grid_.headl(icpu, ilevel);
+            int igrid = (ilevel > 1) ? grid_.headl(icpu, ilevel - 1) : 0;
             while (igrid > 0) {
                 for (int ic = 1; ic <= 8; ++ic) {
                     if (ic > constants::twotondim) break;
@@ -144,6 +151,7 @@ void PoissonSolver::compute_force(int ilevel) {
 
                     real_t rz = x * params::boxlen - 0.5 * params::boxlen;
                     grid_.f(ind_cell, NDIM) = -a1 * rz / std::sqrt(rz * rz + z0 * z0) - a2 * rz;
+                    if (icpu == 1 && ic == 1) std::cout << "[PoissonSolver] Level " << ilevel << " force=" << grid_.f(ind_cell, NDIM) << " rz=" << rz << std::endl;
                     for (int idim = 1; idim < NDIM; ++idim) {
                         grid_.f(ind_cell, idim) = 0.0;
                     }

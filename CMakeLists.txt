@@ -61,6 +61,8 @@ add_library(ramses_lib STATIC
     src/RtChemistry.cpp
     src/MpiManager.cpp
     src/Parameters.cpp
+    src/ParticleSolver.cpp
+    src/ParticleSystem.cpp
 )
 
 if(RAMSES_USE_MPI)

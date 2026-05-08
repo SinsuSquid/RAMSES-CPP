@@ -88,14 +88,37 @@ bool RamsesReader::load_hydro(AmrGrid& grid) {
     std::ifstream file(filename_, std::ios::binary);
     if (!file.is_open()) return false;
     int32_t ncpu, nvar, ndim, nlevelmax, nboundary; double gamma;
-    int32_t s; file.read((char*)&s, 4); file.read((char*)&ncpu, 4); file.read((char*)&nvar, 4); file.read((char*)&ndim, 4); file.read((char*)&nlevelmax, 4); file.read((char*)&nboundary, 4); file.read((char*)&gamma, 8); file.read((char*)&s, 4);
+    read_record(file, ncpu);
+    read_record(file, nvar);
+    read_record(file, ndim);
+    read_record(file, nlevelmax);
+    read_record(file, nboundary);
+    read_record(file, gamma);
+
+    // Coarse level hydro
+    for (int iv = 1; iv <= nvar; ++iv) {
+        std::vector<double> buf; read_record(file, buf);
+        if (iv <= grid.nvar) for (int i = 1; i <= grid.ncoarse; ++i) grid.uold(i, iv) = buf[i-1];
+    }
+
     for(int il=1; il<=nlevelmax; ++il) for(int ic=1; ic<=ncpu + nboundary; ++ic) {
         int ilevel2, nca; read_record(file, ilevel2); read_record(file, nca);
         if (nca > 0) {
-            std::vector<int> igs(nca); int head = grid.headl(ic, il); for(int i=0; i<nca; ++i) { igs[i] = head; head = grid.next[head-1]; }
+            std::vector<int> igs(nca); int head = grid.headl(ic, il); 
+            for(int i=0; i<nca; ++i) { 
+                if (head <= 0) break;
+                igs[i] = head; head = grid.next[head-1]; 
+            }
             for(int ind=1; ind<=constants::twotondim; ++ind) {
                 int iskip = grid.ncoarse + (ind-1)*grid.ngridmax;
-                for(int iv=1; iv<=nvar; ++iv) { std::vector<double> buf; read_record(file, buf); if(iv<=grid.nvar) for(int i=0; i<nca; ++i) grid.uold(igs[i]+iskip, iv) = buf[i]; }
+                for(int iv=1; iv<=nvar; ++iv) { 
+                    std::vector<double> buf; read_record(file, buf); 
+                    if(iv<=grid.nvar) {
+                        for(int i=0; i<(int)std::min((int)nca, (int)buf.size()); ++i) {
+                            if (igs[i] > 0) grid.uold(igs[i]+iskip, iv) = buf[i];
+                        }
+                    }
+                }
             }
         }
     }
@@ -104,6 +127,51 @@ bool RamsesReader::load_hydro(AmrGrid& grid) {
 
 template <typename T> void RamsesReader::read_record(std::ifstream& f, T& d) { int32_t s; f.read((char*)&s, 4); f.read((char*)&d, sizeof(T)); f.read((char*)&s, 4); }
 template <typename T> void RamsesReader::read_record(std::ifstream& f, std::vector<T>& d) { int32_t s; f.read((char*)&s, 4); d.resize(s/sizeof(T)); if(s>0) f.read((char*)d.data(), s); f.read((char*)&s, 4); }
+bool RamsesReader::load_particles(AmrGrid& grid) {
+    std::ifstream file(filename_, std::ios::binary);
+    if (!file.is_open()) return false;
+    int32_t ncpu, ndim, npart;
+    read_record(file, ncpu);
+    read_record(file, ndim);
+    read_record(file, npart);
+    
+    if (npart > 0) {
+        grid.resize_particles(npart);
+        grid.npart = npart;
+        
+        // Skip seeds and other header info
+        int32_t s; file.read((char*)&s, 4); file.seekg(s, std::ios::cur); file.read((char*)&s, 4); // localseed
+        file.read((char*)&s, 4); file.seekg(s, std::ios::cur); file.read((char*)&s, 4); // nstar etc.
+        
+        // Positions
+        for (int d = 0; d < ndim; ++d) {
+            std::vector<double> buf; read_record(file, buf);
+            for (int i = 0; i < npart; ++i) grid.xp[d * grid.npartmax + i] = buf[i];
+        }
+        // Velocities
+        for (int d = 0; d < ndim; ++d) {
+            std::vector<double> buf; read_record(file, buf);
+            for (int i = 0; i < npart; ++i) grid.vp[d * grid.npartmax + i] = buf[i];
+        }
+        // Mass
+        {
+            std::vector<double> buf; read_record(file, buf);
+            for (int i = 0; i < npart; ++i) grid.mp[i] = buf[i];
+        }
+        // ID
+        {
+            std::vector<int32_t> buf; read_record(file, buf);
+            for (int i = 0; i < npart; ++i) grid.idp[i] = buf[i];
+        }
+        // Level
+        {
+            std::vector<int32_t> buf; read_record(file, buf);
+            for (int i = 0; i < npart; ++i) grid.levelp[i] = buf[i];
+        }
+    }
+    return true;
+}
+
 void RamsesReader::read_record_raw(std::ifstream& f, void* d, size_t s_max) { int32_t s; f.read((char*)&s, 4); size_t r = std::min((size_t)s, s_max); if(r>0) f.read((char*)d, r); if((size_t)s > s_max) f.seekg(s - s_max, std::ios::cur); f.read((char*)&s, 4); }
 void RamsesReader::read_record(std::ifstream& f, void* d, size_t s) { read_record_raw(f, d, s); }
 }

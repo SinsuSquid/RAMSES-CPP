@@ -55,6 +55,44 @@ void Initializer::apply_all() {
                 igrid = grid_.next[igrid - 1];
             }
         }
+    } else if (kind == "ana_disk_potential") {
+        real_t dens0 = 0.66;
+        real_t height0 = 150.0;
+        real_t temp0 = 8000.0;
+        real_t gamma = grid_.gamma;
+        real_t mu_gas = config_.get_double("cooling_params", "mu_gas", 1.4);
+        real_t scale_v = config_.get_double("units_params", "units_length", 1.0) / config_.get_double("units_params", "units_time", 1.0);
+        real_t kB = 1.3806e-16, mH = 1.6605e-24;
+
+        auto apply_ana = [&](int idc, real_t x, real_t y, real_t z) {
+            real_t rz = (NDIM == 1 ? x : (NDIM == 2 ? y : z)) - 0.5 * params::boxlen;
+            real_t d = dens0 * std::exp(-(rz * rz) / (2.0 * height0 * height0));
+            grid_.uold(idc, 1) = d;
+            grid_.uold(idc, 2) = 0.0; grid_.uold(idc, 3) = 0.0; grid_.uold(idc, 4) = 0.0;
+            real_t p = d * (kB * temp0 / (mu_gas * mH)) / (scale_v * scale_v);
+            grid_.uold(idc, 5) = p / (gamma - 1.0);
+        };
+
+        for (int i = 1; i <= grid_.ncoarse; ++i) {
+            int idx = i - 1; int iz = idx / (grid_.nx * grid_.ny); idx %= (grid_.nx * grid_.ny); int iy = idx / grid_.nx; int ix = idx % grid_.nx;
+            real_t dx_coarse = grid_.boxlen / std::max({grid_.nx, grid_.ny, grid_.nz});
+            apply_ana(i, (ix + 0.5) * dx_coarse, (iy + 0.5) * dx_coarse, (iz + 0.5) * dx_coarse);
+        }
+        for (int il = 1; il <= grid_.nlevelmax; ++il) {
+            int igrid = grid_.get_headl(1, il);
+            real_t dx = params::boxlen / (real_t)(params::nx * (1 << (il - 1)));
+            while (igrid > 0) {
+                for (int ic = 1; ic <= constants::twotondim; ++ic) {
+                    int idc = grid_.ncoarse + (ic - 1) * grid_.ngridmax + igrid;
+                    int ixyz[3]; int idx = ic - 1; ixyz[2] = idx / 4; idx %= 4; ixyz[1] = idx / 2; ixyz[0] = idx % 2;
+                    real_t x = grid_.xg[0 * grid_.ngridmax + igrid - 1] + (ixyz[0] - 0.5) * dx;
+                    real_t y = (NDIM < 2) ? 0.5 : (grid_.xg[1 * grid_.ngridmax + igrid - 1] + (ixyz[1] - 0.5) * dx);
+                    real_t z = (NDIM < 3) ? 0.5 : (grid_.xg[2 * grid_.ngridmax + igrid - 1] + (ixyz[2] - 0.5) * dx);
+                    apply_ana(idc, x, y, z);
+                }
+                igrid = grid_.next[igrid - 1];
+            }
+        }
     } else {
         for (int il = 1; il <= grid_.nlevelmax; ++il) {
             region_condinit(il);

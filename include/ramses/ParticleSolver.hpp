@@ -2,7 +2,7 @@
 #define RAMSES_PARTICLE_SOLVER_HPP
 
 #include "AmrGrid.hpp"
-#include "ParticleSystem.hpp"
+#include "Config.hpp"
 
 namespace ramses {
 
@@ -11,7 +11,7 @@ namespace ramses {
  */
 class ParticleSolver {
 public:
-    ParticleSolver(AmrGrid& grid, ParticleSystem& ps) : grid_(grid), ps_(ps) {}
+    ParticleSolver(AmrGrid& grid, Config& config) : grid_(grid), config_(config) {}
 
     /**
      * @brief Assigns particle mass to the grid density field (Cloud-In-Cell).
@@ -19,19 +19,22 @@ public:
     void assign_mass(int ilevel);
 
     /**
-     * @brief Moves particles at a specific level.
+     * @brief Pushes particles using current force field.
      */
     void move_fine(int ilevel, real_t dt);
 
-private:
     /**
-     * @brief Core advection logic for a batch of particles.
+     * @brief Assigns particle mass to the density grid (CIC).
      */
+    void assign_mass_fine(int ilevel);
+
+    private:
     void move_particles(const std::vector<int>& ind_part, real_t dt);
+    int find_cell_by_coords(real_t x, real_t y, real_t z);
 
     AmrGrid& grid_;
-    ParticleSystem& ps_;
-};
+    Config& config_;
+    };
 
 } // namespace ramses
 
