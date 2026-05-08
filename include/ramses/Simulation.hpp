@@ -13,6 +13,7 @@
 #include "ParticleSolver.hpp"
 #include "LoadBalancer.hpp"
 #include <vector>
+#include <memory>
 
 namespace ramses {
 
@@ -21,16 +22,7 @@ namespace ramses {
  */
 class Simulation {
 public:
-    Simulation() : grid_(), 
-                   hydro_(grid_, config_), 
-                   mhd_(grid_, config_), 
-                   rt_(grid_, config_),
-                   poisson_(grid_, config_), 
-                   updater_(grid_, config_), 
-                   initializer_(grid_, config_),
-                   particles_(grid_, config_),
-                   load_balancer_(grid_, config_),
-                   cosmo_() {}
+    Simulation();
 
     void initialize(const std::string& nml_path);
     void run();
@@ -42,13 +34,13 @@ private:
 
     Config config_;
     AmrGrid grid_;
-    HydroSolver hydro_;
-    MhdSolver mhd_;
-    RtSolver rt_;
-    PoissonSolver poisson_;
+    std::unique_ptr<HydroSolver> hydro_;
+    std::unique_ptr<MhdSolver> mhd_;
+    std::unique_ptr<RtSolver> rt_;
+    std::unique_ptr<PoissonSolver> poisson_;
     TreeUpdater updater_;
     Initializer initializer_;
-    ParticleSolver particles_;
+    std::unique_ptr<ParticleSolver> particles_;
     LoadBalancer load_balancer_;
     Cosmology cosmo_;
 

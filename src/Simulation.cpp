@@ -12,10 +12,23 @@
 #include <algorithm>
 #include <sys/stat.h>
 #include <cmath>
+#include <memory>
 
 namespace ramses {
 
 namespace p = ramses::params;
+
+Simulation::Simulation() : grid_(), 
+                           updater_(grid_, config_), 
+                           initializer_(grid_, config_),
+                           load_balancer_(grid_, config_),
+                           cosmo_() {
+    hydro_ = std::make_unique<HydroSolver>(grid_, config_);
+    mhd_ = std::make_unique<MhdSolver>(grid_, config_);
+    rt_ = std::make_unique<RtSolver>(grid_, config_);
+    poisson_ = std::make_unique<PoissonSolver>(grid_, config_);
+    particles_ = std::make_unique<ParticleSolver>(grid_, config_);
+}
 
 void Simulation::initialize(const std::string& nml_path) {
     if (!config_.parse(nml_path)) return;
@@ -40,9 +53,9 @@ void Simulation::initialize(const std::string& nml_path) {
     nvar = 11 + nener_ + npassive;
 #endif
 #ifdef RT
-    rt_.initialize();
-    int nGroups = rt_.get_nGroups();
-    int nIons = rt_.get_nIons();
+    rt_->initialize();
+    int nGroups = rt_->get_nGroups();
+    int nIons = rt_->get_nIons();
     nvar += nIons + nGroups * (1 + NDIM);
 #endif
     
@@ -60,8 +73,8 @@ void Simulation::initialize(const std::string& nml_path) {
     int ncpu = MpiManager::instance().size();
     grid_.allocate(p::nx, p::ny, p::nz, ngridmax, nvar, ncpu, levelmax);
     if (nparttot > 0) grid_.resize_particles(nparttot);
-    hydro_.set_nener(nener_);
-    hydro_.set_nvar_hydro(5 + nener_ + npassive);
+    hydro_->set_nener(nener_);
+    hydro_->set_nvar_hydro(5 + nener_ + npassive);
     
     nsubcycle_.assign(33, 1);
     std::string nsub_s = config_.get("run_params", "nsubcycle", "");
@@ -114,13 +127,13 @@ void Simulation::initialize(const std::string& nml_path) {
             load_balancer_.calculate_hilbert_keys();
             load_balancer_.balance();
         }
-        particles_.relink();
+        particles_->relink();
     }
 
     nstep_ = 0;
     initializer_.apply_all();
     for (int il = levelmax - 1; il >= 1; --il) updater_.restrict_fine(il);
-    particles_.relink();
+    particles_->relink();
 
     tend_ = config_.get_double("run_params", "tend", 1e10);
     nstepmax_ = config_.get_int("run_params", "ncontrol", 1000000);
@@ -182,8 +195,8 @@ void Simulation::run() {
             if (config_.get_bool("run_params", "cosmo", false)) rho_tot = 1.0;
             
             for (int il = 1; il <= grid_.nlevelmax; ++il) {
-                poisson_.solve(il, aexp_, omega_m, rho_tot);
-                poisson_.compute_force(il);
+                poisson_->solve(il, aexp_, omega_m, rho_tot);
+                poisson_->compute_force(il);
             }
         }
 
@@ -245,7 +258,7 @@ void Simulation::run() {
             cosmo_.get_cosmo_params(t_, aexp_, hexp_, texp);
         }
 
-        particles_.relink();
+        particles_->relink();
 
         if (iout < (int)tout_.size() && t_ >= tout_[iout] - 1e-12 * t_) {
             dump_snapshot(snapshot_count++); iout++;
@@ -264,25 +277,25 @@ void Simulation::amr_step(int ilevel, real_t dt, int icount) {
     bool do_poisson = config_.get_bool("run_params", "poisson", false);
 
     if (do_poisson) {
-        hydro_.synchro_hydro_fine(ilevel, -0.5 * dt);
-        particles_.move_fine(ilevel, 0.5 * dt);
+        hydro_->synchro_hydro_fine(ilevel, -0.5 * dt);
+        particles_->move_fine(ilevel, 0.5 * dt);
     }
 
 #ifdef MHD
-    mhd_.godunov_fine(ilevel, dt, dx);
+    mhd_->godunov_fine(ilevel, dt, dx);
 #else
-    hydro_.godunov_fine(ilevel, dt, dx);
+    hydro_->godunov_fine(ilevel, dt, dx);
 #endif
 
     if (do_poisson) {
-        hydro_.add_gravity_source_terms(ilevel, dt);
-        particles_.move_fine(ilevel, 0.5 * dt);
-        particles_.exchange_particles();
+        hydro_->add_gravity_source_terms(ilevel, dt);
+        particles_->move_fine(ilevel, 0.5 * dt);
+        particles_->exchange_particles();
     }
 
 #ifdef RT
-    rt_.godunov_fine(ilevel, dt, dx);
-    rt_.apply_source_terms(ilevel, dt);
+    rt_->godunov_fine(ilevel, dt, dx);
+    rt_->apply_source_terms(ilevel, dt);
 #endif
 
     int nsub = (ilevel < (int)nsubcycle_.size()) ? nsubcycle_[ilevel] : 1;
@@ -290,15 +303,15 @@ void Simulation::amr_step(int ilevel, real_t dt, int icount) {
 
     updater_.restrict_fine(ilevel);
 #ifdef MHD
-    mhd_.set_uold(ilevel);
+    mhd_->set_uold(ilevel);
 #else
-    hydro_.set_uold(ilevel);
+    hydro_->set_uold(ilevel);
 #endif
 
-    if (do_poisson) hydro_.synchro_hydro_fine(ilevel, 0.5 * dt);
+    if (do_poisson) hydro_->synchro_hydro_fine(ilevel, 0.5 * dt);
 
 #ifdef RT
-    rt_.set_uold(ilevel);
+    rt_->set_uold(ilevel);
 #endif
 }
 
@@ -317,7 +330,7 @@ void Simulation::rho_fine(int ilevel) {
         }
     }
 
-    particles_.assign_mass_fine(ilevel);
+    particles_->assign_mass_fine(ilevel);
 
     if (config_.get_bool("run_params", "hydro", true)) {
         if (ilevel == 1) {
@@ -374,9 +387,9 @@ void Simulation::dump_snapshot(int iout) {
         RamsesWriter(dir + "/part_file_descriptor.txt").write_particles_descriptor(grid_, info);
     }
 #ifdef RT
-    int nGroups = rt_.get_nGroups();
+    int nGroups = rt_->get_nGroups();
     if (nGroups > 0) {
-        RamsesWriter(get_path("rt", ".out")).write_rt(grid_, info, nGroups, rt_.get_c_speed());
+        RamsesWriter(get_path("rt", ".out")).write_rt(grid_, info, nGroups, rt_->get_c_speed());
         RamsesWriter(dir + "/rt_file_descriptor.txt").write_rt_descriptor(grid_, info, nGroups);
     }
 #endif

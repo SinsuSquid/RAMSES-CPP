@@ -40,6 +40,13 @@ endforeach()
 
 include_directories(include)
 
+# Custom Patches Discovery
+file(GLOB CUSTOM_PATCH_SRCS "cpp_patches/*.cpp")
+if(CUSTOM_PATCH_SRCS)
+    message(STATUS "[RAMSES-CPP] Found custom C++ patches: ${CUSTOM_PATCH_SRCS}")
+    add_definitions(-DRAMSES_USE_CUSTOM_PATCHES)
+endif()
+
 # Core library
 add_library(ramses_lib STATIC
     src/AmrGrid.cpp
@@ -65,6 +72,7 @@ add_library(ramses_lib STATIC
     src/ParticleSystem.cpp
     src/Cosmology.cpp
     src/LoadBalancer.cpp
+    ${CUSTOM_PATCH_SRCS}
 )
 
 if(RAMSES_USE_MPI)
