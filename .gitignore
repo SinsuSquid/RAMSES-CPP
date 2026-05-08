@@ -55,4 +55,4 @@ bin/
 build/
 
 # Python Bytecode
-__pycache__/tests/poisson/cosmo/cosmo_128/
+__pycache__/
