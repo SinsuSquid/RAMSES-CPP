@@ -46,6 +46,7 @@ tests/**/output_*/
 *.pdf
 *.tex
 *.log
+**/cosmo_128/
 
 # Legacy codes
 legacy/
@@ -56,3 +57,4 @@ build/
 
 # Python Bytecode
 __pycache__/
+
