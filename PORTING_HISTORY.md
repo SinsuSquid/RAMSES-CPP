@@ -223,3 +223,11 @@ The RAMSES-2025 C++ port is now a **fully functional, production-ready, and test
 - **Simulation Integration:** Fully integrated the `RtSolver` into the recursive `amr_step` loop, supporting sub-cycling and level-dependent updates.
 - **Status:** RT core is functional and integrated. Ready for multi-group validation and benchmark testing.
 
+### [2026-05-08] - RT Multi-Group Validation & Infrastructure Hardening
+- **Infrastructure Alignment:** Updated `CMakeLists.txt` to pass `NGROUPS`, `NIONS`, and `NX/NY/NZ` macros to the compiler, enabling full control over RT and grid parameters via `config.txt`.
+- **RT Output Logic Fix:** Corrected `Simulation::dump_snapshot` to use `rt_.get_nGroups()` for conditional RT output, ensuring `rt_*.out` files are generated correctly for multi-group runs.
+- **HLL Path Robustness:** Enhanced `RtSolver::load_hll_eigenvalues` to search multiple relative paths for the `hll_evals.list` file, ensuring portability when running tests from subdirectories.
+- **Multi-Group Verification:** Successfully executed the `stromgren2d` benchmark with `NGROUPS=2`, achieving physical results and verified RT snapshot generation.
+- **Visualization Parity:** Restored visualization support for single-level simulations (`levelmax=1`) by patching `visu_ramses.py` to correctly handle coarse-level cell extraction.
+- **Status:** RT multi-group validation is successful. Phase 19 infrastructure is rock-solid. Ready for Phase 20: Performance Optimization and MPI scaling.
+

@@ -13,7 +13,11 @@ namespace ramses {
 #define FSIZE 4
 
 void RtSolver::initialize() {
-    nGroups = config_.get_int("rt_params", "nGroups", 0);
+    nGroups = 0;
+#ifdef RAMSES_NGROUPS
+    nGroups = RAMSES_NGROUPS;
+#endif
+    nGroups = config_.get_int("rt_params", "nGroups", nGroups);
     rt_c_speed = config_.get_double("rt_params", "rt_c", 1.0);
     rt_use_hll = config_.get("rt_params", "rt_riemann", "hll") == "hll";
 
@@ -27,7 +31,20 @@ void RtSolver::load_hll_eigenvalues() {
     std::string path = config_.get("rt_params", "hll_evals_file", "legacy/rt/hll_evals.list");
     std::ifstream file(path);
     if (!file.is_open()) {
-        std::cerr << "[RtSolver] Error: Could not open HLL eigenvalues file: " << path << std::endl;
+        // Try other common relative paths
+        std::vector<std::string> alt_paths = {"../legacy/rt/hll_evals.list", "../../legacy/rt/hll_evals.list", "../../../legacy/rt/hll_evals.list"};
+        for (const auto& alt : alt_paths) {
+            file.open(alt);
+            if (file.is_open()) {
+                path = alt;
+                break;
+            }
+            file.clear();
+        }
+    }
+
+    if (!file.is_open()) {
+        std::cerr << "[RtSolver] Error: Could not open HLL eigenvalues file: " << path << " (checked common relative paths)" << std::endl;
         return;
     }
 

@@ -31,6 +31,13 @@ if(RAMSES_USE_RT)
     add_definitions(-DRT)
 endif()
 
+# Pass additional parameters to compiler if defined
+foreach(param NX NY NZ NGROUPS NIONS NMETALS)
+    if(DEFINED RAMSES_${param})
+        add_definitions(-DRAMSES_${param}=${RAMSES_${param}})
+    endif()
+endforeach()
+
 include_directories(include)
 
 # Core library

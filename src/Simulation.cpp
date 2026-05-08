@@ -64,7 +64,11 @@ void Simulation::initialize(const std::string& nml_path) {
 #endif
 #ifdef RT
     rt_.initialize();
-    int nGroups = config_.get_int("rt_params", "nGroups", 0);
+    int nGroups = 0;
+#ifdef RAMSES_NGROUPS
+    nGroups = RAMSES_NGROUPS;
+#endif
+    nGroups = config_.get_int("rt_params", "nGroups", nGroups);
     int nIons = 3; 
     if (config_.get_bool("rt_params", "isH2", false)) nIons = 6;
     else if (!config_.get_bool("rt_params", "isHe", true)) nIons = 1;
@@ -261,7 +265,7 @@ void Simulation::dump_snapshot(int iout) {
     RamsesWriter(get_path("amr", ".out")).write_amr(grid_, info);
     RamsesWriter(get_path("hydro", ".out")).write_hydro(grid_, info);
 #ifdef RT
-    int nGroups = config_.get_int("rt_params", "nGroups", 0);
+    int nGroups = rt_.get_nGroups();
     if (nGroups > 0) {
         RamsesWriter(get_path("rt", ".out")).write_rt(grid_, info, nGroups, rt_.get_c_speed());
         RamsesWriter(dir + "/rt_file_descriptor.txt").write_rt_descriptor(grid_, info, nGroups);
