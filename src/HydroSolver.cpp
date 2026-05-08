@@ -25,15 +25,15 @@ void HydroSolver::godunov_fine(int ilevel, real_t dt, real_t dx) {
     std::string riemann = config_.get("hydro_params", "riemann", "hllc");
 
     if (qm_level_.size() < (size_t)grid_.ncell * 3 * grid_.nvar) {
-        qm_level_.assign(grid_.ncell * 3 * grid_.nvar, 0.0);
-        qp_level_.assign(grid_.ncell * 3 * grid_.nvar, 0.0);
+        qm_level_.assign((size_t)grid_.ncell * 3 * grid_.nvar, 0.0);
+        qp_level_.assign((size_t)grid_.ncell * 3 * grid_.nvar, 0.0);
     }
     
     auto get_q = [&](int idc_0, int idim, int iv) -> real_t& {
-        return qm_level_.at((idc_0 * 3 + idim) * grid_.nvar + (iv - 1));
+        return qm_level_[(idc_0 * 3 + idim) * grid_.nvar + (iv - 1)];
     };
     auto get_qp = [&](int idc_0, int idim, int iv) -> real_t& {
-        return qp_level_.at((idc_0 * 3 + idim) * grid_.nvar + (iv - 1));
+        return qp_level_[(idc_0 * 3 + idim) * grid_.nvar + (iv - 1)];
     };
 
     // 1. Trace step
@@ -239,8 +239,6 @@ real_t HydroSolver::compute_courant_step(int ilevel, real_t dx, real_t gamma, re
             real_t cs = std::sqrt(gamma * p / d);
             real_t v_mag = std::sqrt(v2);
             dt_max = std::min(dt_max, courant_factor * dx / (v_mag + cs));
-            
-            // Account for acceleration
             for(int idim=1; idim<=NDIM; ++idim) {
                 real_t acc = std::abs(grid_.f(id, idim));
                 if (acc > 0) dt_max = std::min(dt_max, courant_factor * std::sqrt(dx / acc));

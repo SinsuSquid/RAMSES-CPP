@@ -151,7 +151,6 @@ void PoissonSolver::compute_force(int ilevel) {
 
                     real_t rz = x * params::boxlen - 0.5 * params::boxlen;
                     grid_.f(ind_cell, NDIM) = -a1 * rz / std::sqrt(rz * rz + z0 * z0) - a2 * rz;
-                    if (icpu == 1 && ic == 1) std::cout << "[PoissonSolver] Level " << ilevel << " force=" << grid_.f(ind_cell, NDIM) << " rz=" << rz << std::endl;
                     for (int idim = 1; idim < NDIM; ++idim) {
                         grid_.f(ind_cell, idim) = 0.0;
                     }

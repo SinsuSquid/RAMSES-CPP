@@ -58,7 +58,51 @@ void ParticleSolver::move_fine(int ilevel, real_t dt) {
     }
 }
 
-int ParticleSolver::find_cell_by_coords(real_t x, real_t y, real_t z) {
+void ParticleSolver::relink() {
+    if (grid_.npart == 0) return;
+
+    // 1. Reset linked lists for all grids
+    for (int ig = 1; ig <= grid_.ngridmax; ++ig) {
+        grid_.headp[ig - 1] = 0;
+        grid_.tailp[ig - 1] = 0;
+        grid_.numbp[ig - 1] = 0;
+    }
+
+    // 2. Loop over particles and add to correct grid
+    for (int ip = 1; ip <= grid_.npart; ++ip) {
+        real_t xp = grid_.xp[0 * grid_.npartmax + ip - 1];
+        real_t yp = (NDIM > 1) ? grid_.xp[1 * grid_.npartmax + ip - 1] : 0.5 * params::boxlen;
+        real_t zp = (NDIM > 2) ? grid_.xp[2 * grid_.npartmax + ip - 1] : 0.5 * params::boxlen;
+
+        int level = 1;
+        int icell = find_cell_by_coords(xp, yp, zp, &level);
+        if (icell > 0) {
+            grid_.levelp[ip - 1] = level;
+            int ig = 0;
+            if (icell > grid_.ncoarse) {
+                ig = ((icell - grid_.ncoarse - 1) % grid_.ngridmax) + 1;
+            }
+            
+            if (ig > 0) {
+                if (grid_.numbp[ig - 1] > 0) {
+                    grid_.nextp[grid_.tailp[ig - 1] - 1] = ip;
+                    grid_.prevp[ip - 1] = grid_.tailp[ig - 1];
+                    grid_.nextp[ip - 1] = 0;
+                    grid_.tailp[ig - 1] = ip;
+                    grid_.numbp[ig - 1]++;
+                } else {
+                    grid_.headp[ig - 1] = ip;
+                    grid_.tailp[ig - 1] = ip;
+                    grid_.prevp[ip - 1] = 0;
+                    grid_.nextp[ip - 1] = 0;
+                    grid_.numbp[ig - 1] = 1;
+                }
+            }
+        }
+    }
+}
+
+int ParticleSolver::find_cell_by_coords(real_t x, real_t y, real_t z, int* level) {
     // 1. Find coarse cell
     real_t dx_coarse = params::boxlen / std::max({params::nx, params::ny, params::nz});
     int ix = std::clamp(static_cast<int>(x / dx_coarse), 0, params::nx - 1);
@@ -83,6 +127,7 @@ int ParticleSolver::find_cell_by_coords(real_t x, real_t y, real_t z) {
         int ic = izc * 4 + iyc * 2 + ixc + 1;
         curr_cell = grid_.ncoarse + (ic - 1) * grid_.ngridmax + ig;
     }
+    if (level) *level = ilevel;
     return curr_cell;
 }
 

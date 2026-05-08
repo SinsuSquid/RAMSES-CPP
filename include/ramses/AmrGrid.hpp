@@ -33,7 +33,8 @@ public:
     // Particles
     int npart = 0, npartmax = 0;
     std::vector<real_t> xp, vp, mp;
-    std::vector<int> idp, levelp, headp, nextp;
+    std::vector<int> idp, levelp, headp, nextp, prevp, tailp, numbp;
+    int headp_free, tailp_free, numbp_free;
 
     std::vector<int> ibound_min, ibound_max, jbound_min, jbound_max, kbound_min, kbound_max, bound_type;
     int nboundary;

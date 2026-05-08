@@ -38,8 +38,18 @@ void AmrGrid::allocate(int nx_val, int ny_val, int nz_val, int ngridmax_val, int
     mp.assign(npartmax, 0.0);
     idp.assign(npartmax, 0);
     levelp.assign(npartmax, 0);
-    headp.assign(ncell, 0);
+    headp.assign(ngridmax, 0);
+    tailp.assign(ngridmax, 0);
+    numbp.assign(ngridmax, 0);
     nextp.assign(npartmax, 0);
+    prevp.assign(npartmax, 0);
+
+    headp_free = 1; tailp_free = npartmax;
+    numbp_free = npartmax;
+    for (int i = 1; i <= npartmax; ++i) {
+        nextp[i - 1] = (i < npartmax) ? i + 1 : 0;
+        prevp[i - 1] = (i > 1) ? i - 1 : 0;
+    }
 
     headf = 1; tailf = ngridmax;
     for (int i = 1; i <= ngridmax; ++i) {
@@ -51,12 +61,13 @@ void AmrGrid::allocate(int nx_val, int ny_val, int nz_val, int ngridmax_val, int
 
 void AmrGrid::resize_particles(int new_npartmax) {
     if (new_npartmax <= npartmax) return;
+    int old_npartmax = npartmax;
     std::vector<real_t> new_xp(3 * new_npartmax, 0.0);
     std::vector<real_t> new_vp(3 * new_npartmax, 0.0);
     for (int d = 0; d < 3; ++d) {
-        for (int i = 0; i < npart; ++i) {
-            new_xp[d * new_npartmax + i] = xp[d * npartmax + i];
-            new_vp[d * new_npartmax + i] = vp[d * npartmax + i];
+        for (int i = 0; i < old_npartmax; ++i) {
+            new_xp[d * new_npartmax + i] = xp[d * old_npartmax + i];
+            new_vp[d * new_npartmax + i] = vp[d * old_npartmax + i];
         }
     }
     xp = std::move(new_xp);
@@ -64,7 +75,29 @@ void AmrGrid::resize_particles(int new_npartmax) {
     mp.resize(new_npartmax, 0.0);
     idp.resize(new_npartmax, 0);
     levelp.resize(new_npartmax, 0);
-    nextp.resize(new_npartmax, 0);
+    
+    std::vector<int> new_nextp(new_npartmax, 0);
+    std::vector<int> new_prevp(new_npartmax, 0);
+    for(int i=0; i<old_npartmax; ++i) { new_nextp[i] = nextp[i]; new_prevp[i] = prevp[i]; }
+    
+    // Add new space to free list
+    for (int i = old_npartmax + 1; i <= new_npartmax; ++i) {
+        new_nextp[i - 1] = (i < new_npartmax) ? i + 1 : 0;
+        new_prevp[i - 1] = (i > old_npartmax + 1) ? i - 1 : 0;
+    }
+    
+    if (numbp_free == 0) {
+        headp_free = old_npartmax + 1;
+        tailp_free = new_npartmax;
+    } else {
+        new_nextp[tailp_free - 1] = old_npartmax + 1;
+        new_prevp[old_npartmax] = tailp_free;
+        tailp_free = new_npartmax;
+    }
+    numbp_free += (new_npartmax - old_npartmax);
+    
+    nextp = std::move(new_nextp);
+    prevp = std::move(new_prevp);
     npartmax = new_npartmax;
 }
 

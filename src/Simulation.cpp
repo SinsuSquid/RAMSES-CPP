@@ -22,6 +22,8 @@ void Simulation::initialize(const std::string& nml_path) {
     p::boxlen = config_.get_double("amr_params", "boxlen", 1.0);
 
     int ngridmax = config_.get_int("amr_params", "ngridmax", 1000);
+    ngridmax = config_.get_int("amr_params", "ngridtot", ngridmax);
+    
     nener_ = config_.get_int("hydro_params", "nener", 0);
     int nvar = 5 + nener_;
 #ifdef MHD
@@ -40,8 +42,7 @@ void Simulation::initialize(const std::string& nml_path) {
     params::levelmin = levelmin; params::nlevelmax = levelmax;
     
     int nparttot = config_.get_int("amr_params", "nparttot", 0);
-    grid_.npartmax = nparttot;
-
+    
     real_t gamma = config_.get_double("hydro_params", "gamma", 1.4);
     grid_.gamma = gamma;
     
@@ -99,6 +100,7 @@ void Simulation::initialize(const std::string& nml_path) {
             updater_.make_grid_fine(il);
             updater_.remove_grid_fine(il);
         }
+        particles_.relink();
     }
 
     for(int il=1; il<=levelmax; ++il) std::cout << "[Simulation] Level " << il << " ngrid=" << grid_.count_grids_at_level(il) << std::endl;
@@ -106,6 +108,8 @@ void Simulation::initialize(const std::string& nml_path) {
     nstep_ = 0;
     initializer_.apply_all();
     for (int il = levelmax - 1; il >= 1; --il) updater_.restrict_fine(il);
+    
+    particles_.relink();
 
     tend_ = config_.get_double("run_params", "tend", 1e10);
     nstepmax_ = config_.get_int("run_params", "ncontrol", 1000000);
@@ -195,6 +199,7 @@ void Simulation::run() {
         if (iout < (int)tout_.size()) dt = std::min(dt, tout_[iout] - t_);
         
         amr_step(1, dt); t_ += dt; nstep_++;
+        particles_.relink();
         
         if (iout < (int)tout_.size() && t_ >= tout_[iout] - 1e-12 * t_) {
             dump_snapshot(snapshot_count++); iout++;

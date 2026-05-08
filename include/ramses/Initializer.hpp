@@ -18,6 +18,7 @@ public:
 
     void apply_all();
     void region_condinit(int ilevel);
+    void load_grafic();
 
 private:
     AmrGrid& grid_;

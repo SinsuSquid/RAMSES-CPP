@@ -7,11 +7,18 @@
 #include <algorithm>
 #include <cmath>
 #include <sstream>
+#include <fstream>
 
 namespace ramses {
 
 void Initializer::apply_all() {
     namespace p = ramses::params;
+    std::string filetype = config_.get("init_params", "filetype", "region");
+    if (filetype == "grafic") {
+        load_grafic();
+        return;
+    }
+
     std::string kind = config_.get("init_params", "condinit_kind", "region");
     if (kind == "orzag_tang") {
         real_t pi = std::acos(-1.0);
@@ -96,6 +103,62 @@ void Initializer::apply_all() {
     } else {
         for (int il = 1; il <= grid_.nlevelmax; ++il) {
             region_condinit(il);
+        }
+    }
+}
+
+void Initializer::load_grafic() {
+    std::string path = config_.get("init_params", "initfile", "");
+    if (path.empty()) return;
+    
+    int lmin = params::levelmin;
+    int n1_val = (1 << lmin);
+    int n2_val = (NDIM > 1) ? (1 << lmin) : 1;
+    int n3_val = (NDIM > 2) ? (1 << lmin) : 1;
+    int npart_l = n1_val * n2_val * n3_val;
+
+    std::cout << "[Initializer] Loading Grafic ICs from " << path << " for " << npart_l << " particles (Level " << lmin << ")." << std::endl;
+    grid_.resize_particles(npart_l);
+    grid_.npart = npart_l;
+
+    real_t dx = params::boxlen / (real_t)n1_val;
+    for (int i3 = 0; i3 < n3_val; ++i3) {
+        for (int i2 = 0; i2 < n2_val; ++i2) {
+            for (int i1 = 0; i1 < n1_val; ++i1) {
+                int ip = i3 * n1_val * n2_val + i2 * n1_val + i1;
+                grid_.xp[0 * grid_.npartmax + ip] = (i1 + 0.5) * dx;
+                if (NDIM > 1) grid_.xp[1 * grid_.npartmax + ip] = (i2 + 0.5) * dx;
+                if (NDIM > 2) grid_.xp[2 * grid_.npartmax + ip] = (i3 + 0.5) * dx;
+                
+                grid_.mp[ip] = std::pow(0.5, 3 * lmin);
+                grid_.levelp[ip] = lmin;
+                grid_.idp[ip] = ip + 1;
+            }
+        }
+    }
+
+    // 2. Read velocities
+    std::vector<std::string> v_files = {"/ic_velcx", "/ic_velcy", "/ic_velcz"};
+    for (int d = 0; d < NDIM; ++d) {
+        std::ifstream file(path + v_files[d], std::ios::binary);
+        if (!file.is_open()) {
+            std::cerr << "[Initializer] Could not open " << path + v_files[d] << std::endl;
+            continue;
+        }
+        
+        int32_t s; file.read((char*)&s, 4);
+        int32_t n1, n2, n3; file.read((char*)&n1, 4); file.read((char*)&n2, 4); file.read((char*)&n3, 4);
+        file.seekg(s - 12, std::ios::cur); file.read((char*)&s, 4); 
+        
+        std::vector<float> plane(n1 * n2);
+        for (int i3 = 0; i3 < n3; ++i3) {
+            file.read((char*)&s, 4); file.read((char*)plane.data(), n1 * n2 * 4); file.read((char*)&s, 4);
+            for (int i2 = 0; i2 < n2; ++i2) {
+                for (int i1 = 0; i1 < n1; ++i1) {
+                    int ip = i3 * n1 * n2 + i2 * n1 + i1;
+                    if (ip < grid_.npart) grid_.vp[d * grid_.npartmax + ip] = plane[i2 * n1 + i1];
+                }
+            }
         }
     }
 }

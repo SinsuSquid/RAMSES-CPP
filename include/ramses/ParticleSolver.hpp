@@ -24,13 +24,18 @@ public:
     void move_fine(int ilevel, real_t dt);
 
     /**
+     * @brief Re-links particles to their current leaf cells.
+     */
+    void relink();
+
+    /**
      * @brief Assigns particle mass to the density grid (CIC).
      */
     void assign_mass_fine(int ilevel);
 
     private:
     void move_particles(const std::vector<int>& ind_part, real_t dt);
-    int find_cell_by_coords(real_t x, real_t y, real_t z);
+    int find_cell_by_coords(real_t x, real_t y, real_t z, int* level = nullptr);
 
     AmrGrid& grid_;
     Config& config_;
