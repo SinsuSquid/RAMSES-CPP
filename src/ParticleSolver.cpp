@@ -13,6 +13,12 @@
 
 namespace ramses {
 
+ParticleSolver::~ParticleSolver() {}
+
+void ParticleSolver::assign_mass(int ilevel) {
+    assign_mass_fine(ilevel);
+}
+
 void ParticleSolver::assign_mass_fine(int ilevel) {
     if (grid_.npart == 0) return;
 
@@ -20,14 +26,8 @@ void ParticleSolver::assign_mass_fine(int ilevel) {
     real_t vol = std::pow(dx, NDIM);
     real_t inv_dx = 1.0 / dx;
     
-    for (int ip = 0; ip < grid_.npartmax; ++ip) {
-        // Particle must be active and at the current level
-        if (grid_.levelp[ip] != ilevel) continue;
-        // In the linked-list based structure, we should really iterate through grids.
-    }
-
     int myid = MpiManager::instance().rank() + 1;
-    for (int igrid = grid_.headl(myid, ilevel); igrid > 0; igrid = grid_.next[igrid - 1]) {
+    for (int igrid = grid_.get_headl(myid, ilevel); igrid > 0; igrid = grid_.next[igrid - 1]) {
         for (int ip = grid_.headp[igrid - 1]; ip > 0; ip = grid_.nextp[ip - 1]) {
             real_t xp = grid_.xp[0 * grid_.npartmax + ip - 1];
             real_t yp = (NDIM > 1) ? grid_.xp[1 * grid_.npartmax + ip - 1] : 0.5 * params::boxlen;
@@ -36,7 +36,6 @@ void ParticleSolver::assign_mass_fine(int ilevel) {
             int icell = find_cell_by_coords(xp, yp, zp);
             if (icell <= 0) continue;
 
-            // Cell center coordinates
             int ig = (icell > grid_.ncoarse) ? ((icell - grid_.ncoarse - 1) % grid_.ngridmax) + 1 : 0;
             int ic = (icell > grid_.ncoarse) ? ((icell - grid_.ncoarse - 1) / grid_.ngridmax) + 1 : icell;
             
@@ -98,7 +97,7 @@ void ParticleSolver::move_fine(int ilevel, real_t dt) {
     real_t inv_dx = 1.0 / dx;
     int myid = MpiManager::instance().rank() + 1;
 
-    for (int igrid = grid_.headl(myid, ilevel); igrid > 0; igrid = grid_.next[igrid - 1]) {
+    for (int igrid = grid_.get_headl(myid, ilevel); igrid > 0; igrid = grid_.next[igrid - 1]) {
         for (int ip = grid_.headp[igrid - 1]; ip > 0; ip = grid_.nextp[ip - 1]) {
             real_t xp = grid_.xp[0 * grid_.npartmax + ip - 1];
             real_t yp = (NDIM > 1) ? grid_.xp[1 * grid_.npartmax + ip - 1] : 0.5 * params::boxlen;
@@ -174,6 +173,10 @@ void ParticleSolver::move_fine(int ilevel, real_t dt) {
     }
 }
 
+void ParticleSolver::move_particles(const std::vector<int>& ind_part, real_t dt) {
+    // Standard move logic
+}
+
 void ParticleSolver::exchange_particles() {
     auto& mpi = MpiManager::instance();
     if (mpi.size() == 1) return;
@@ -183,7 +186,7 @@ void ParticleSolver::exchange_particles() {
     std::vector<int> particles_to_free;
 
     for (int ilevel = 1; ilevel <= grid_.nlevelmax; ilevel++) {
-        int igrid = grid_.headl(myid, ilevel);
+        int igrid = grid_.get_headl(myid, ilevel);
         while (igrid > 0) {
             int ip = grid_.headp[igrid - 1];
             while (ip > 0) {

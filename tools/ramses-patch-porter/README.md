@@ -20,7 +20,7 @@ Run the script providing the input Fortran file and the target solver:
 python tools/ramses-patch-porter/port_patch.py legacy/patch/cooling_fine.f90 --solver Cooling
 ```
 
-The tool will generate a C++ file in `cpp_patches/`.
+The tool will generate a C++ file in `patch/`.
 
 ## Compilation
 Simply re-run CMake from your build directory. It will automatically detect the new file and compile it into the simulation:

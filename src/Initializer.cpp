@@ -12,6 +12,8 @@
 
 namespace ramses {
 
+Initializer::~Initializer() {}
+
 void Initializer::apply_all() {
     namespace p = ramses::params;
     std::string filetype = config_.get("init_params", "filetype", "region");

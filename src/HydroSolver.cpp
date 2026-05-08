@@ -10,6 +10,8 @@
 
 namespace ramses {
 
+HydroSolver::~HydroSolver() {}
+
 void HydroSolver::godunov_fine(int ilevel, real_t dt, real_t dx) {
     int myid = MpiManager::instance().rank() + 1;
     std::vector<int> octs;

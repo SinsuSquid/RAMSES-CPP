@@ -15,12 +15,13 @@ namespace ramses {
 class Initializer {
 public:
     Initializer(AmrGrid& grid, Config& config) : grid_(grid), config_(config) {}
+    virtual ~Initializer();
 
-    void apply_all();
-    void region_condinit(int ilevel);
-    void load_grafic();
+    virtual void apply_all();
+    virtual void region_condinit(int ilevel);
+    virtual void load_grafic();
 
-private:
+protected:
     AmrGrid& grid_;
     Config& config_;
 };

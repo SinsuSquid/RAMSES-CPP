@@ -3,6 +3,7 @@
 
 #include "AmrGrid.hpp"
 #include "HydroSolver.hpp"
+#include "CoolingSolver.hpp"
 #include "MhdSolver.hpp"
 #include "PoissonSolver.hpp"
 #include "TreeUpdater.hpp"
@@ -35,11 +36,12 @@ private:
     Config config_;
     AmrGrid grid_;
     std::unique_ptr<HydroSolver> hydro_;
+    std::unique_ptr<CoolingSolver> cooling_;
     std::unique_ptr<MhdSolver> mhd_;
     std::unique_ptr<RtSolver> rt_;
     std::unique_ptr<PoissonSolver> poisson_;
     TreeUpdater updater_;
-    Initializer initializer_;
+    std::unique_ptr<Initializer> initializer_;
     std::unique_ptr<ParticleSolver> particles_;
     LoadBalancer load_balancer_;
     Cosmology cosmo_;

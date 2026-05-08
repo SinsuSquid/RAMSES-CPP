@@ -74,9 +74,9 @@ def main():
     # 4. Clean up output (remove markdown code blocks)
     cpp_code = cpp_code.replace("```cpp", "").replace("```", "").strip()
 
-    # 5. Save to cpp_patches/
+    # 5. Save to patch/
     repo_root = os.path.abspath(os.path.join(script_dir, "..", ".."))
-    out_dir = os.path.join(repo_root, "cpp_patches")
+    out_dir = os.path.join(repo_root, "patch")
     os.makedirs(out_dir, exist_ok=True)
     
     out_file = os.path.join(out_dir, f"Patch{args.solver}Solver.cpp")

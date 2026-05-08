@@ -10,11 +10,12 @@
 #include <vector>
 
 namespace ramses {
-
-MhdSolver::MhdSolver(AmrGrid& grid, Config& config) 
-    : grid_(grid), config_(config), stencil_ptr_(std::make_unique<LocalStencil>()) {}
+MhdSolver::MhdSolver(AmrGrid& grid, Config& config) : grid_(grid), config_(config) {
+    stencil_ptr_ = std::make_unique<LocalStencil>();
+}
 
 MhdSolver::~MhdSolver() = default;
+
 
 real_t MhdSolver::compute_max_div_b(int ilevel, real_t dx) {
     real_t max_div = 0.0;

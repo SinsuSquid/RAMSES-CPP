@@ -41,7 +41,7 @@ endforeach()
 include_directories(include)
 
 # Custom Patches Discovery
-file(GLOB CUSTOM_PATCH_SRCS "cpp_patches/*.cpp")
+file(GLOB CUSTOM_PATCH_SRCS "patch/*.cpp")
 if(CUSTOM_PATCH_SRCS)
     message(STATUS "[RAMSES-CPP] Found custom C++ patches: ${CUSTOM_PATCH_SRCS}")
     add_definitions(-DRAMSES_USE_CUSTOM_PATCHES)
@@ -52,6 +52,7 @@ add_library(ramses_lib STATIC
     src/AmrGrid.cpp
     src/Config.cpp
     src/Constants.cpp
+    src/CoolingSolver.cpp
     src/HydroSolver.cpp
     src/Initializer.cpp
     src/RamsesReader.cpp
@@ -72,6 +73,7 @@ add_library(ramses_lib STATIC
     src/ParticleSystem.cpp
     src/Cosmology.cpp
     src/LoadBalancer.cpp
+    src/SolverFactory.cpp
     ${CUSTOM_PATCH_SRCS}
 )
 

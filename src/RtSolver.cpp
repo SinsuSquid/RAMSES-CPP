@@ -12,6 +12,8 @@ namespace ramses {
 #define SSIZE 6
 #define FSIZE 4
 
+RtSolver::~RtSolver() {}
+
 void RtSolver::initialize() {
     nGroups = 0;
 #ifdef RAMSES_NGROUPS

@@ -3,6 +3,7 @@
 #include "ramses/Parameters.hpp"
 #include "ramses/MpiManager.hpp"
 #include "ramses/RamsesWriter.hpp"
+#include "ramses/SolverFactory.hpp"
 #ifdef RAMSES_USE_MPI
 #include <mpi.h>
 #endif
@@ -20,14 +21,15 @@ namespace p = ramses::params;
 
 Simulation::Simulation() : grid_(), 
                            updater_(grid_, config_), 
-                           initializer_(grid_, config_),
                            load_balancer_(grid_, config_),
                            cosmo_() {
-    hydro_ = std::make_unique<HydroSolver>(grid_, config_);
-    mhd_ = std::make_unique<MhdSolver>(grid_, config_);
-    rt_ = std::make_unique<RtSolver>(grid_, config_);
-    poisson_ = std::make_unique<PoissonSolver>(grid_, config_);
-    particles_ = std::make_unique<ParticleSolver>(grid_, config_);
+    hydro_ = create_hydro_solver(grid_, config_);
+    cooling_ = create_cooling_solver(grid_, config_);
+    mhd_ = create_mhd_solver(grid_, config_);
+    rt_ = create_rt_solver(grid_, config_);
+    poisson_ = create_poisson_solver(grid_, config_);
+    particles_ = create_particle_solver(grid_, config_);
+    initializer_ = create_initializer(grid_, config_);
 }
 
 void Simulation::initialize(const std::string& nml_path) {
@@ -116,7 +118,7 @@ void Simulation::initialize(const std::string& nml_path) {
     real_t eb2 = config_.get_double("refine_params", "err_grad_b2", -1.0);
 
     for (int ipass = 1; ipass <= 2; ++ipass) {
-        initializer_.apply_all();
+        initializer_->apply_all();
         for (int il = 1; il < levelmax; ++il) {
             updater_.flag_fine(il, ed, ep, ev, eb2, {}, nexpand_[il]);
             updater_.make_grid_fine(il);
@@ -131,7 +133,7 @@ void Simulation::initialize(const std::string& nml_path) {
     }
 
     nstep_ = 0;
-    initializer_.apply_all();
+    initializer_->apply_all();
     for (int il = levelmax - 1; il >= 1; --il) updater_.restrict_fine(il);
     particles_->relink();
 
@@ -292,6 +294,8 @@ void Simulation::amr_step(int ilevel, real_t dt, int icount) {
         particles_->move_fine(ilevel, 0.5 * dt);
         particles_->exchange_particles();
     }
+
+    cooling_->apply_cooling(ilevel, dt);
 
 #ifdef RT
     rt_->godunov_fine(ilevel, dt, dx);

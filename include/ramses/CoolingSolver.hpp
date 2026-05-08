@@ -15,13 +15,14 @@ namespace ramses {
 class CoolingSolver {
 public:
     CoolingSolver(AmrGrid& grid, Config& config) : grid_(grid), config_(config) {}
+    virtual ~CoolingSolver();
 
     /**
      * @brief Applies cooling to a specific AMR level.
      */
-    void apply_cooling(int ilevel, real_t dt);
+    virtual void apply_cooling(int ilevel, real_t dt);
 
-private:
+protected:
     /**
      * @brief The analytic ISM cooling model (Hennebelle 2005).
      */

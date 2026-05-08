@@ -1,11 +1,14 @@
 #include "ramses/CoolingSolver.hpp"
 #include "ramses/Parameters.hpp"
 #include "ramses/Constants.hpp"
+#include "ramses/MpiManager.hpp"
 #include <cmath>
 #include <algorithm>
 #include <iostream>
 
 namespace ramses {
+
+CoolingSolver::~CoolingSolver() {}
 
 void CoolingSolver::apply_cooling(int ilevel, real_t dt) {
     if (!config_.get_bool("cooling_params", "cooling", false)) return;
@@ -16,73 +19,72 @@ void CoolingSolver::apply_cooling(int ilevel, real_t dt) {
     real_t mH = 1.67e-24;
     real_t dt_sec = dt * params::units_time;
     
-    for (int icpu = 1; icpu <= grid_.ncpu; ++icpu) {
-        int igrid = grid_.headl(icpu, ilevel);
-        while (igrid > 0) {
-            for (int ic = 1; ic <= constants::twotondim; ++ic) {
-                int idc = grid_.ncoarse + (ic - 1) * grid_.ngridmax + igrid;
-                if (grid_.son[idc] != 0) continue;
+    int myid = MpiManager::instance().rank() + 1;
+    int igrid = grid_.get_headl(myid, ilevel);
+    while (igrid > 0) {
+        for (int ic = 1; ic <= constants::twotondim; ++ic) {
+            int idc = grid_.ncoarse + (ic - 1) * grid_.ngridmax + igrid;
+            if (grid_.son[idc - 1] != 0) continue;
 
-                real_t d = grid_.uold(idc, 1);
-                real_t u = grid_.uold(idc, 2) / d;
-                real_t v = grid_.uold(idc, 3) / d;
-                real_t w = grid_.uold(idc, 4) / d;
-                real_t etot = grid_.uold(idc, 5);
-                
-                real_t ekin = 0.5 * d * (u*u + v*v + w*w);
-                real_t emag = 0.0;
+            real_t d = grid_.uold(idc, 1);
+            real_t u = grid_.uold(idc, 2) / d;
+            real_t v = grid_.uold(idc, 3) / d;
+            real_t w = grid_.uold(idc, 4) / d;
+            real_t etot = grid_.uold(idc, 5);
+            
+            real_t ekin = 0.5 * d * (u*u + v*v + w*w);
+            real_t emag = 0.0;
 #ifdef MHD
-                real_t A = 0.5 * (grid_.uold(idc, 6) + grid_.uold(idc, 9));
-                real_t B = 0.5 * (grid_.uold(idc, 7) + grid_.uold(idc, 10));
-                real_t C = 0.5 * (grid_.uold(idc, 8) + grid_.uold(idc, 11));
-                emag = 0.5 * (A*A + B*B + C*C);
+            real_t A = 0.5 * (grid_.uold(idc, 6) + grid_.uold(idc, 9));
+            real_t B = 0.5 * (grid_.uold(idc, 7) + grid_.uold(idc, 10));
+            real_t C = 0.5 * (grid_.uold(idc, 8) + grid_.uold(idc, 11));
+            emag = 0.5 * (A*A + B*B + C*C);
 #endif
-                real_t eint = etot - ekin - emag;
-                if (eint < 0) eint = d * 1e-10; // Floor
+            real_t eint = etot - ekin - emag;
+            if (eint < 0) eint = d * 1e-10; // Floor
 
-                // Convert to physical units
-                real_t nH_phys = (d * params::units_density) / (mu * mH);
-                real_t T_phys = eint * params::units_pressure / (d * params::units_density) * (mu * mH / kB) * (gamma - 1.0);
-                
-                // Solve cooling (modifies T_phys)
-                real_t T_new = T_phys;
-                real_t time = 0.0;
-                int iter = 0;
-                real_t alpha_ct = nH_phys * kB / (gamma - 1.0);
-                real_t dt_sub = 0.1 * dt_sec;
+            // Convert to physical units
+            real_t nH_phys = (d * params::units_density) / (mu * mH);
+            real_t T_phys = eint * params::units_pressure / (d * params::units_density) * (mu * mH / kB) * (gamma - 1.0);
+            
+            // Solve cooling (modifies T_phys)
+            real_t T_new = T_phys;
+            real_t time = 0.0;
+            int iter = 0;
+            real_t alpha_ct = nH_phys * kB / (gamma - 1.0);
+            real_t dt_sub = 0.1 * dt_sec;
 
-                while (time < dt_sec && iter < 100) {
-                    real_t T_old = T_new;
-                    real_t rate, rate2;
-                    if (T_new < 10035.0) {
-                        rate = cooling_low(T_new, nH_phys);
-                        rate2 = cooling_low(T_new * 1.00001, nH_phys);
-                    } else {
-                        rate = cooling_high(T_new, nH_phys);
-                        rate2 = cooling_high(T_new * 1.00001, nH_phys);
-                    }
-                    
-                    real_t dratedT = (rate2 - rate) / (T_new * 0.00001);
-                    real_t dTemp = rate / (alpha_ct / dt_sub - dratedT);
-                    
-                    // Limit temperature change to 20%
-                    if (std::abs(dTemp / T_new) > 0.2) dTemp = 0.2 * T_new * (dTemp > 0 ? 1.0 : -1.0);
-                    
-                    T_new = std::max(10.0, T_old + dTemp);
-                    time += dt_sub;
-                    dt_sub = std::min(dt_sec - time, dt_sub * 1.2);
-                    iter++;
+            while (time < dt_sec && iter < 100) {
+                real_t T_old = T_new;
+                real_t rate, rate2;
+                if (T_new < 10035.0) {
+                    rate = cooling_low(T_new, nH_phys);
+                    rate2 = cooling_low(T_new * 1.00001, nH_phys);
+                } else {
+                    rate = cooling_high(T_new, nH_phys);
+                    rate2 = cooling_high(T_new * 1.00001, nH_phys);
                 }
-
-                // Convert back to code units
-                real_t eint_new = T_new / (params::units_pressure / (d * params::units_density) * (mu * mH / kB) * (gamma - 1.0));
-                real_t etot_new = eint_new + ekin + emag;
                 
-                grid_.uold(idc, 5) = etot_new;
-                grid_.unew(idc, 5) = etot_new;
+                real_t dratedT = (rate2 - rate) / (T_new * 0.00001);
+                real_t dTemp = rate / (alpha_ct / dt_sub - dratedT);
+                
+                // Limit temperature change to 20%
+                if (std::abs(dTemp / T_new) > 0.2) dTemp = 0.2 * T_new * (dTemp > 0 ? 1.0 : -1.0);
+                
+                T_new = std::max(10.0, T_old + dTemp);
+                time += dt_sub;
+                dt_sub = std::min(dt_sec - time, dt_sub * 1.2);
+                iter++;
             }
-            igrid = grid_.next[igrid - 1];
+
+            // Convert back to code units
+            real_t eint_new = T_new / (params::units_pressure / (d * params::units_density) * (mu * mH / kB) * (gamma - 1.0));
+            real_t etot_new = eint_new + ekin + emag;
+            
+            grid_.uold(idc, 5) = etot_new;
+            grid_.unew(idc, 5) = etot_new;
         }
+        igrid = grid_.next[igrid - 1];
     }
 }
 
@@ -136,7 +138,7 @@ real_t CoolingSolver::cooling_low(real_t T, real_t n) {
     return hot * n - n * n * (cold + cold_rec);
 }
 
-void CoolingSolver::solve_cooling_ism(real_t& d, real_t& etot, real_t dt_sec, real_t dx, real_t mu) {
+void CoolingSolver::solve_cooling_ism(real_t& d, real_t& e_tot, real_t dt_sec, real_t dx, real_t mu) {
     // This is now integrated into apply_cooling for convenience
 }
 

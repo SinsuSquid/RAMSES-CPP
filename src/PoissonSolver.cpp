@@ -8,6 +8,8 @@
 
 namespace ramses {
 
+PoissonSolver::~PoissonSolver() {}
+
 void PoissonSolver::solve(int ilevel, real_t aexp, real_t omega_m, real_t rho_tot) {
     if (grid_.ncoarse == 0) return;
     if (res.size() != grid_.phi.size()) res.assign(grid_.phi.size(), 0.0);
