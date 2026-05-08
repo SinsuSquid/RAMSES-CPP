@@ -49,9 +49,18 @@ public:
 
     void add_to_level_list(int igrid, int ilevel);
 
-    int get_headl(int icpu, int ilevel) const { return headl_vec[(ilevel-1)*ncpu + (icpu-1)]; }
-    int taill(int icpu, int ilevel) const { return taill_vec[(ilevel-1)*ncpu + (icpu-1)]; }
-    int numbl(int icpu, int ilevel) const { return numbl_vec[(ilevel-1)*ncpu + (icpu-1)]; }
+    int get_headl(int icpu, int ilevel) const { 
+        if (ilevel < 1 || ilevel > nlevelmax) return 0;
+        return headl_vec.at((ilevel-1)*ncpu + (icpu-1)); 
+    }
+    int taill(int icpu, int ilevel) const { 
+        if (ilevel < 1 || ilevel > nlevelmax) return 0;
+        return taill_vec.at((ilevel-1)*ncpu + (icpu-1)); 
+    }
+    int numbl(int icpu, int ilevel) const { 
+        if (ilevel < 1 || ilevel > nlevelmax) return 0;
+        return numbl_vec.at((ilevel-1)*ncpu + (icpu-1)); 
+    }
     int headl(int icpu, int ilevel) const { return get_headl(icpu, ilevel); }
     int count_grids_at_level(int ilevel) const;
 

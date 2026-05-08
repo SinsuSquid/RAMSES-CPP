@@ -389,12 +389,12 @@ void RamsesWriter::write_particles(const AmrGrid& grid, const SnapshotInfo& info
         }
         {
             std::vector<int32_t> buf(npart);
-            for (int i = 0; i < npart; ++i) buf[i] = grid.idp[i];
+            for (int i = 0; i < npart; ++i) buf[i] = (int32_t)grid.idp[i];
             write_record_internal(file, buf.data(), npart);
         }
         {
             std::vector<int32_t> buf(npart);
-            for (int i = 0; i < npart; ++i) buf[i] = grid.levelp[i];
+            for (int i = 0; i < npart; ++i) buf[i] = (int32_t)grid.levelp[i];
             write_record_internal(file, buf.data(), npart);
         }
     }

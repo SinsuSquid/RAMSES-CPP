@@ -70,8 +70,11 @@ void ParticleSolver::assign_mass_fine(int ilevel) {
 
             auto assign = [&](int off_x, int off_y, int off_z, real_t w) {
                 int idx = 13 + off_x + 3 * off_y + 9 * off_z;
+                if (idx < 0 || idx >= 27) return;
                 int target = nbors[idx];
-                if (target > 0) grid_.rho[target - 1] += grid_.mp[ip - 1] * w / vol;
+                if (target > 0 && target <= (int)grid_.rho.size()) {
+                    grid_.rho[target - 1] += grid_.mp[ip - 1] * w / vol;
+                }
             };
 
             if (NDIM == 1) { assign(0, 0, 0, wx1); assign(sx, 0, 0, wx2); }
@@ -138,8 +141,9 @@ void ParticleSolver::move_fine(int ilevel, real_t dt) {
             real_t f_interp[3] = {0, 0, 0};
             auto interpolate = [&](int off_x, int off_y, int off_z, real_t w) {
                 int idx = 13 + off_x + 3 * off_y + 9 * off_z;
+                if (idx < 0 || idx >= 27) return;
                 int target = nbors[idx];
-                if (target > 0) {
+                if (target > 0 && target <= (int)grid_.rho.size()) {
                     for (int idim = 1; idim <= NDIM; ++idim) {
                         f_interp[idim - 1] += grid_.f(target, idim) * w;
                     }
@@ -280,8 +284,6 @@ void ParticleSolver::relink() {
     }
 
     for (int ip = 1; ip <= grid_.npartmax; ++ip) {
-        // We need a way to check if particle slot 'ip' is active.
-        // Assuming idp[ip-1] > 0 for active particles.
         if (grid_.idp[ip - 1] <= 0) continue;
 
         real_t xp = grid_.xp[0 * grid_.npartmax + ip - 1];

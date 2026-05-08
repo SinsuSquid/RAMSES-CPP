@@ -9,6 +9,7 @@
 #include "Config.hpp"
 #include "Initializer.hpp"
 #include "RtSolver.hpp"
+#include "Cosmology.hpp"
 #include "ParticleSolver.hpp"
 #include <vector>
 
@@ -26,16 +27,17 @@ public:
                    poisson_(grid_, config_), 
                    updater_(grid_, config_), 
                    initializer_(grid_, config_),
-                   particles_(grid_, config_) {}
+                   particles_(grid_, config_),
+                   cosmo_() {}
 
     void initialize(const std::string& nml_path);
     void run();
 
 private:
     void amr_step(int ilevel, real_t dt, int icount = 1);
-    void rho_fine(int ilevel);
     void dump_snapshot(int iout);
-    
+    void rho_fine(int ilevel);
+
     Config config_;
     AmrGrid grid_;
     HydroSolver hydro_;
@@ -45,9 +47,13 @@ private:
     TreeUpdater updater_;
     Initializer initializer_;
     ParticleSolver particles_;
+    Cosmology cosmo_;
 
     real_t t_ = 0.0;
     real_t tend_ = 1.0;
+    real_t aexp_ = 1.0;
+    real_t hexp_ = 0.0;
+
     int nstep_ = 0;
     int nstepmax_ = 10;
     int ncontrol_ = 1;

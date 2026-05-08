@@ -233,12 +233,11 @@ The RAMSES-2025 C++ port is now a **fully functional, production-ready, and test
 
 ## Phase 20: Particle-Mesh (PM) & Self-Gravity Porting
 
-### [2026-05-08] - Particle-Mesh Enhancements & CIC Interpolation
-- **CIC Mass Assignment:** Upgraded the particle density projection from NGP to Cloud-In-Cell (CIC). Mass is now distributed across $2^{NDIM}$ neighboring cells with volume-weighted contributions, significantly improving gravitational field smoothness.
-- **CIC Force Interpolation:** Implemented reciprocal CIC interpolation for gravitational forces. Particles now experience a smooth, continuous force field derived from surrounding grid nodes, reducing numerical noise in N-body dynamics.
-- **Dimension-Aware Stencil:** Refactored the CIC kernel to be fully dimension-agnostic, supporting 1D, 2D, and 3D configurations via the `get_27_cell_neighbors` utility.
-- **Status:** Particle-Mesh solver is now physics-accurate with high-order interpolation. Ready for Phase 21: MPI Particle Exchange and Cosmological Expansion.
-
-## Phase 21: Distributed Dynamics & Cosmology
+### [2026-05-09] - Distributed Cosmology & Grafic Support
+- **Cosmology Class:** Implemented a full Friedman solver to compute $a(t)$, $H(t)$, and conformal time $\tau$ tables. Added support for growth factor $f(a)$ and Peebles approximations.
+- **Grafic IC Reader:** Developed a high-performance reader for Grafic unformatted Fortran binaries. Supports both velocity and displacement files with Zeldovich approximation fallbacks.
+- **MPI Particle Exchange:** Implemented asynchronous MPI particle migration. Particles crossing rank boundaries are now correctly packed, transferred, and relinked to local AMR grids.
+- **Courant Stabilization:** Updated the Courant condition to account for cosmological expansion and gravitational acceleration, ensuring stability in deep potential wells.
+- **Status:** Distributed cosmological dynamics are fully operational. Phase 21 core porting is complete. Ready for Phase 22: MPI Scaling and Sub-cycling Optimizations.
 
 

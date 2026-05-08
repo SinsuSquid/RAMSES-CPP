@@ -70,7 +70,14 @@ void TreeUpdater::make_grid_fine(int ilevel) {
         }
         
         real_t u1[7][64] = {0}, u2[8][64] = {0};
-        for(int iv=1; iv<=grid_.nvar; ++iv) u1[0][iv-1] = grid_.uold(ic_coarse, iv);
+        if (ic_coarse <= 0 || ic_coarse > grid_.ncell) {
+            std::cerr << "[TreeUpdater] Error: ic_coarse " << ic_coarse << " out of bounds!" << std::endl;
+            continue;
+        }
+        for(int iv=1; iv<=grid_.nvar; ++iv) {
+            if (iv > 64) break;
+            u1[0][iv-1] = grid_.uold(ic_coarse, iv);
+        }
         int icn_ref[6] = {0};
         if (ilevel > 1) {
             int ig_ref = ((ic_coarse - 1 - grid_.ncoarse) % grid_.ngridmax) + 1;
@@ -85,8 +92,16 @@ void TreeUpdater::make_grid_fine(int ilevel) {
         }
         for(int idim=0; idim<NDIM; ++idim) {
             int id_l = icn_ref[idim*2], id_r = icn_ref[idim*2+1];
-            if (id_l > 0) for(int iv=1; iv<=grid_.nvar; ++iv) u1[2*idim+1][iv-1] = grid_.uold(id_l, iv); else for(int iv=1; iv<=grid_.nvar; ++iv) u1[2*idim+1][iv-1] = u1[0][iv-1];
-            if (id_r > 0) for(int iv=1; iv<=grid_.nvar; ++iv) u1[2*idim+2][iv-1] = grid_.uold(id_r, iv); else for(int iv=1; iv<=grid_.nvar; ++iv) u1[2*idim+2][iv-1] = u1[0][iv-1];
+            if (id_l > 0 && id_l <= grid_.ncell) {
+                for(int iv=1; iv<=grid_.nvar; ++iv) { if(iv<=64) u1[2*idim+1][iv-1] = grid_.uold(id_l, iv); }
+            } else {
+                for(int iv=1; iv<=grid_.nvar; ++iv) { if(iv<=64) u1[2*idim+1][iv-1] = u1[0][iv-1]; }
+            }
+            if (id_r > 0 && id_r <= grid_.ncell) {
+                for(int iv=1; iv<=grid_.nvar; ++iv) { if(iv<=64) u1[2*idim+2][iv-1] = grid_.uold(id_r, iv); }
+            } else {
+                for(int iv=1; iv<=grid_.nvar; ++iv) { if(iv<=64) u1[2*idim+2][iv-1] = u1[0][iv-1]; }
+            }
         }
         if (interpol_hook_) interpol_hook_(u1, u2); else { for(int i=0; i<8; ++i) for(int iv=0; iv<grid_.nvar; ++iv) u2[i][iv] = u1[0][iv]; }
         

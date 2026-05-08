@@ -13,14 +13,14 @@ class PoissonSolver {
 public:
     PoissonSolver(AmrGrid& grid, Config& config) : grid_(grid), config_(config) {}
 
-    void solve(int ilevel);
+    void solve(int ilevel, real_t aexp = 1.0, real_t omega_m = 0.3, real_t rho_tot = 0.0);
     void compute_force(int ilevel);
 
 private:
-    void smooth(int ilevel);
+    void smooth(int ilevel, real_t fourpi, real_t rho_tot);
     void restrict(int ilevel);
     void prolong(int ilevel);
-    void vcycle(int ilevel);
+    void vcycle(int ilevel, real_t fourpi, real_t rho_tot);
 
     AmrGrid& grid_;
     Config& config_;

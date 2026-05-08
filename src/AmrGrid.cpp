@@ -8,9 +8,10 @@ namespace ramses {
 
 void AmrGrid::allocate(int nx_val, int ny_val, int nz_val, int ngridmax_val, int nvar_val, int ncpu_val, int nlevelmax_val) {
     nx = std::max(nx_val, 1); ny = std::max(ny_val, 1); nz = std::max(nz_val, 1);
-    ngridmax = ngridmax_val; nvar = nvar_val; ncpu = ncpu_val; nlevelmax = nlevelmax_val;
-    ncoarse = nx * ny * nz;
-    ncell = ncoarse + constants::twotondim * ngridmax;
+    ngridmax = std::max(ngridmax_val, 1); nvar = std::max(nvar_val, 1); ncpu = std::max(ncpu_val, 1); nlevelmax = std::max(nlevelmax_val, 1);
+    ncoarse = (long long)nx * ny * nz;
+    ncell = ncoarse + (long long)constants::twotondim * ngridmax;
+    std::cout << "[AmrGrid] Allocating ngridmax=" << ngridmax << " ncell=" << ncell << " nvar=" << nvar << std::endl;
 
     headl_vec.assign(ncpu * nlevelmax, 0);
     taill_vec.assign(ncpu * nlevelmax, 0);
@@ -163,7 +164,15 @@ int AmrGrid::count_grids_at_level(int ilevel) const {
 
 void AmrGrid::get_nbor_grids(int igrid, int ign[7]) const {
     ign[0] = igrid;
-    for (int i = 1; i <= 6; ++i) ign[i] = nbor[(i - 1) * ngridmax + igrid - 1];
+    for (int i = 1; i <= 6; ++i) {
+        int idx = (i - 1) * ngridmax + igrid - 1;
+        int val = nbor.at(idx);
+        if (val > ncell) {
+            ign[i] = 0; // Nullify corrupted pointer
+        } else {
+            ign[i] = val;
+        }
+    }
 }
 
 void AmrGrid::get_nbor_cells(const int ign[7], int ic, int icn[6], int igrid) const {
@@ -174,7 +183,17 @@ void AmrGrid::get_nbor_cells(const int ign[7], int ic, int icn[6], int igrid) co
             int ig_idx = constants::iii[idim][inbor][ic - 1];
             int ic_pos = constants::jjj[idim][inbor][ic - 1];
             int ig = ign[ig_idx];
-            if (ig > 0) icn[idim * 2 + inbor] = ncoarse + (ic_pos - 1) * ngridmax + ig - 1 + 1;
+            if (ig > 0) {
+                if (ig_idx == 0) {
+                    icn[idim * 2 + inbor] = ncoarse + (ic_pos - 1) * ngridmax + ig;
+                } else {
+                    if (ig <= ncell && son.at(ig - 1) > 0) {
+                        icn[idim * 2 + inbor] = ncoarse + (ic_pos - 1) * ngridmax + son.at(ig - 1);
+                    } else {
+                        icn[idim * 2 + inbor] = ig;
+                    }
+                }
+            }
             else icn[idim * 2 + inbor] = - (idim * 2 + inbor + 1);
         }
     }

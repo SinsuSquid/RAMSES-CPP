@@ -109,28 +109,48 @@ void Initializer::apply_all() {
 
 void Initializer::load_grafic() {
     std::string path = config_.get("init_params", "initfile", "");
+    if (path.empty()) path = config_.get("init_params", "initfile(1)", "");
     if (path.empty()) return;
-    
-    int lmin = params::levelmin;
-    int n1_val = (1 << lmin);
-    int n2_val = (NDIM > 1) ? (1 << lmin) : 1;
-    int n3_val = (NDIM > 2) ? (1 << lmin) : 1;
-    int npart_l = n1_val * n2_val * n3_val;
 
-    std::cout << "[Initializer] Loading Grafic ICs from " << path << " for " << npart_l << " particles (Level " << lmin << ")." << std::endl;
+    int lmin = params::levelmin;
+    
+    // 1. Read header from ic_velcx
+    std::string header_file = path + "/ic_velcx";
+    std::ifstream hfile(header_file, std::ios::binary);
+    if (!hfile.is_open()) {
+        std::cerr << "[Initializer] Could not open " << header_file << std::endl;
+        return;
+    }
+
+    int32_t s; hfile.read((char*)&s, 4);
+    int32_t n1, n2, n3; hfile.read((char*)&n1, 4); hfile.read((char*)&n2, 4); hfile.read((char*)&n3, 4);
+    float dxini, xoff1, xoff2, xoff3, astart, om_m, om_l, h0_val;
+    hfile.read((char*)&dxini, 4);
+    hfile.read((char*)&xoff1, 4); hfile.read((char*)&xoff2, 4); hfile.read((char*)&xoff3, 4);
+    hfile.read((char*)&astart, 4);
+    hfile.read((char*)&om_m, 4); hfile.read((char*)&om_l, 4);
+    hfile.read((char*)&h0_val, 4);
+    hfile.read((char*)&s, 4);
+    hfile.close();
+
+    int npart_l = n1 * n2 * n3;
+    std::cout << "[Initializer] Grafic Header: n=(" << n1 << "," << n2 << "," << n3 << ") astart=" << astart << std::endl;
+    std::cout << "[Initializer] Loading " << npart_l << " particles (Level " << lmin << ")." << std::endl;
+
     grid_.resize_particles(npart_l);
     grid_.npart = npart_l;
 
-    real_t dx = params::boxlen / (real_t)n1_val;
-    for (int i3 = 0; i3 < n3_val; ++i3) {
-        for (int i2 = 0; i2 < n2_val; ++i2) {
-            for (int i1 = 0; i1 < n1_val; ++i1) {
-                int ip = i3 * n1_val * n2_val + i2 * n1_val + i1;
+    real_t dx = params::boxlen / (real_t)(params::nx * (1 << (lmin - 1)));
+    
+    for (int i3 = 0; i3 < n3; ++i3) {
+        for (int i2 = 0; i2 < n2; ++i2) {
+            for (int i1 = 0; i1 < n1; ++i1) {
+                int ip = i3 * n1 * n2 + i2 * n1 + i1;
                 grid_.xp[0 * grid_.npartmax + ip] = (i1 + 0.5) * dx;
                 if (NDIM > 1) grid_.xp[1 * grid_.npartmax + ip] = (i2 + 0.5) * dx;
                 if (NDIM > 2) grid_.xp[2 * grid_.npartmax + ip] = (i3 + 0.5) * dx;
-                
-                grid_.mp[ip] = std::pow(0.5, 3 * lmin);
+
+                grid_.mp[ip] = std::pow(0.5, 3 * lmin) * (1.0 - 0.045/0.3);
                 grid_.levelp[ip] = lmin;
                 grid_.idp[ip] = ip + 1;
             }
@@ -141,24 +161,62 @@ void Initializer::load_grafic() {
     std::vector<std::string> v_files = {"/ic_velcx", "/ic_velcy", "/ic_velcz"};
     for (int d = 0; d < NDIM; ++d) {
         std::ifstream file(path + v_files[d], std::ios::binary);
-        if (!file.is_open()) {
-            std::cerr << "[Initializer] Could not open " << path + v_files[d] << std::endl;
-            continue;
-        }
+        if (!file.is_open()) continue;
         
-        int32_t s; file.read((char*)&s, 4);
-        int32_t n1, n2, n3; file.read((char*)&n1, 4); file.read((char*)&n2, 4); file.read((char*)&n3, 4);
-        file.seekg(s - 12, std::ios::cur); file.read((char*)&s, 4); 
-        
+        file.read((char*)&s, 4); file.seekg(s, std::ios::cur); file.read((char*)&s, 4); // Skip header
+
         std::vector<float> plane(n1 * n2);
         for (int i3 = 0; i3 < n3; ++i3) {
             file.read((char*)&s, 4); file.read((char*)plane.data(), n1 * n2 * 4); file.read((char*)&s, 4);
             for (int i2 = 0; i2 < n2; ++i2) {
                 for (int i1 = 0; i1 < n1; ++i1) {
                     int ip = i3 * n1 * n2 + i2 * n1 + i1;
-                    if (ip < grid_.npart) grid_.vp[d * grid_.npartmax + ip] = plane[i2 * n1 + i1];
+                    if (ip < grid_.npartmax) {
+                        grid_.vp[d * grid_.npartmax + ip] = plane[i2 * n1 + i1];
+                    }
                 }
             }
+        }
+    }
+
+    std::cout << "[Initializer] Starting displacement check." << std::endl;
+    // 3. Optional: Read positions (displacements)
+    std::vector<std::string> x_files = {"/ic_poscx", "/ic_poscy", "/ic_poscz"};
+    bool has_pos = true;
+    for (int d = 0; d < NDIM; ++d) {
+        std::ifstream file(path + x_files[d], std::ios::binary);
+        if (!file.is_open()) { 
+            std::cout << "[Initializer] Displacement file " << x_files[d] << " not found, will use Zeldovich." << std::endl;
+            has_pos = false; break; 
+        }
+        
+        file.read((char*)&s, 4); file.seekg(s, std::ios::cur); file.read((char*)&s, 4); // Skip header
+        std::vector<float> plane(n1 * n2);
+        for (int i3 = 0; i3 < n3; ++i3) {
+            file.read((char*)&s, 4); file.read((char*)plane.data(), n1 * n2 * 4); file.read((char*)&s, 4);
+            for (int i2 = 0; i2 < n2; ++i2) {
+                for (int i1 = 0; i1 < n1; ++i1) {
+                    int ip = i3 * n1 * n2 + i2 * n1 + i1;
+                    if (ip < grid_.npartmax) grid_.xp[d * grid_.npartmax + ip] += plane[i2 * n1 + i1] / params::boxlen;
+                }
+            }
+        }
+    }
+
+    if (!has_pos) {
+        // Zeldovich approximation: xp = xp + vp
+        for (int d = 0; d < NDIM; ++d) {
+            for (int ip = 0; ip < grid_.npart; ++ip) {
+                grid_.xp[d * grid_.npartmax + ip] += grid_.vp[d * grid_.npartmax + ip];
+            }
+        }
+    }
+    
+    // Final periodic wrap
+    for (int ip = 0; ip < grid_.npart; ++ip) {
+        for (int d = 0; d < NDIM; ++d) {
+            if (grid_.xp[d * grid_.npartmax + ip] < 0) grid_.xp[d * grid_.npartmax + ip] += 1.0;
+            if (grid_.xp[d * grid_.npartmax + ip] >= 1.0) grid_.xp[d * grid_.npartmax + ip] -= 1.0;
         }
     }
 }
