@@ -231,6 +231,7 @@ void Simulation::amr_step(int ilevel, real_t dt, int icount) {
     if (do_poisson) {
         hydro_.add_gravity_source_terms(ilevel, dt);
         particles_.move_fine(ilevel, 0.5 * dt);
+        particles_.exchange_particles();
     }
 
 #ifdef RT

@@ -43,7 +43,12 @@ public:
     void resize_particles(int new_npartmax);
     int get_free_grid();
     void free_grid(int igrid);
+
+    int get_free_particle();
+    void free_particle(int ip);
+
     void add_to_level_list(int igrid, int ilevel);
+
     int get_headl(int icpu, int ilevel) const { return headl_vec[(ilevel-1)*ncpu + (icpu-1)]; }
     int taill(int icpu, int ilevel) const { return taill_vec[(ilevel-1)*ncpu + (icpu-1)]; }
     int numbl(int icpu, int ilevel) const { return numbl_vec[(ilevel-1)*ncpu + (icpu-1)]; }

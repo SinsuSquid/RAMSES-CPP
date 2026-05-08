@@ -233,14 +233,12 @@ The RAMSES-2025 C++ port is now a **fully functional, production-ready, and test
 
 ## Phase 20: Particle-Mesh (PM) & Self-Gravity Porting
 
-### [2026-05-08] - Gravitational Awakening & Particle Foundation
-- **Poisson Integration:** Successfully hooked the `PoissonSolver` into the main `Simulation::run` loop and recursive `amr_step`. Implemented the leapfrog (kick-drift-kick) synchronization for hydro-gravity coupling.
-- **Particle Infrastructure:** Added full N-body particle support to `AmrGrid`, including arrays for positions, velocities, masses, IDs, and levels. Implemented dynamic particle resizing.
-- **Particle Dynamics:** Implemented `ParticleSolver::move_fine` for particle advection and `assign_mass_fine` for projecting particle mass onto the density grid (CIC/NGP).
-- **Density Restriction:** Added a global density restriction step to ensure gravitational consistency across all AMR levels.
-- **Snapshot Parity:** Enhanced `RamsesWriter` and `RamsesReader` to support particle binary files (`part_*.out`), including descriptor generation for analysis tools.
-- **Analytic Potential:** Ported the `ana_disk_potential` initialization and force calculation. Successfully executed the benchmark with verified physical evolution.
-- **Stability Fixes:** Standardized grid-to-level indexing (Grid $L$ -> Level $L+1$) and hardened the Courant condition to account for gravitational acceleration.
-- **Status:** Gravity and Particle infrastructure are fully functional. Phase 20 core porting is complete. Ready for cosmological Grafic support and MPI particle exchange.
+### [2026-05-08] - Particle-Mesh Enhancements & CIC Interpolation
+- **CIC Mass Assignment:** Upgraded the particle density projection from NGP to Cloud-In-Cell (CIC). Mass is now distributed across $2^{NDIM}$ neighboring cells with volume-weighted contributions, significantly improving gravitational field smoothness.
+- **CIC Force Interpolation:** Implemented reciprocal CIC interpolation for gravitational forces. Particles now experience a smooth, continuous force field derived from surrounding grid nodes, reducing numerical noise in N-body dynamics.
+- **Dimension-Aware Stencil:** Refactored the CIC kernel to be fully dimension-agnostic, supporting 1D, 2D, and 3D configurations via the `get_27_cell_neighbors` utility.
+- **Status:** Particle-Mesh solver is now physics-accurate with high-order interpolation. Ready for Phase 21: MPI Particle Exchange and Cosmological Expansion.
+
+## Phase 21: Distributed Dynamics & Cosmology
 
 

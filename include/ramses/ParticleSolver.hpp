@@ -33,6 +33,19 @@ public:
      */
     void assign_mass_fine(int ilevel);
 
+    /**
+     * @brief Performs MPI particle exchange between ranks.
+     */
+    void exchange_particles();
+
+    struct ParticlePacket {
+        real_t xp[3];
+        real_t vp[3];
+        real_t mp;
+        int idp;
+        int levelp;
+    };
+
     private:
     void move_particles(const std::vector<int>& ind_part, real_t dt);
     int find_cell_by_coords(real_t x, real_t y, real_t z, int* level = nullptr);

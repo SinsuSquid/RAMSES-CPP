@@ -101,6 +101,25 @@ void AmrGrid::resize_particles(int new_npartmax) {
     npartmax = new_npartmax;
 }
 
+int AmrGrid::get_free_particle() {
+    if (headp_free == 0) return 0;
+    int ip = headp_free;
+    headp_free = nextp[ip - 1];
+    if (headp_free == 0) tailp_free = 0; else prevp[headp_free - 1] = 0;
+    nextp[ip - 1] = 0; prevp[ip - 1] = 0;
+    numbp_free--;
+    npart++;
+    return ip;
+}
+
+void AmrGrid::free_particle(int ip) {
+    if (ip <= 0) return;
+    if (tailp_free == 0) { headp_free = ip; tailp_free = ip; prevp[ip - 1] = 0; nextp[ip - 1] = 0; }
+    else { nextp[tailp_free - 1] = ip; prevp[ip - 1] = tailp_free; nextp[ip - 1] = 0; tailp_free = ip; }
+    numbp_free++;
+    npart--;
+}
+
 int AmrGrid::get_free_grid() {
     if (headf == 0) return 0;
     int igrid = headf;
