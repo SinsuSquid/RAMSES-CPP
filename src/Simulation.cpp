@@ -45,17 +45,17 @@ void Simulation::initialize(const std::string& nml_path) {
     
     nener_ = config_.get_int("hydro_params", "nener", 0);
 #ifdef RAMSES_NENER
-    nener_ = RAMSES_NENER;
+    if (RAMSES_NENER > 0) nener_ = RAMSES_NENER;
 #endif
 
-    int npassive = config_.get_int("hydro_params", "npassive", 0);
+    int npassive = config_.get_int("hydro_params", "nmetals", 0);
+    npassive = config_.get_int("hydro_params", "npassive", npassive);
 #ifdef RAMSES_NPSCAL
-    npassive = RAMSES_NPSCAL;
+    if (RAMSES_NPSCAL > 0) npassive = std::max(npassive, (int)RAMSES_NPSCAL);
 #endif
 #ifdef RAMSES_NMETALS
-    npassive = std::max(npassive, (int)RAMSES_NMETALS);
+    if (RAMSES_NMETALS > 0) npassive = std::max(npassive, (int)RAMSES_NMETALS);
 #endif
-    npassive = config_.get_int("hydro_params", "nmetals", npassive);
 
     int nvar = NDIM + 2 + nener_ + npassive;
 #ifdef MHD
@@ -145,8 +145,12 @@ void Simulation::initialize(const std::string& nml_path) {
     particles_->relink();
 
     tend_ = config_.get_double("run_params", "tend", 1e10);
-    nstepmax_ = config_.get_int("run_params", "ncontrol", 1000000);
-    ncontrol_ = 1;
+    nstepmax_ = config_.get_int("run_params", "nstepmax", 1000000);
+    ncontrol_ = config_.get_int("run_params", "ncontrol", 1);
+    
+    if (!tout_.empty() && tend_ > tout_.back()) {
+        tend_ = tout_.back();
+    }
     
     bool do_cosmo = config_.get_bool("run_params", "cosmo", false);
     if (do_cosmo) {
@@ -384,10 +388,10 @@ void Simulation::dump_snapshot(int iout) {
     SnapshotInfo info; 
     info.t = t_; 
     info.nstep = nstep_; 
-    info.noutput = 100; 
     info.iout = iout; 
     info.gamma = grid_.gamma; 
     info.nener = nener_;
+    info.noutput = config_.get_int("output_params", "noutput", 0);
     info.aexp = aexp_;
     info.hexp = hexp_;
     

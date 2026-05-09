@@ -20,7 +20,10 @@ void HydroSolver::godunov_fine(int ilevel, real_t dt, real_t dx) {
         int igrid = grid_.get_headl(myid, ilevel);
         while (igrid > 0) { octs.push_back(igrid); igrid = grid_.next[igrid - 1]; }
     }
-    if (octs.empty() && ilevel > 1) return;
+    
+    // Level 1 doesn't have grids, it has coarse cells.
+    bool do_level_1 = (ilevel == 1);
+    if (octs.empty() && !do_level_1) return;
 
     real_t gamma = grid_.gamma;
     real_t dtdx = dt / dx;
@@ -40,7 +43,7 @@ void HydroSolver::godunov_fine(int ilevel, real_t dt, real_t dx) {
     };
 
     // 1. Trace step
-    if (ilevel == 1) {
+    if (do_level_1) {
         for (int idc_0 = 0; idc_0 < grid_.ncoarse; ++idc_0) {
             real_t u_c[20], q_c[20];
             for(int iv=1; iv<=grid_.nvar; ++iv) u_c[iv-1] = grid_.uold(idc_0 + 1, iv);
@@ -74,69 +77,94 @@ void HydroSolver::godunov_fine(int ilevel, real_t dt, real_t dx) {
         }
     }
 
-    // 2. Flux step
+    // 2. Flux step helper
+    auto compute_fluxes = [&](int idc_0, const int icn[6], int ig_info) {
+        if (grid_.son.at(idc_0) != 0) return;
+        real_t flux_sum[20] = {0};
+        for (int idim = 0; idim < NDIM; ++idim) {
+            for (int side = 0; side < 2; ++side) {
+                int id_n = icn[idim * 2 + side];
+                real_t ql_f[20], qr_f[20], flux[20];
+                if (id_n <= 0) {
+                    int ibound = -id_n; int btype = 1;
+                    if (ibound > 0 && ibound <= (int)grid_.bound_type.size()) btype = grid_.bound_type.at(ibound - 1);
+                    real_t u_nb[20], q_nb[20], qm_nb[20], qp_nb[20], dq_null[20] = {0};
+                    for(int iv=1; iv<=grid_.nvar; ++iv) u_nb[iv-1] = grid_.uold(idc_0 + 1, iv);
+                    if (btype == 1) u_nb[1 + idim] *= -1.0;
+                    ctoprim(u_nb, q_nb, gamma);
+                    if (idim > 0) std::swap(q_nb[1], q_nb[1+idim]);
+                    trace(q_nb, dq_null, dtdx, qm_nb, qp_nb, gamma);
+                    if (idim > 0) { std::swap(qm_nb[1], qm_nb[1+idim]); std::swap(qp_nb[1], qp_nb[1+idim]); }
+                    if (side == 0) { for(int iv=1; iv<=grid_.nvar; ++iv) { ql_f[iv-1] = qp_nb[iv-1]; qr_f[iv-1] = get_q(idc_0, idim, iv); } }
+                    else { for(int iv=1; iv<=grid_.nvar; ++iv) { ql_f[iv-1] = get_qp(idc_0, idim, iv); qr_f[iv-1] = qm_nb[iv-1]; } }
+                } else {
+                    real_t u_nb[20], q_nb[20], dq_nb[20], qm_nb[20], qp_nb[20];
+                    for(int iv=1; iv<=grid_.nvar; ++iv) u_nb[iv-1] = grid_.uold(id_n, iv);
+                    ctoprim(u_nb, q_nb, gamma);
+                    int icn_nb[6], ign_nb[7] = {0}, ic_nb = 1, ig_nb = 0;
+                    if (id_n > grid_.ncoarse) {
+                        ig_nb = ((id_n - grid_.ncoarse - 1) % grid_.ngridmax) + 1;
+                        ic_nb = ((id_n - grid_.ncoarse - 1) / grid_.ngridmax) + 1;
+                        grid_.get_nbor_grids(ig_nb, ign_nb);
+                    }
+                    grid_.get_nbor_cells(ign_nb, ic_nb, icn_nb, ig_nb);
+                    compute_slopes(id_n, icn_nb, idim, dq_nb, slope_type);
+                    if (idim > 0) { std::swap(q_nb[1], q_nb[1+idim]); std::swap(dq_nb[1], dq_nb[1+idim]); }
+                    trace(q_nb, dq_nb, dtdx, qm_nb, qp_nb, gamma);
+                    if (idim > 0) { std::swap(qm_nb[1], qm_nb[1+idim]); std::swap(qp_nb[1], qp_nb[1+idim]); }
+                    if (side == 0) { for(int iv=1; iv<=grid_.nvar; ++iv) { ql_f[iv-1] = qp_nb[iv-1]; qr_f[iv-1] = get_q(idc_0, idim, iv); } }
+                    else { for(int iv=1; iv<=grid_.nvar; ++iv) { ql_f[iv-1] = get_qp(idc_0, idim, iv); qr_f[iv-1] = qm_nb[iv-1]; } }
+                }
+                if (idim > 0) { std::swap(ql_f[1], ql_f[1+idim]); std::swap(qr_f[1], qr_f[1+idim]); }
+                if (riemann == "hllc") RiemannSolver::solve_hllc(ql_f, qr_f, flux, gamma);
+                else if (riemann == "llf") RiemannSolver::solve_llf(ql_f, qr_f, flux, gamma);
+                else RiemannSolver::solve_hll(ql_f, qr_f, flux, gamma);
+                real_t mass_flux = flux[0];
+                for (int iv = NDIM + 2; iv < grid_.nvar; ++iv) flux[iv] = mass_flux * ((mass_flux > 0) ? ql_f[iv] : qr_f[iv]);
+                if (idim > 0) std::swap(flux[1], flux[1+idim]);
+                real_t sign = (side == 0) ? 1.0 : -1.0;
+                for(int iv=0; iv<grid_.nvar; ++iv) flux_sum[iv] += sign * flux[iv];
+            }
+        }
+        for (int iv = 1; iv <= nvar_hydro_; ++iv) grid_.unew(idc_0 + 1, iv) = grid_.uold(idc_0 + 1, iv) + dtdx * flux_sum[iv-1];
+        real_t d_curr = std::max(grid_.unew(idc_0 + 1, 1), 1e-10); grid_.unew(idc_0 + 1, 1) = d_curr;
+        real_t v2_curr = 0.0; for(int i=1; i<=NDIM; ++i) { real_t v = grid_.unew(idc_0 + 1, 1+i)/d_curr; v2_curr += v*v; }
+        int iener = NDIM + 2;
+        real_t ei_curr = grid_.unew(idc_0 + 1, iener) - 0.5*d_curr*v2_curr;
+        for(int ie=0; ie<nener_; ++ie) ei_curr -= grid_.unew(idc_0 + 1, iener+1+ie);
+        if (ei_curr < d_curr*1e-10/(gamma-1.0)) {
+            real_t e_non = 0; for(int ie=0; ie<nener_; ++ie) e_non += grid_.unew(idc_0 + 1, iener+1+ie);
+            grid_.unew(idc_0 + 1, iener) = d_curr*1e-10/(gamma-1.0) + 0.5*d_curr*v2_curr + e_non;
+        }
+    };
+
+    if (do_level_1) {
+        for (int idc_0 = 0; idc_0 < grid_.ncoarse; ++idc_0) {
+            int icn[6];
+            for (int idim = 0; idim < 3; ++idim) {
+                for (int side = 0; side < 2; ++side) {
+                    // This is a simplified boundary logic for coarse cells
+                    int nx = grid_.nx, ny = grid_.ny, nz = grid_.nz;
+                    int idx = idc_0;
+                    int iz = idx / (nx * ny); int rem = idx % (nx * ny);
+                    int iy = rem / nx; int ix = rem % nx;
+                    int ixyz[3] = {ix, iy, iz};
+                    int n[3] = {nx, ny, nz};
+                    if (side == 0) ixyz[idim] = (ixyz[idim] - 1 + n[idim]) % n[idim];
+                    else ixyz[idim] = (ixyz[idim] + 1) % n[idim];
+                    icn[idim * 2 + side] = ixyz[2] * nx * ny + ixyz[1] * nx + ixyz[0] + 1;
+                }
+            }
+            compute_fluxes(idc_0, icn, 0);
+        }
+    }
+
     for (int ig : octs) {
         int ign[7]; grid_.get_nbor_grids(ig, ign);
         for (int ic = 1; ic <= constants::twotondim; ++ic) {
             int idc_0 = grid_.ncoarse + (ic - 1) * grid_.ngridmax + ig - 1;
-            if (grid_.son.at(idc_0) != 0) continue;
             int icn[6]; grid_.get_nbor_cells(ign, ic, icn, ig);
-            real_t flux_sum[20] = {0};
-            for (int idim = 0; idim < NDIM; ++idim) {
-                for (int side = 0; side < 2; ++side) {
-                    int id_n = icn[idim * 2 + side];
-                    real_t ql_f[20], qr_f[20], flux[20];
-                    if (id_n <= 0) {
-                        int ibound = -id_n; int btype = 1;
-                        if (ibound > 0 && ibound <= (int)grid_.bound_type.size()) btype = grid_.bound_type.at(ibound - 1);
-                        real_t u_nb[20], q_nb[20], qm_nb[20], qp_nb[20], dq_null[20] = {0};
-                        for(int iv=1; iv<=grid_.nvar; ++iv) u_nb[iv-1] = grid_.uold(idc_0 + 1, iv);
-                        if (btype == 1) u_nb[1 + idim] *= -1.0;
-                        ctoprim(u_nb, q_nb, gamma);
-                        if (idim > 0) std::swap(q_nb[1], q_nb[1+idim]);
-                        trace(q_nb, dq_null, dtdx, qm_nb, qp_nb, gamma);
-                        if (idim > 0) { std::swap(qm_nb[1], qm_nb[1+idim]); std::swap(qp_nb[1], qp_nb[1+idim]); }
-                        if (side == 0) { for(int iv=1; iv<=grid_.nvar; ++iv) { ql_f[iv-1] = qp_nb[iv-1]; qr_f[iv-1] = get_q(idc_0, idim, iv); } }
-                        else { for(int iv=1; iv<=grid_.nvar; ++iv) { ql_f[iv-1] = get_qp(idc_0, idim, iv); qr_f[iv-1] = qm_nb[iv-1]; } }
-                    } else {
-                        real_t u_nb[20], q_nb[20], dq_nb[20], qm_nb[20], qp_nb[20];
-                        for(int iv=1; iv<=grid_.nvar; ++iv) u_nb[iv-1] = grid_.uold(id_n, iv);
-                        ctoprim(u_nb, q_nb, gamma);
-                        int icn_nb[6], ign_nb[7] = {0}, ic_nb = 1, ig_nb = 0;
-                        if (id_n > grid_.ncoarse) {
-                            ig_nb = ((id_n - grid_.ncoarse - 1) % grid_.ngridmax) + 1;
-                            ic_nb = ((id_n - grid_.ncoarse - 1) / grid_.ngridmax) + 1;
-                            grid_.get_nbor_grids(ig_nb, ign_nb);
-                        }
-                        grid_.get_nbor_cells(ign_nb, ic_nb, icn_nb, ig_nb);
-                        compute_slopes(id_n, icn_nb, idim, dq_nb, slope_type);
-                        if (idim > 0) { std::swap(q_nb[1], q_nb[1+idim]); std::swap(dq_nb[1], dq_nb[1+idim]); }
-                        trace(q_nb, dq_nb, dtdx, qm_nb, qp_nb, gamma);
-                        if (idim > 0) { std::swap(qm_nb[1], qm_nb[1+idim]); std::swap(qp_nb[1], qp_nb[1+idim]); }
-                        if (side == 0) { for(int iv=1; iv<=grid_.nvar; ++iv) { ql_f[iv-1] = qp_nb[iv-1]; qr_f[iv-1] = get_q(idc_0, idim, iv); } }
-                        else { for(int iv=1; iv<=grid_.nvar; ++iv) { ql_f[iv-1] = get_qp(idc_0, idim, iv); qr_f[iv-1] = qm_nb[iv-1]; } }
-                    }
-                    if (idim > 0) { std::swap(ql_f[1], ql_f[1+idim]); std::swap(qr_f[1], qr_f[1+idim]); }
-                    if (riemann == "hllc") RiemannSolver::solve_hllc(ql_f, qr_f, flux, gamma);
-                    else if (riemann == "llf") RiemannSolver::solve_llf(ql_f, qr_f, flux, gamma);
-                    else RiemannSolver::solve_hll(ql_f, qr_f, flux, gamma);
-                    real_t mass_flux = flux[0];
-                    for (int iv = NDIM + 2; iv < grid_.nvar; ++iv) flux[iv] = mass_flux * ((mass_flux > 0) ? ql_f[iv] : qr_f[iv]);
-                    if (idim > 0) std::swap(flux[1], flux[1+idim]);
-                    real_t sign = (side == 0) ? 1.0 : -1.0;
-                    for(int iv=0; iv<grid_.nvar; ++iv) flux_sum[iv] += sign * flux[iv];
-                }
-            }
-            for (int iv = 1; iv <= nvar_hydro_; ++iv) grid_.unew(idc_0 + 1, iv) = grid_.uold(idc_0 + 1, iv) + dtdx * flux_sum[iv-1];
-            real_t d_curr = std::max(grid_.unew(idc_0 + 1, 1), 1e-10); grid_.unew(idc_0 + 1, 1) = d_curr;
-            real_t v2_curr = 0.0; for(int i=1; i<=NDIM; ++i) { real_t v = grid_.unew(idc_0 + 1, 1+i)/d_curr; v2_curr += v*v; }
-            int iener = NDIM + 2;
-            real_t ei_curr = grid_.unew(idc_0 + 1, iener) - 0.5*d_curr*v2_curr;
-            for(int ie=0; ie<nener_; ++ie) ei_curr -= grid_.unew(idc_0 + 1, iener+1+ie);
-            if (ei_curr < d_curr*1e-10/(gamma-1.0)) {
-                real_t e_non = 0; for(int ie=0; ie<nener_; ++ie) e_non += grid_.unew(idc_0 + 1, iener+1+ie);
-                grid_.unew(idc_0 + 1, iener) = d_curr*1e-10/(gamma-1.0) + 0.5*d_curr*v2_curr + e_non;
-            }
+            compute_fluxes(idc_0, icn, ig);
         }
     }
 }
@@ -251,10 +279,10 @@ void HydroSolver::interpol_hydro(const real_t u1[7][64], real_t u2[8][64]) {
 
 real_t HydroSolver::compute_courant_step(int ilevel, real_t dx, real_t gamma, real_t courant_factor) {
     int myid = MpiManager::instance().rank() + 1;
-    real_t dt_max = 1e30; int igrid = grid_.get_headl(myid, ilevel);
-    while (igrid > 0) {
-        for (int ic = 1; ic <= constants::twotondim; ++ic) {
-            int id = grid_.ncoarse + (ic - 1) * grid_.ngridmax + igrid;
+    real_t dt_max = 1e30;
+    if (ilevel == 1) {
+        for (int id = 1; id <= grid_.ncoarse; ++id) {
+            if (grid_.son.at(id - 1) > 0) continue;
             real_t d = std::max(grid_.uold(id, 1), 1e-10), v2 = 0.0;
             for (int i = 1; i <= NDIM; ++i) { real_t v = grid_.uold(id, 1 + i) / d; v2 += v * v; }
             int iener = NDIM + 2;
@@ -262,12 +290,27 @@ real_t HydroSolver::compute_courant_step(int ilevel, real_t dx, real_t gamma, re
             real_t cs = std::sqrt(gamma * p / d);
             real_t v_mag = std::sqrt(v2);
             dt_max = std::min(dt_max, courant_factor * dx / (v_mag + cs));
-            for(int idim=1; idim<=NDIM; ++idim) {
-                real_t acc = std::abs(grid_.f(id, idim));
-                if (acc > 0) dt_max = std::min(dt_max, courant_factor * std::sqrt(dx / acc));
-            }
         }
-        igrid = grid_.next[igrid - 1];
+    } else {
+        int igrid = grid_.get_headl(myid, ilevel);
+        while (igrid > 0) {
+            for (int ic = 1; ic <= constants::twotondim; ++ic) {
+                int id = grid_.ncoarse + (ic - 1) * grid_.ngridmax + igrid;
+                if (grid_.son.at(id - 1) > 0) continue;
+                real_t d = std::max(grid_.uold(id, 1), 1e-10), v2 = 0.0;
+                for (int i = 1; i <= NDIM; ++i) { real_t v = grid_.uold(id, 1 + i) / d; v2 += v * v; }
+                int iener = NDIM + 2;
+                real_t p = std::max((grid_.uold(id, iener) - 0.5 * d * v2) * (gamma - 1.0), d * 1e-10);
+                real_t cs = std::sqrt(gamma * p / d);
+                real_t v_mag = std::sqrt(v2);
+                dt_max = std::min(dt_max, courant_factor * dx / (v_mag + cs));
+                for(int idim=1; idim<=NDIM; ++idim) {
+                    real_t acc = std::abs(grid_.f(id, idim));
+                    if (acc > 0) dt_max = std::min(dt_max, courant_factor * std::sqrt(dx / acc));
+                }
+            }
+            igrid = grid_.next[igrid - 1];
+        }
     }
     return dt_max;
 }
@@ -279,7 +322,7 @@ void HydroSolver::add_gravity_source_terms(int ilevel, real_t dt) {
     int iener = NDIM + 2;
     if (ilevel == 1) {
         for (int idc = 1; idc <= grid_.ncoarse; ++idc) {
-            if (grid_.son[idc - 1] > 0) continue;
+            if (grid_.son.at(idc - 1) > 0) continue;
             real_t d = std::max(grid_.uold(idc, 1), 1e-10);
             for (int idim = 1; idim <= NDIM; ++idim) {
                 real_t f = grid_.f(idc, idim);
@@ -292,7 +335,7 @@ void HydroSolver::add_gravity_source_terms(int ilevel, real_t dt) {
     while (igrid > 0) {
         for (int ic = 1; ic <= n2d_val; ++ic) {
             int idc = grid_.ncoarse + (ic - 1) * grid_.ngridmax + igrid;
-            if (grid_.son[idc - 1] > 0) continue; 
+            if (grid_.son.at(idc - 1) > 0) continue; 
             real_t d = std::max(grid_.uold(idc, 1), 1e-10);
             for (int idim = 1; idim <= NDIM; ++idim) {
                 real_t f = grid_.f(idc, idim);
@@ -309,7 +352,7 @@ void HydroSolver::synchro_hydro_fine(int ilevel, real_t dt) {
     int iener = NDIM + 2;
     if (ilevel == 1) {
         for (int idc = 1; idc <= grid_.ncoarse; ++idc) {
-            if (grid_.son[idc - 1] > 0) continue;
+            if (grid_.son.at(idc - 1) > 0) continue;
             real_t d = std::max(grid_.uold(idc, 1), 1e-10);
             real_t v2_old = 0;
             for(int idim=1; idim<=NDIM; ++idim) { real_t v = grid_.uold(idc, 1+idim)/d; v2_old += v*v; }
@@ -324,7 +367,7 @@ void HydroSolver::synchro_hydro_fine(int ilevel, real_t dt) {
     while (igrid > 0) {
         for (int ic = 1; ic <= n2d_val; ++ic) {
             int idc = grid_.ncoarse + (ic - 1) * grid_.ngridmax + igrid;
-            if (grid_.son[idc - 1] > 0) continue; 
+            if (grid_.son.at(idc - 1) > 0) continue; 
             real_t d = std::max(grid_.uold(idc, 1), 1e-10);
             real_t v2_old = 0;
             for(int idim=1; idim<=NDIM; ++idim) { real_t v = grid_.uold(idc, 1+idim)/d; v2_old += v*v; }

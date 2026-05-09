@@ -8,6 +8,13 @@ set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(RAMSES_NDIM 3 CACHE STRING "Dimensions (1, 2, or 3)")
 set(RAMSES_PRECISION 8 CACHE STRING "Real precision (4 or 8)")
 set(RAMSES_NENER 0 CACHE STRING "Number of non-thermal energies")
+set(RAMSES_NPSCAL 0 CACHE STRING "Number of passive scalars")
+set(RAMSES_NMETALS 0 CACHE STRING "Number of metals (passive scalars)")
+set(RAMSES_NGROUPS 0 CACHE STRING "Number of RT groups")
+set(RAMSES_NIONS 0 CACHE STRING "Number of RT ions")
+set(RAMSES_NX 1 CACHE STRING "Number of coarse cells in X")
+set(RAMSES_NY 1 CACHE STRING "Number of coarse cells in Y")
+set(RAMSES_NZ 1 CACHE STRING "Number of coarse cells in Z")
 set(RAMSES_LONGINT OFF CACHE BOOL "Use 64-bit integers for grid IDs")
 set(RAMSES_USE_MPI OFF CACHE BOOL "Enable MPI support")
 set(RAMSES_USE_MHD OFF CACHE BOOL "Enable MHD solver")
@@ -40,8 +47,14 @@ set(LIB_SRCS
     src/Cosmology.cpp
     src/LoadBalancer.cpp
     src/SolverFactory.cpp
-    ${CUSTOM_PATCH_SRCS}
 )
+
+# Custom Patches Discovery
+file(GLOB CUSTOM_PATCH_SRCS "patch/*.cpp")
+if(CUSTOM_PATCH_SRCS)
+    message(STATUS "[RAMSES-CPP] Found custom C++ patches: ${CUSTOM_PATCH_SRCS}")
+    add_definitions(-DRAMSES_USE_CUSTOM_PATCHES)
+endif()
 
 # Global definitions from parameters
 set(PARAM_DEFS "")
@@ -56,11 +69,13 @@ include_directories(include)
 # Build a separate library and executable for each dimension
 foreach(d 1 2 3)
     set(LIB_NAME ramses_lib_${d}d)
-    add_library(${LIB_NAME} STATIC ${LIB_SRCS})
+    add_library(${LIB_NAME} STATIC ${LIB_SRCS} ${CUSTOM_PATCH_SRCS})
     target_compile_definitions(${LIB_NAME} PUBLIC NDIM=${d} ${PARAM_DEFS})
     
     if(RAMSES_USE_MPI)
+        find_package(MPI REQUIRED)
         target_link_libraries(${LIB_NAME} PUBLIC MPI::MPI_CXX)
+        target_compile_definitions(${LIB_NAME} PUBLIC RAMSES_USE_MPI)
     endif()
     if(RAMSES_USE_MHD)
         target_compile_definitions(${LIB_NAME} PUBLIC MHD)

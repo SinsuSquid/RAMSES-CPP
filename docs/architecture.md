@@ -1,98 +1,36 @@
-# Architecture of RAMSES-CPP
+# RAMSES-CPP Architecture
 
-RAMSES-CPP is designed as a modern C++17 object-oriented port of the legacy RAMSES Fortran code. It prioritizes maintainability, type safety, and modularity while maintaining bit-perfect parity with the original simulation logic.
+RAMSES-CPP is a modern C++17 port of the RAMSES AMR code, designed with modularity and extensibility as primary goals. The architecture is built around a centralized AMR grid manager and a collection of polymorphic solvers.
 
-## Core Components
+## 🏗️ Core Components
 
-The engine is built around several key classes that manage the simulation lifecycle, the AMR grid, and the physics solvers.
+### 1. AmrGrid
+The `AmrGrid` class manages the distributed octree structure. It handles:
+- Memory allocation for cell and grid (oct) data.
+- 1-based indexing parity with legacy Fortran for algorithmic consistency.
+- Neighbor finding and tree traversal.
+- MPI rank mapping and ghost cell synchronization.
 
-### 1. `Simulation` (The Orchestrator)
-The `Simulation` class is the central driver. It manages the global time-stepping, level sub-cycling, and coordinates between the grid management and the physics solvers.
-- **Path:** `src/Simulation.cpp`, `include/ramses/Simulation.hpp`
-- **Key Responsibilities:**
-    - Parsing namelists (via `Parameters`).
-    - Initializing the grid (via `Initializer`).
-    - Running the main simulation loop.
-    - Managing recursive level-stepping.
+### 2. Polymorphic Solvers
+All physics modules (`HydroSolver`, `MhdSolver`, `RtSolver`, etc.) inherit from base abstract classes. This allows for:
+- **Solver Factory:** Dynamic selection of physics engines (standard vs. experimental) via the `SolverFactory`.
+- **Easy Extension:** New physics can be added by implementing a single derived class without touching the core simulation loop.
 
-### 2. `AmrGrid` (The Data Structure)
-`AmrGrid` encapsulates the linked-list octree structure. In RAMSES-CPP, this is implemented as a collection of vectors (e.g., `son`, `father`, `nbor`), mimicking the Fortran memory layout but with C++ container management.
-- **Level Indexing:** The grid uses **0-based level indexing** (Level 0 = Coarse Grid), ensuring consistency across all solvers.
-- **Path:** `src/AmrGrid.cpp`, `include/ramses/AmrGrid.hpp`
-- **Key Responsibilities:**
-    - Storing cell and grid data.
-    - **Neighbor Connectivity:** Maintains a dedicated `nbor` array that stores pre-calculated neighbor pointers for every grid, enabling constant-time ($O(1)$) traversal.
-    - Handling periodic and physical boundaries.
+### 3. Simulation Core
+The `Simulation` class orchestrates the time-stepping loop, handling:
+- Sub-cycling across AMR levels.
+- Global timestep (CFL) reductions.
+- Snapshot dumping via the `RamsesWriter`.
+- Distributed load balancing using Hilbert curves.
 
-### 3. `TreeUpdater` (Grid Evolution)
-`TreeUpdater` handles the dynamic nature of AMR: refinement and de-refinement.
-- **Path:** `src/TreeUpdater.cpp`, `include/ramses/TreeUpdater.hpp`
-- **Key Responsibilities:**
-    - Refining cells based on gradients or user-defined criteria.
-    - Smoothing the refinement map (ensuring no more than 2:1 level jumps).
-    - Updating the octree topology.
-    - **Prolongation (MC Interpolation):** Applies Monotonized Central (MC) slope limiters to primitive variables during grid creation to ensure physically consistent, high-resolution data in newly refined child cells.
+## 🧠 AI-Assisted Patch System
+To support the vast ecosystem of legacy RAMSES patches, the project includes the `ramses-patch-porter`. This tool uses LLMs to translate legacy Fortran `.f90` overrides into C++ polymorphic classes that are automatically discovered and compiled into the engine.
 
-### 4. `HydroSolver` and `MhdSolver` (The Physics)
-These classes implement the Godunov-type solvers for fluid dynamics.
-- **Path:** `src/HydroSolver.cpp`, `src/MhdSolver.cpp`
-- **Key Responsibilities:**
-    - Stencil gathering (6x6x6 local cubes).
-    - MUSCL-Hancock reconstruction.
-    - Riemann solver execution (HLLC, LLF, HLLD).
-    - Flux integration and cell state updates.
-    - **Refluxing:** Synchronizes fluxes across coarse-fine AMR boundaries to guarantee mass, momentum, and energy conservation. For MHD, this involves averaging fine-level Electromotive Forces (EMFs) to maintain $\nabla \cdot B = 0$ at level interfaces.
-    - (MHD) Constrained Transport (CT) for $\nabla \cdot B = 0$.
+## 📊 I/O Layer
+The `RamsesWriter` and `RamsesReader` modules are designed for **Bit-Perfect Parity**. They follow the exact binary record sequence used by Fortran unformatted I/O, ensuring full compatibility with existing Python and IDL visualization tools (e.g., `visu_ramses.py`).
 
-### 5. `PoissonSolver` (Gravity)
-Implements self-gravity using a Multigrid approach.
-- **Path:** `src/PoissonSolver.cpp`, `include/ramses/PoissonSolver.hpp`
-- **Key Responsibilities:**
-    - Iterative Gauss-Seidel smoothing with Red-Black ordering.
-    - V-Cycle execution (Restriction/Prolongation).
+## 🛰️ Distributed Scalability
+The engine uses a sophisticated `MpiManager` and `LoadBalancer` to distribute octs across nodes. Communication is minimized using asynchronous MPI primitives, and the `TreeUpdater` ensures that the grid hierarchy remains consistent across rank boundaries.
 
-### 6. `CoolingSolver` (Thermal Physics)
-Handles gas cooling and heating processes.
-- **Path:** `src/CoolingSolver.cpp`, `include/ramses/CoolingSolver.hpp`
-- **Key Responsibilities:**
-    - Conversion between code units and physical cgs units.
-    - Implementation of analytic and tabular cooling models (e.g., ISM model).
-    - Semi-implicit integration of the stiff energy equation.
-
-### 7. `RtSolver` (Radiation)
-Implements Radiative Transfer using the M1 closure scheme.
-- **Path:** `src/RtSolver.cpp`, `include/ramses/RtSolver.hpp`
-- **Key Responsibilities:**
-    - Advection of photon number density and fluxes for multiple groups.
-    - Interpolation of HLL eigenvalues from pre-computed tables.
-    - **Ionization Coupling:** Utilizes `RtChemistry` to solve for Hydrogen/Helium ionization fractions and gas energy feedback.
-
-### 8. `MpiManager` and `LoadBalancer` (Parallelism)
-- **`MpiManager`**: A singleton that handles MPI initialization and provides wrappers for common collective operations.
-- **`LoadBalancer`**: Implements domain decomposition using the Hilbert Space-Filling Curve. It ensures spatial locality and provides full physical state migration (including Hydro/MHD variables) between MPI ranks.
-
-## Performance and Optimizations
-
-RAMSES-CPP incorporates several key optimizations to ensure high-performance execution:
-
-1. **O(1) Grid Connectivity:** RAMSES-CPP utilizes a dedicated `nbor` array within `AmrGrid` to store direct neighbor pointers (indices) for every grid. This mirrors the legacy pointer logic, ensuring that finding a neighbor cell across grid boundaries is a constant-time operation ($O(1)$), which is essential for efficient gradient calculation and AMR refinement.
-2. **Advanced Initializer:** The `Initializer` features a robust namelist parser capable of handling comma-separated lists and multi-dimensional array inputs (e.g., `d_region`, `prad_region`). It performs coordinate-accurate placement of child grids during the initial refinement phase, ensuring no mesh overlaps.
-3. **Level-Wide State Caching:** During the MUSCL reconstruction phase, interface states (`qm`, `qp`) are cached across entire AMR levels. This eliminates redundant slope calculations for shared cell interfaces, significantly improving high-order simulation performance.
-
-## Data Flow
-
-1. **Initialization:** `Simulation` reads parameters and calls `Initializer` to set up the initial conditions on the `AmrGrid`. It performs an iterative refinement pass up to `levelmax` based on initial gradients.
-2. **Main Loop:** 
-    - `Simulation` determines the global Courant time step `dt` by scanning across all active leaf cells.
-    - `Simulation::amr_step` is called recursively starting from `levelmin`.
-    - `RamsesWriter` periodically saves the state to disk, producing bit-perfect binary snapshots.
-3. **Recursive AMR Step (`amr_step`):**
-    - **Refinement:** At the beginning of the step, `TreeUpdater` generates new fine grids for the current level and its children.
-    - **Recursive Sub-cycling:** The code recursively steps into finer levels, applying the `nsubcycle` factor.
-    - **Physics Update:** Physics solvers (`HydroSolver`/`MhdSolver`) update the cell states using MUSCL-Hancock reconstruction and Riemann solvers.
-    - **Restriction:** States are restricted from fine cells to their father cells to maintain conservation.
-    - **Flagging:** At the end of the step, `TreeUpdater` marks cells for refinement based on relative gradients for the *next* time step.
-
-## I/O Parity
-
-A critical feature of RAMSES-CPP is its ability to read and write unformatted Fortran binaries. This is handled by `RamsesReader` and `RamsesWriter`, ensuring that C++ snapshots are identical to Fortran snapshots, allowing for seamless use of the existing RAMSES ecosystem.
+---
+🚀 *Engineered for performance and parity.* 🚀

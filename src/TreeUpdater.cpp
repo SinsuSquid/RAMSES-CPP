@@ -53,8 +53,12 @@ void TreeUpdater::make_grid_fine(int ilevel) {
                     grid_.nbor[(idim * 2 + side) * grid_.ngridmax + new_ig - 1] = get_nbor_of_coarse(grid_, ic_coarse, idim, side);
                 }
             }
-            int ixyz[3], idx = ic_coarse - 1; ixyz[2] = idx / (grid_.nx * grid_.ny); idx %= (grid_.nx * grid_.ny); ixyz[1] = idx / grid_.nx; ixyz[0] = idx % grid_.nx;
-            real_t dx_coarse = grid_.boxlen / std::max({grid_.nx, grid_.ny, grid_.nz});
+            int ixyz[3], idx = ic_coarse - 1; 
+            ixyz[2] = idx / (grid_.nx * grid_.ny); 
+            idx %= (grid_.nx * grid_.ny); 
+            ixyz[1] = idx / grid_.nx; 
+            ixyz[0] = idx % grid_.nx;
+            real_t dx_coarse = grid_.boxlen / (real_t)std::max({grid_.nx, grid_.ny, grid_.nz});
             for (int d = 1; d <= NDIM; ++d) grid_.xg[(d - 1) * grid_.ngridmax + new_ig - 1] = (ixyz[d - 1] + 0.5) * dx_coarse;
         } else {
             int ig = ((idc - grid_.ncoarse) % grid_.ngridmax) + 1;
@@ -147,20 +151,24 @@ void TreeUpdater::flag_fine(int ilevel, real_t ed, real_t ep, real_t ev, real_t 
     int myid = MpiManager::instance().rank() + 1, n2d = (1 << NDIM), lmin = config_.get_int("amr_params", "levelmin", 1);
     if (ilevel == 1) {
         for (int i = 1; i <= grid_.ncoarse; ++i) {
-            if (ilevel < lmin) { grid_.flag1[i-1] = 1; continue; }
             grid_.flag1[i-1] = 0;
-            real_t d = grid_.uold(i, 1), p = (grid_.uold(i, NDIM + 2) - 0.5*d*(0.0))*(grid_.gamma-1.0);
-            if (ed > 0 && d > ed) grid_.flag1[i-1] = 1;
+            if (ilevel < lmin) { grid_.flag1[i-1] = 1; }
+            else {
+                real_t d = grid_.uold(i, 1);
+                if (ed > 0 && d > ed) grid_.flag1[i-1] = 1;
+            }
         }
     } else {
         int ig = grid_.get_headl(myid, ilevel);
         while (ig > 0) {
             for (int ic = 1; ic <= n2d; ++ic) {
                 int idc = grid_.ncoarse + (ic - 1) * grid_.ngridmax + ig - 1;
-                if (ilevel < lmin) { grid_.flag1[idc] = 1; continue; }
                 grid_.flag1[idc] = 0;
-                real_t d = grid_.uold(idc + 1, 1);
-                if (ed > 0 && d > ed) grid_.flag1[idc] = 1;
+                if (ilevel < lmin) { grid_.flag1[idc] = 1; }
+                else {
+                    real_t d = grid_.uold(idc + 1, 1);
+                    if (ed > 0 && d > ed) grid_.flag1[idc] = 1;
+                }
             }
             ig = grid_.next[ig - 1];
         }
