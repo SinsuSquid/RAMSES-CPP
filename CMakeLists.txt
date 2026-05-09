@@ -27,6 +27,7 @@ set(LIB_SRCS
     src/Constants.cpp
     src/CoolingSolver.cpp
     src/TurbulenceSolver.cpp
+    src/SinkSolver.cpp
     src/HydroSolver.cpp
     src/RhdSolver.cpp
     src/Initializer.cpp

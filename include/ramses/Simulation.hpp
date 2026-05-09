@@ -5,6 +5,7 @@
 #include "HydroSolver.hpp"
 #include "CoolingSolver.hpp"
 #include "TurbulenceSolver.hpp"
+#include "SinkSolver.hpp"
 #include "MhdSolver.hpp"
 #include "PoissonSolver.hpp"
 #include "TreeUpdater.hpp"
@@ -39,6 +40,7 @@ private:
     std::unique_ptr<HydroSolver> hydro_;
     std::unique_ptr<CoolingSolver> cooling_;
     std::unique_ptr<TurbulenceSolver> turb_;
+    std::unique_ptr<SinkSolver> sink_;
     std::unique_ptr<MhdSolver> mhd_;
     std::unique_ptr<RtSolver> rt_;
     std::unique_ptr<PoissonSolver> poisson_;

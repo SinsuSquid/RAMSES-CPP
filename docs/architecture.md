@@ -36,7 +36,7 @@ The engine uses a sophisticated `MpiManager` and `LoadBalancer` to distribute oc
 To complete the full parity with the legacy RAMSES-2025 ecosystem, the following modules are planned for integration:
 - **RhdSolver:** Relativistic hydrodynamics implementation with Newton-Raphson primitive recovery.
 - **Turbulence Forcing:** Support for external driving terms in the hydro equations via spectral mode-sum driving.
-- **Enhanced Sink Dynamics:** Robust MPI-aware sink particle creation and management.
+- **Sink Dynamics:** Robust MPI-aware sink particle creation and management using global reductions and broadcasts.
 - **ATON Integration:** High-performance GPU radiation transport.
 
 ---

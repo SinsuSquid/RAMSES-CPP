@@ -12,7 +12,7 @@ This document tracks the major milestones and architectural shifts during the mi
 ## 🚩 Phase 24: Future Roadmap (Planned)
 - **Relativistic Hydrodynamics (RHD):** Ported `legacy/rhd/` to create a modern `RhdSolver`. Implemented Newton-Raphson primitive recovery and HLLC/HLL/LLF solvers.
 - **Turbulence Driving:** Ported forcing routines from `legacy/turb/`. Implemented `TurbulenceSolver` with Mode-Sum spectral driving (fallback for FFTW).
-- **Sink Particle MPI Fix:** Resolving cross-rank distribution issues for sink/stellar particles as flagged in `stellar-HII.nml`.
+- **Sink Particle MPI Fix:** Implemented `SinkSolver` with robust cross-rank synchronization. Added `MPI_Allreduce` for accretion summing and `MPI_Bcast` for coordinated creation, resolving issues in multi-CPU runs.
 - **GPU-Accelerated Radiation (ATON):** Exploring modern GPU ports (CUDA/HIP/SYCL) for the legacy ATON radiation module.
 
 ## 🚩 Phase 22: Distributed Cosmology & MPI Scaling

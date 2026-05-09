@@ -20,6 +20,12 @@ std::unique_ptr<TurbulenceSolver> create_turbulence_solver(AmrGrid& grid, Config
 }
 #endif
 
+#ifndef RAMSES_HAS_PATCH_SINK
+std::unique_ptr<SinkSolver> create_sink_solver(AmrGrid& grid, Config& config) {
+    return std::make_unique<SinkSolver>(grid, config);
+}
+#endif
+
 #ifndef RAMSES_HAS_PATCH_COOLING
 std::unique_ptr<CoolingSolver> create_cooling_solver(AmrGrid& grid, Config& config) {
     return std::make_unique<CoolingSolver>(grid, config);

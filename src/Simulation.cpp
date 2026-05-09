@@ -26,6 +26,7 @@ Simulation::Simulation() : grid_(),
     hydro_ = create_hydro_solver(grid_, config_);
     cooling_ = create_cooling_solver(grid_, config_);
     turb_ = create_turbulence_solver(grid_, config_);
+    sink_ = create_sink_solver(grid_, config_);
     mhd_ = create_mhd_solver(grid_, config_);
     rt_ = create_rt_solver(grid_, config_);
     poisson_ = create_poisson_solver(grid_, config_);
@@ -143,6 +144,7 @@ void Simulation::initialize(const std::string& nml_path) {
     nstep_ = 0;
     initializer_->apply_all();
     if (config_.get_bool("run_params", "turb", false)) turb_->init();
+    if (config_.get_bool("run_params", "sink", false)) sink_->init();
     for (int il = levelmax - 1; il >= 1; --il) updater_.restrict_fine(il);
     particles_->relink();
 
@@ -309,6 +311,12 @@ void Simulation::amr_step(int ilevel, real_t dt, int icount) {
 #endif
 
     if (config_.get_bool("run_params", "turb", false)) turb_->apply_forcing(ilevel, dt);
+
+    if (config_.get_bool("run_params", "sink", false)) {
+        sink_->create_sinks(ilevel);
+        sink_->grow_sinks(ilevel, dt);
+        sink_->synchronize_sinks();
+    }
 
     if (do_poisson) {
         hydro_->add_gravity_source_terms(ilevel, dt);
