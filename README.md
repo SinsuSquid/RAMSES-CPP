@@ -1,8 +1,8 @@
-<img src="https://github.com/SinsuSquid/RAMSES-CPP/blob/main/logo/Sia-chan.png?raw=true" align="right" width="300">
+<img src="https://github.com/SinsuSquid/RAMSES-CPP/blob/main/logo/Sia-chan.png?raw=true" align="right" width="400">
 
 # RAMSES-CPP
 
-A modern, high-performance C++17 port of the legacy RAMSES-2025 Adaptive Mesh Refinement (AMR) code. This project achieves strict binary parity with original Fortran snapshots while offering a modular, distributed architecture optimized for modern HPC clusters.
+A modern, high-performance C++17 port of the legacy [RAMSES-2025](https://github.com/ramses-organisation/ramses/releases/tag/2025.05) Adaptive Mesh Refinement (AMR) code. This project achieves strict binary parity with original Fortran snapshots while offering a modular, distributed architecture optimized for modern HPC clusters.
 
 ## 🚀 Core Features
 - **Multi-Dimensional Engine:** Simultaneous support for 1D, 2D, and 3D simulations via specialized library targets.
