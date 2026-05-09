@@ -44,13 +44,20 @@ void Simulation::initialize(const std::string& nml_path) {
     ngridmax = config_.get_int("amr_params", "ngridtot", ngridmax);
     
     nener_ = config_.get_int("hydro_params", "nener", 0);
+#ifdef RAMSES_NENER
+    nener_ = RAMSES_NENER;
+#endif
+
     int npassive = config_.get_int("hydro_params", "npassive", 0);
+#ifdef RAMSES_NPSCAL
+    npassive = RAMSES_NPSCAL;
+#endif
 #ifdef RAMSES_NMETALS
-    npassive = RAMSES_NMETALS;
+    npassive = std::max(npassive, (int)RAMSES_NMETALS);
 #endif
     npassive = config_.get_int("hydro_params", "nmetals", npassive);
 
-    int nvar = 5 + nener_ + npassive;
+    int nvar = NDIM + 2 + nener_ + npassive;
 #ifdef MHD
     nvar = 11 + nener_ + npassive;
 #endif
@@ -76,7 +83,7 @@ void Simulation::initialize(const std::string& nml_path) {
     grid_.allocate(p::nx, p::ny, p::nz, ngridmax, nvar, ncpu, levelmax);
     if (nparttot > 0) grid_.resize_particles(nparttot);
     hydro_->set_nener(nener_);
-    hydro_->set_nvar_hydro(5 + nener_ + npassive);
+    hydro_->set_nvar_hydro(NDIM + 2 + nener_ + npassive);
     
     nsubcycle_.assign(33, 1);
     std::string nsub_s = config_.get("run_params", "nsubcycle", "");
@@ -212,7 +219,7 @@ void Simulation::run() {
                     if (grid_.son[i - 1] > 0) continue;
                     real_t d = std::max(grid_.uold(i, 1), 1e-10), v2 = 0;
                     for (int j = 1; j <= NDIM; ++j) { real_t v = grid_.uold(i, 1 + j) / d; v2 += v * v; }
-                    real_t p = std::max((grid_.uold(i, 5) - 0.5 * d * v2) * (grid_.gamma - 1.0), d * 1e-10);
+                    real_t p = std::max((grid_.uold(i, NDIM + 2) - 0.5 * d * v2) * (grid_.gamma - 1.0), d * 1e-10);
                     real_t c = std::sqrt(grid_.gamma * p / d);
                     min_dt = std::min(min_dt, courant * dx / (std::sqrt(v2) + c));
                     for (int j = 1; j <= NDIM; ++j) {
@@ -231,7 +238,7 @@ void Simulation::run() {
 
                         real_t d = std::max(grid_.uold(idc, 1), 1e-10), v2 = 0;
                         for(int j=1; j<=NDIM; ++j) { real_t v = grid_.uold(idc, 1+j)/d; v2 += v*v; }
-                        real_t p = std::max((grid_.uold(idc, 5) - 0.5*d*v2)*(grid_.gamma-1.0), d * 1e-10);
+                        real_t p = std::max((grid_.uold(idc, NDIM + 2) - 0.5*d*v2)*(grid_.gamma-1.0), d * 1e-10);
                         real_t c = std::sqrt(grid_.gamma*p/d);
                         min_dt = std::min(min_dt, courant * dx / (std::sqrt(v2) + c));
                         for (int j = 1; j <= NDIM; ++j) {
@@ -278,6 +285,12 @@ void Simulation::amr_step(int ilevel, real_t dt, int icount) {
     real_t dx = p::boxlen / (real_t)(p::nx * (1 << (ilevel - 1)));
     bool do_poisson = config_.get_bool("run_params", "poisson", false);
 
+#ifdef MHD
+    mhd_->set_unew(ilevel);
+#else
+    hydro_->set_unew(ilevel);
+#endif
+
     if (do_poisson) {
         hydro_->synchro_hydro_fine(ilevel, -0.5 * dt);
         particles_->move_fine(ilevel, 0.5 * dt);
@@ -305,7 +318,11 @@ void Simulation::amr_step(int ilevel, real_t dt, int icount) {
     int nsub = (ilevel < (int)nsubcycle_.size()) ? nsubcycle_[ilevel] : 1;
     for (int i = 1; i <= nsub; ++i) amr_step(ilevel + 1, dt / nsub, i);
 
+    // RESTRICT FIRST: Update parents from children
     updater_.restrict_fine(ilevel);
+
+    // THEN SET UOLD: Finalize the step for this level's cells.
+    // NOTE: My set_uold now only touches leaf cells to avoid erasing restricted data!
 #ifdef MHD
     mhd_->set_uold(ilevel);
 #else
@@ -386,6 +403,7 @@ void Simulation::dump_snapshot(int iout) {
     };
     RamsesWriter(get_path("amr", ".out")).write_amr(grid_, info);
     RamsesWriter(get_path("hydro", ".out")).write_hydro(grid_, info);
+    RamsesWriter(get_path("grav", ".out")).write_grav(grid_, info);
     if (grid_.npart > 0) {
         RamsesWriter(get_path("part", ".out")).write_particles(grid_, info);
         RamsesWriter(dir + "/part_file_descriptor.txt").write_particles_descriptor(grid_, info);

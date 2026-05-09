@@ -5,38 +5,41 @@
 namespace ramses {
 
 void RiemannSolver::solve_llf(const real_t ql[], const real_t qr[], real_t flux[], real_t gamma) {
-    real_t fl[5], fr[5];
+    real_t fl[20], fr[20];
     compute_flux(ql, fl, gamma);
     compute_flux(qr, fr, gamma);
-    real_t ul[5], ur[5];
+    real_t ul[20], ur[20];
     prim_to_cons(ql, ul, gamma);
     prim_to_cons(qr, ur, gamma);
-    real_t al = std::sqrt(gamma * ql[4] / std::max(ql[0], 1e-10));
-    real_t ar = std::sqrt(gamma * qr[4] / std::max(qr[0], 1e-10));
+    
+    int ipress = NDIM + 1;
+    real_t al = std::sqrt(gamma * ql[ipress] / std::max(ql[0], 1e-10));
+    real_t ar = std::sqrt(gamma * qr[ipress] / std::max(qr[0], 1e-10));
     real_t a_max = std::max(std::abs(ql[1]) + al, std::abs(qr[1]) + ar);
-    for (int i = 0; i < 5; ++i) {
+    for (int i = 0; i < NDIM + 2; ++i) {
         flux[i] = 0.5 * (fl[i] + fr[i]) - 0.5 * a_max * (ur[i] - ul[i]);
     }
 }
 
 void RiemannSolver::solve_hll(const real_t ql[], const real_t qr[], real_t flux[], real_t gamma) {
-    real_t fl[5], fr[5];
+    real_t fl[20], fr[20];
     compute_flux(ql, fl, gamma);
     compute_flux(qr, fr, gamma);
-    real_t ul_vec[5], ur_vec[5];
+    real_t ul_vec[20], ur_vec[20];
     prim_to_cons(ql, ul_vec, gamma);
     prim_to_cons(qr, ur_vec, gamma);
     
-    real_t al = std::sqrt(gamma * std::max(ql[4], 0.0) / std::max(ql[0], 1e-10));
-    real_t ar = std::sqrt(gamma * std::max(qr[4], 0.0) / std::max(qr[0], 1e-10));
+    int ipress = NDIM + 1;
+    real_t al = std::sqrt(gamma * std::max(ql[ipress], 0.0) / std::max(ql[0], 1e-10));
+    real_t ar = std::sqrt(gamma * std::max(qr[ipress], 0.0) / std::max(qr[0], 1e-10));
     
     real_t sl = std::min(0.0, std::min(ql[1] - al, qr[1] - ar));
     real_t sr = std::max(0.0, std::max(ql[1] + al, qr[1] + ar));
     
     if (sr - sl < 1e-20) {
-        for (int i = 0; i < 5; ++i) flux[i] = 0.5 * (fl[i] + fr[i]);
+        for (int i = 0; i < NDIM + 2; ++i) flux[i] = 0.5 * (fl[i] + fr[i]);
     } else {
-        for (int i = 0; i < 5; ++i) {
+        for (int i = 0; i < NDIM + 2; ++i) {
             flux[i] = (sr * fl[i] - sl * fr[i] + sr * sl * (ur_vec[i] - ul_vec[i])) / (sr - sl);
         }
     }
@@ -46,13 +49,14 @@ void RiemannSolver::solve_hllc(const real_t ql[], const real_t qr[], real_t flux
     const real_t smallr = 1e-10;
     const real_t smallp = 1e-10;
 
+    int ipress = NDIM + 1;
     real_t rl = std::max(ql[0], smallr);
     real_t ul = ql[1];
-    real_t pl = std::max(ql[4], rl * smallp);
+    real_t pl = std::max(ql[ipress], rl * smallp);
 
     real_t rr = std::max(qr[0], smallr);
     real_t ur = qr[1];
-    real_t pr = std::max(qr[4], rr * smallp);
+    real_t pr = std::max(qr[ipress], rr * smallp);
 
     // Sound speeds
     real_t cl = std::sqrt(gamma * pl / rl);
@@ -81,44 +85,61 @@ void RiemannSolver::solve_hllc(const real_t ql[], const real_t qr[], real_t flux
 
         if (ustar > 0.0) {
             real_t rstarl = rl * (sl - ul) / (std::min(sl - ustar, -1e-10));
-            real_t qstarl[5] = {rstarl, ustar, ql[2], ql[3], pstar};
-            real_t fl[5], ul_vec[5], ustarl_vec[5];
-            compute_flux(ql, fl, gamma);
+            real_t qstarl[20] = {0};
+            qstarl[0] = rstarl; qstarl[1] = ustar;
+            for(int i=2; i<=NDIM; ++i) qstarl[i] = ql[i];
+            qstarl[ipress] = pstar;
+            
+            real_t fl_arr[20], ul_vec[20], ustarl_vec[20];
+            compute_flux(ql, fl_arr, gamma);
             prim_to_cons(ql, ul_vec, gamma);
             prim_to_cons(qstarl, ustarl_vec, gamma);
-            for (int i = 0; i < 5; ++i) flux[i] = fl[i] + sl * (ustarl_vec[i] - ul_vec[i]);
+            for (int i = 0; i < NDIM + 2; ++i) flux[i] = fl_arr[i] + sl * (ustarl_vec[i] - ul_vec[i]);
         } else {
             real_t rstarr = rr * (sr - ur) / (std::max(sr - ustar, 1e-10));
-            real_t qstarr[5] = {rstarr, ustar, qr[2], qr[3], pstar};
-            real_t fr[5], ur_vec[5], ustarr_vec[5];
-            compute_flux(qr, fr, gamma);
+            real_t qstarr[20] = {0};
+            qstarr[0] = rstarr; qstarr[1] = ustar;
+            for(int i=2; i<=NDIM; ++i) qstarr[i] = qr[i];
+            qstarr[ipress] = pstar;
+
+            real_t fr_arr[20], ur_vec[20], ustarr_vec[20];
+            compute_flux(qr, fr_arr, gamma);
             prim_to_cons(qr, ur_vec, gamma);
             prim_to_cons(qstarr, ustarr_vec, gamma);
-            for (int i = 0; i < 5; ++i) flux[i] = fr[i] + sr * (ustarr_vec[i] - ur_vec[i]);
+            for (int i = 0; i < NDIM + 2; ++i) flux[i] = fr_arr[i] + sr * (ustarr_vec[i] - ur_vec[i]);
         }
     }
 }
 
 void RiemannSolver::prim_to_cons(const real_t q[], real_t u[], real_t gamma) {
     u[0] = q[0];
-    u[1] = q[0] * q[1];
-    u[2] = q[0] * q[2];
-    u[3] = q[0] * q[3];
-    real_t e_kin = 0.5 * q[0] * (q[1]*q[1] + q[2]*q[2] + q[3]*q[3]);
-    real_t e_int = q[4] / (gamma - 1.0);
-    u[4] = e_kin + e_int;
+    real_t v2 = 0;
+    for (int i = 1; i <= NDIM; ++i) {
+        u[i] = q[0] * q[i];
+        v2 += q[i] * q[i];
+    }
+    int ipress = NDIM + 1;
+    real_t e_kin = 0.5 * q[0] * v2;
+    real_t e_int = q[ipress] / (gamma - 1.0);
+    u[ipress] = e_kin + e_int;
 }
 
 void RiemannSolver::compute_flux(const real_t q[], real_t f[], real_t gamma) {
-    real_t rho = q[0]; real_t u = q[1]; real_t v = q[2]; real_t w = q[3]; real_t p = q[4];
-    real_t e_kin = 0.5 * rho * (u*u + v*v + w*w);
+    real_t rho = q[0]; real_t u = q[1]; 
+    int ipress = NDIM + 1;
+    real_t p = q[ipress];
+    
+    real_t v2 = 0;
+    for(int i=1; i<=NDIM; ++i) v2 += q[i]*q[i];
+    
+    real_t e_kin = 0.5 * rho * v2;
     real_t e_int = p / (gamma - 1.0);
     real_t E = e_kin + e_int;
+    
     f[0] = rho * u;
     f[1] = rho * u * u + p;
-    f[2] = rho * u * v;
-    f[3] = rho * u * w;
-    f[4] = (E + p) * u;
+    for(int i=2; i<=NDIM; ++i) f[i] = rho * u * q[i];
+    f[ipress] = (E + p) * u;
 }
 
 } // namespace ramses

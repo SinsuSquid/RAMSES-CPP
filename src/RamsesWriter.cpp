@@ -176,16 +176,28 @@ void RamsesWriter::write_hydro(const AmrGrid& grid, const SnapshotInfo& info) {
     
     int32_t ncpu = (int32_t)grid.ncpu; write_rec(&ncpu, 4); 
     int32_t nvar = (int32_t)grid.nvar; write_rec(&nvar, 4);
-    int32_t ngrid_tot = 0; for(int l=1; l<=grid.nlevelmax; ++l) { for(int c=1; c<=grid.ncpu; ++c) ngrid_tot += grid.numbl(c, l); }
-    write_rec(&ngrid_tot, 4);
+    int32_t ndim = (int32_t)NDIM; write_rec(&ndim, 4);
     int32_t nlevelmax = (int32_t)grid.nlevelmax; write_rec(&nlevelmax, 4);
     int32_t nboundary = (int32_t)grid.nboundary; write_rec(&nboundary, 4);
     double gamma_val = grid.gamma; write_rec(&gamma_val, 8);
 
+    // Default to primitive output (write_conservative = false)
+    real_t smallr = 1e-10;
+
     // Coarse level hydro
     for (int iv = 1; iv <= grid.nvar; ++iv) {
         std::vector<double> tmp(grid.ncoarse);
-        for (int i = 1; i <= grid.ncoarse; ++i) tmp[i-1] = grid.uold(i, iv);
+        for (int i = 1; i <= grid.ncoarse; ++i) {
+            real_t d = std::max(grid.uold(i, 1), smallr);
+            if (iv == 1) tmp[i-1] = d;
+            else if (iv >= 2 && iv <= 1 + NDIM) tmp[i-1] = grid.uold(i, iv) / d; // Velocity
+            else if (iv == NDIM + 2) { // Pressure
+                real_t v2 = 0;
+                for (int j = 1; j <= NDIM; ++j) { real_t v = grid.uold(i, 1+j)/d; v2 += v*v; }
+                tmp[i-1] = (grid.uold(i, iv) - 0.5 * d * v2) * (grid.gamma - 1.0);
+            }
+            else tmp[i-1] = grid.uold(i, iv); // Pass-through for non-thermal/scalars
+        }
         write_rec(tmp.data(), grid.ncoarse * 8);
     }
 
@@ -203,7 +215,18 @@ void RamsesWriter::write_hydro(const AmrGrid& grid, const SnapshotInfo& info) {
                 for (int ic = 0; ic < constants::twotondim; ++ic) {
                     for(int iv=1; iv<=grid.nvar; ++iv) {
                         std::vector<double> tmp(ncache);
-                        for(int i=0; i<ncache; ++i) tmp[i] = grid.uold(grid.ncoarse + ic*grid.ngridmax + g_list[i], iv);
+                        for(int i=0; i<ncache; ++i) {
+                            int idc = grid.ncoarse + ic*grid.ngridmax + g_list[i];
+                            real_t d = std::max(grid.uold(idc, 1), smallr);
+                            if (iv == 1) tmp[i] = d;
+                            else if (iv >= 2 && iv <= 1+NDIM) tmp[i] = grid.uold(idc, iv) / d; // Velocity
+                            else if (iv == NDIM + 2) { // Pressure
+                                real_t v2 = 0;
+                                for (int j = 1; j <= NDIM; ++j) { real_t v = grid.uold(idc, 1+j)/d; v2 += v*v; }
+                                tmp[i] = (grid.uold(idc, iv) - 0.5 * d * v2) * (grid.gamma - 1.0);
+                            }
+                            else tmp[i] = grid.uold(idc, iv);
+                        }
                         write_rec(tmp.data(), ncache * 8);
                     }
                 }
@@ -320,26 +343,24 @@ void RamsesWriter::write_hydro_descriptor(const AmrGrid& grid, const SnapshotInf
     file << "# version: 1" << std::endl;
     int ivar = 1;
     file << ivar++ << ", density, double" << std::endl;
-    file << ivar++ << ", momentum_x, double" << std::endl;
-    if (NDIM > 1) file << ivar++ << ", momentum_y, double" << std::endl;
-    if (NDIM > 2) file << ivar++ << ", momentum_z, double" << std::endl;
-    file << ivar++ << ", total_energy, double" << std::endl;
+    file << ivar++ << ", velocity_x, double" << std::endl;
+    if (NDIM > 1) file << ivar++ << ", velocity_y, double" << std::endl;
+    if (NDIM > 2) file << ivar++ << ", velocity_z, double" << std::endl;
+    file << ivar++ << ", pressure, double" << std::endl;
+    
     for (int ie = 1; ie <= info.nener; ++ie) { 
-        std::stringstream ss; ss << "non_thermal_energy_" << std::setfill('0') << std::setw(2) << (ie - 1); 
+        std::stringstream ss; ss << "non_thermal_pressure_" << std::setfill('0') << std::setw(2) << ie; 
         file << ivar++ << ", " << ss.str() << ", double" << std::endl; 
     }
     
-    int nvar_hydro_base = 5 + info.nener;
+    int nvar_hydro_base = NDIM + 2 + info.nener;
 #ifdef MHD
     nvar_hydro_base = 11 + info.nener;
 #endif
-    int nrtvar_all = grid.nvar - nvar_hydro_base;
-    for (int ip = 1; ip <= nrtvar_all; ++ip) {
+    int npassive_all = grid.nvar - nvar_hydro_base;
+    for (int ip = 1; ip <= npassive_all; ++ip) {
         std::stringstream ss; 
-        if (ip == 1) ss << "xHII";
-        else if (ip == 2) ss << "xHeII";
-        else if (ip == 3) ss << "xHeIII";
-        else ss << "scalar_" << std::setfill('0') << std::setw(2) << (ip - 1);
+        ss << "scalar_" << std::setfill('0') << std::setw(2) << (ip - 1);
         file << ivar++ << ", " << ss.str() << ", double" << std::endl;
     }
 }
@@ -412,6 +433,61 @@ void RamsesWriter::write_particles_descriptor(const AmrGrid& grid, const Snapsho
     file << ivar++ << ", level, int" << std::endl;
 }
 
-void RamsesWriter::write_grav(const AmrGrid&, const SnapshotInfo&) {}
+void RamsesWriter::write_grav(const AmrGrid& grid, const SnapshotInfo& info) {
+    std::ofstream file(filename_, std::ios::binary);
+    auto write_rec = [&](const void* data, size_t size) { 
+        int32_t s = (int32_t)size; 
+        file.write((char*)&s, 4); 
+        file.write((char*)data, size); 
+        file.write((char*)&s, 4); 
+    };
+    
+    int32_t ncpu = (int32_t)grid.ncpu; write_rec(&ncpu, 4);
+    int32_t nvar_grav = NDIM + 1; write_rec(&nvar_grav, 4);
+    int32_t ngrid_tot = 0; for(int l=1; l<=grid.nlevelmax; ++l) { for(int c=1; c<=grid.ncpu; ++c) ngrid_tot += grid.numbl(c, l); }
+    write_rec(&ngrid_tot, 4);
+    int32_t nlevelmax = (int32_t)grid.nlevelmax; write_rec(&nlevelmax, 4);
+    int32_t nboundary = (int32_t)grid.nboundary; write_rec(&nboundary, 4);
+    
+    // Coarse level grav
+    {
+        std::vector<double> tmp(grid.ncoarse);
+        for (int i = 1; i <= grid.ncoarse; ++i) tmp[i-1] = grid.phi[i-1];
+        write_rec(tmp.data(), grid.ncoarse * 8);
+    }
+    for (int d = 1; d <= NDIM; ++d) {
+        std::vector<double> tmp(grid.ncoarse);
+        for (int i = 1; i <= grid.ncoarse; ++i) tmp[i-1] = grid.f(i, d);
+        write_rec(tmp.data(), grid.ncoarse * 8);
+    }
+
+    for (int il = 1; il <= grid.nlevelmax; ++il) {
+        for (int icpu = 1; icpu <= grid.ncpu + grid.nboundary; ++icpu) {
+            int ncache = (icpu <= grid.ncpu) ? grid.numbl(icpu, il) : 0;
+            int32_t il_rec = il, nc_rec = ncache;
+            write_rec(&il_rec, 4);
+            write_rec(&nc_rec, 4);
+            if (ncache > 0) {
+                std::vector<int> g_list; 
+                int ig = (icpu <= grid.ncpu) ? grid.get_headl(icpu, il) : 0; 
+                while(ig > 0) { g_list.push_back(ig); ig = grid.next[ig-1]; }
+                
+                for (int ic = 0; ic < constants::twotondim; ++ic) {
+                    // Phi
+                    std::vector<double> tmp_p(ncache);
+                    for(int i=0; i<ncache; ++i) tmp_p[i] = grid.phi[grid.ncoarse + ic*grid.ngridmax + g_list[i] - 1];
+                    write_rec(tmp_p.data(), ncache * 8);
+                    
+                    // Forces
+                    for(int d=1; d<=NDIM; ++d) {
+                        std::vector<double> tmp_f(ncache);
+                        for(int i=0; i<ncache; ++i) tmp_f[i] = grid.f(grid.ncoarse + ic*grid.ngridmax + g_list[i], d);
+                        write_rec(tmp_f.data(), ncache * 8);
+                    }
+                }
+            }
+        }
+    }
+}
 
 } // namespace ramses

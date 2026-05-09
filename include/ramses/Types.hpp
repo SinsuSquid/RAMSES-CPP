@@ -3,6 +3,10 @@
 
 #include <cstdint>
 
+#ifndef NDIM
+#define NDIM 3
+#endif
+
 namespace ramses {
 
 // Precision types mapping to Fortran sp, dp, qdp

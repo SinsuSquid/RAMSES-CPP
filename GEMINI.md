@@ -21,10 +21,10 @@ This file defines the overarching conventions, architecture, and workflows for t
   ```bash
   cd build && ./verify_ref <reference_out_file> <local_out_file>
   ```
-- **Automated Tests:** Always run the relevant test suite before proposing a fix or feature completion. Ensure that `./tests/visu/` is included in your `PYTHONPATH`.
+- **Automated Tests & Execution:** Always use a watchdog or timeout (e.g., `timeout 5m`) when running simulations or test suites to prevent stalled processes (due to numerical instability or tiny timesteps) from running indefinitely.
   ```bash
-  export PYTHONPATH=$PYTHONPATH:$(pwd)/tests/visu
-  cd tests && ./run_test_suite.sh -t <suite_name>  # e.g., hydro, mhd, rt
+  export PYTHONPATH=${PYTHONPATH}:$(pwd)/tests/visu
+  cd tests && timeout 10m ./run_test_suite.sh -t <suite_name>
   ```
 
 ## 4. Documentation & Version Control Workflows

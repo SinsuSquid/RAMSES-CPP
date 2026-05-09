@@ -386,7 +386,7 @@ void RtSolver::apply_source_terms(int ilevel, real_t dt) {
             if (grid_.son[idc] != 0) continue;
 
             real_t nH = grid_.uold(idc, 1) * params::units_density / 1.67e-24;
-            real_t T2 = (grid_.uold(idc, 5) - 0.5 * grid_.uold(idc, 2)*grid_.uold(idc, 2)/grid_.uold(idc, 1)) * (grid_.gamma - 1.0) / grid_.uold(idc, 1) * params::units_pressure / params::units_density * 1.67e-24 / 1.38e-16;
+            real_t T2 = (grid_.uold(idc, NDIM + 2) - 0.5 * grid_.uold(idc, 2)*grid_.uold(idc, 2)/grid_.uold(idc, 1)) * (grid_.gamma - 1.0) / grid_.uold(idc, 1) * params::units_pressure / params::units_density * 1.67e-24 / 1.38e-16;
 
             real_t xion[3] = {0,0,0};
             for(int i=0; i<std::min(nIons_, 3); ++i) xion[i] = grid_.uold(idc, iIons + i) / grid_.uold(idc, 1);
@@ -408,7 +408,7 @@ void RtSolver::apply_source_terms(int ilevel, real_t dt) {
             }
             real_t mu = 1.0 / (1.0 + xion[0]);
             real_t p_new = nH * 1.38e-16 * T2 / mu / params::units_pressure;
-            grid_.uold(idc, 5) = p_new / (grid_.gamma - 1.0) + 0.5 * grid_.uold(idc, 2)*grid_.uold(idc, 2)/grid_.uold(idc, 1);
+            grid_.uold(idc, NDIM + 2) = p_new / (grid_.gamma - 1.0) + 0.5 * grid_.uold(idc, 2)*grid_.uold(idc, 2)/grid_.uold(idc, 1);
         }
         igrid = grid_.next[igrid - 1];
     }

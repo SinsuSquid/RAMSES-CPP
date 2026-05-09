@@ -30,7 +30,7 @@ void CoolingSolver::apply_cooling(int ilevel, real_t dt) {
             real_t u = grid_.uold(idc, 2) / d;
             real_t v = grid_.uold(idc, 3) / d;
             real_t w = grid_.uold(idc, 4) / d;
-            real_t etot = grid_.uold(idc, 5);
+            real_t etot = grid_.uold(idc, NDIM + 2);
             
             real_t ekin = 0.5 * d * (u*u + v*v + w*w);
             real_t emag = 0.0;
@@ -81,8 +81,8 @@ void CoolingSolver::apply_cooling(int ilevel, real_t dt) {
             real_t eint_new = T_new / (params::units_pressure / (d * params::units_density) * (mu * mH / kB) * (gamma - 1.0));
             real_t etot_new = eint_new + ekin + emag;
             
-            grid_.uold(idc, 5) = etot_new;
-            grid_.unew(idc, 5) = etot_new;
+            grid_.uold(idc, NDIM + 2) = etot_new;
+            grid_.unew(idc, NDIM + 2) = etot_new;
         }
         igrid = grid_.next[igrid - 1];
     }

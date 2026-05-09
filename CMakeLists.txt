@@ -13,42 +13,8 @@ set(RAMSES_USE_MPI OFF CACHE BOOL "Enable MPI support")
 set(RAMSES_USE_MHD OFF CACHE BOOL "Enable MHD solver")
 set(RAMSES_USE_RT OFF CACHE BOOL "Enable RT solver")
 
-add_definitions(-DNDIM=${RAMSES_NDIM})
-if(RAMSES_NENER GREATER 0)
-    add_definitions(-DRAMSES_NENER=${RAMSES_NENER})
-endif()
-
-if(RAMSES_USE_MPI)
-    find_package(MPI REQUIRED)
-    add_definitions(-DRAMSES_USE_MPI)
-endif()
-
-if(RAMSES_USE_MHD)
-    add_definitions(-DMHD)
-endif()
-
-if(RAMSES_USE_RT)
-    add_definitions(-DRT)
-endif()
-
-# Pass additional parameters to compiler if defined
-foreach(param NX NY NZ NGROUPS NIONS NMETALS)
-    if(DEFINED RAMSES_${param})
-        add_definitions(-DRAMSES_${param}=${RAMSES_${param}})
-    endif()
-endforeach()
-
-include_directories(include)
-
-# Custom Patches Discovery
-file(GLOB CUSTOM_PATCH_SRCS "patch/*.cpp")
-if(CUSTOM_PATCH_SRCS)
-    message(STATUS "[RAMSES-CPP] Found custom C++ patches: ${CUSTOM_PATCH_SRCS}")
-    add_definitions(-DRAMSES_USE_CUSTOM_PATCHES)
-endif()
-
-# Core library
-add_library(ramses_lib STATIC
+# Source files for the library
+set(LIB_SRCS
     src/AmrGrid.cpp
     src/Config.cpp
     src/Constants.cpp
@@ -77,21 +43,38 @@ add_library(ramses_lib STATIC
     ${CUSTOM_PATCH_SRCS}
 )
 
-if(RAMSES_USE_MPI)
-    target_link_libraries(ramses_lib PUBLIC MPI::MPI_CXX)
-endif()
+# Global definitions from parameters
+set(PARAM_DEFS "")
+foreach(param NX NY NZ NGROUPS NIONS NMETALS NENER NPSCAL)
+    if(DEFINED RAMSES_${param})
+        list(APPEND PARAM_DEFS "RAMSES_${param}=${RAMSES_${param}}")
+    endif()
+endforeach()
 
-if(RAMSES_USE_MHD)
-    target_compile_definitions(ramses_lib PUBLIC MHD)
-endif()
-if(RAMSES_USE_RT)
-    target_compile_definitions(ramses_lib PUBLIC RT)
-endif()
+include_directories(include)
 
-# Main executable
-add_executable(ramses_${RAMSES_NDIM}d src/main.cpp)
-target_link_libraries(ramses_${RAMSES_NDIM}d PRIVATE ramses_lib)
+# Build a separate library and executable for each dimension
+foreach(d 1 2 3)
+    set(LIB_NAME ramses_lib_${d}d)
+    add_library(${LIB_NAME} STATIC ${LIB_SRCS})
+    target_compile_definitions(${LIB_NAME} PUBLIC NDIM=${d} ${PARAM_DEFS})
+    
+    if(RAMSES_USE_MPI)
+        target_link_libraries(${LIB_NAME} PUBLIC MPI::MPI_CXX)
+    endif()
+    if(RAMSES_USE_MHD)
+        target_compile_definitions(${LIB_NAME} PUBLIC MHD)
+    endif()
+    if(RAMSES_USE_RT)
+        target_compile_definitions(${LIB_NAME} PUBLIC RT)
+    endif()
+
+    add_executable(ramses_${d}d src/main.cpp)
+    target_compile_definitions(ramses_${d}d PRIVATE NDIM=${d})
+    target_link_libraries(ramses_${d}d PRIVATE ${LIB_NAME})
+endforeach()
 
 # Reference verification tool
 add_executable(verify_ref src/verify_ref.cpp)
-target_link_libraries(verify_ref PRIVATE ramses_lib)
+target_compile_definitions(verify_ref PRIVATE NDIM=3)
+target_link_libraries(verify_ref PRIVATE ramses_lib_3d)
