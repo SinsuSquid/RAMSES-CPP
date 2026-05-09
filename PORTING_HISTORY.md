@@ -10,8 +10,8 @@ This document tracks the major milestones and architectural shifts during the mi
 - **Unified Level Indexing:** Synchronized AMR tree traversal to use 1-based indexing for parity with Fortran neighbors.
 
 ## 🚩 Phase 24: Future Roadmap (Planned)
-- **Relativistic Hydrodynamics (RHD):** Porting `legacy/rhd/` to create a modern `RhdSolver` for high-energy astrophysics.
-- **Turbulence Driving:** Implementing forcing routines from `legacy/turb/` to support simulated turbulent ISM environments.
+- **Relativistic Hydrodynamics (RHD):** Ported `legacy/rhd/` to create a modern `RhdSolver`. Implemented Newton-Raphson primitive recovery and HLLC/HLL/LLF solvers.
+- **Turbulence Driving:** Ported forcing routines from `legacy/turb/`. Implemented `TurbulenceSolver` with Mode-Sum spectral driving (fallback for FFTW).
 - **Sink Particle MPI Fix:** Resolving cross-rank distribution issues for sink/stellar particles as flagged in `stellar-HII.nml`.
 - **GPU-Accelerated Radiation (ATON):** Exploring modern GPU ports (CUDA/HIP/SYCL) for the legacy ATON radiation module.
 
