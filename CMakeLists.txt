@@ -27,6 +27,7 @@ set(LIB_SRCS
     src/Constants.cpp
     src/CoolingSolver.cpp
     src/HydroSolver.cpp
+    src/RhdSolver.cpp
     src/Initializer.cpp
     src/RamsesReader.cpp
     src/RamsesWriter.cpp
@@ -34,6 +35,7 @@ set(LIB_SRCS
     src/TreeUpdater.cpp
     src/Hilbert.cpp
     src/RiemannSolver.cpp
+    src/RelativisticRiemannSolver.cpp
     src/SlopeLimiter.cpp
     src/Muscl.cpp
     src/PoissonSolver.cpp

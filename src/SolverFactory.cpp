@@ -8,6 +8,12 @@ std::unique_ptr<HydroSolver> create_hydro_solver(AmrGrid& grid, Config& config) 
 }
 #endif
 
+#ifndef RAMSES_HAS_PATCH_RHD
+std::unique_ptr<RhdSolver> create_rhd_solver(AmrGrid& grid, Config& config) {
+    return std::make_unique<RhdSolver>(grid, config);
+}
+#endif
+
 #ifndef RAMSES_HAS_PATCH_COOLING
 std::unique_ptr<CoolingSolver> create_cooling_solver(AmrGrid& grid, Config& config) {
     return std::make_unique<CoolingSolver>(grid, config);

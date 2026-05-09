@@ -290,4 +290,13 @@ void AmrGrid::get_27_cell_neighbors(int icell, int nbors[27]) const {
     }
 }
 
+void AmrGrid::get_nbor_cells_coarse(int icell, int icn[6]) const {
+    for (int i = 0; i < 6; ++i) icn[i] = 0;
+    if (icell <= 0 || icell > ncoarse) return;
+    // Simple coarse neighbor logic for Nx*Ny*Nz grids
+    // This is placeholder logic; full RAMSES coarse neighbors use a linked list or coordinate math
+    // For now, return boundaries as negative indices
+    for (int i = 0; i < 6; ++i) icn[i] = - (i + 1);
+}
+
 } // namespace ramses

@@ -91,6 +91,7 @@ public:
 
     void get_nbor_grids(int igrid, int ign[7]) const;
     void get_nbor_cells(const int ign[7], int ic, int icn[6], int igrid) const;
+    void get_nbor_cells_coarse(int icell, int icn[6]) const;
     void get_27_cell_neighbors(int icell, int nbors[27]) const;
     
     // Interpolation hook
