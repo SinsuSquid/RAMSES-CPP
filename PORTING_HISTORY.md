@@ -9,6 +9,12 @@ This document tracks the major milestones and architectural shifts during the mi
 - **Watchdog Mandate:** Integrated `timeout` safety rules into the testing workflow to handle numerical stalls.
 - **Unified Level Indexing:** Synchronized AMR tree traversal to use 1-based indexing for parity with Fortran neighbors.
 
+## 🚩 Phase 24: Future Roadmap (Planned)
+- **Relativistic Hydrodynamics (RHD):** Porting `legacy/rhd/` to create a modern `RhdSolver` for high-energy astrophysics.
+- **Turbulence Driving:** Implementing forcing routines from `legacy/turb/` to support simulated turbulent ISM environments.
+- **GPU-Accelerated Radiation (ATON):** Exploring modern GPU ports (CUDA/HIP/SYCL) for the legacy ATON radiation module.
+- **Sink Particle MPI Fix:** Resolving cross-rank distribution issues for sink/stellar particles as flagged in `stellar-HII.nml`.
+
 ## 🚩 Phase 22: Distributed Cosmology & MPI Scaling
 - **MPI Manager:** Implemented centralized rank management and asynchronous buffer swaps.
 - **Global Reductions:** Integrated MPI-aware CFL timestep calculations and total mass/density reductions.
