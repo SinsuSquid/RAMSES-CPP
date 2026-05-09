@@ -9,13 +9,13 @@ This document tracks the major milestones and architectural shifts during the mi
 - **Watchdog Mandate:** Integrated `timeout` safety rules into the testing workflow to handle numerical stalls.
 - **Unified Level Indexing:** Synchronized AMR tree traversal to use 1-based indexing for parity with Fortran neighbors.
 
-## 🚩 Phase 24: Future Roadmap (Planned)
-- **Relativistic Hydrodynamics (RHD):** Ported `legacy/rhd/` to create a modern `RhdSolver`. Implemented Newton-Raphson primitive recovery and HLLC/HLL/LLF solvers.
-- **Turbulence Driving:** Ported forcing routines from `legacy/turb/`. Implemented `TurbulenceSolver` with Mode-Sum spectral driving (fallback for FFTW).
-- **Sink Particle MPI Fix:** Implemented `SinkSolver` with robust cross-rank synchronization. Added `MPI_Allreduce` for accretion summing and `MPI_Bcast` for coordinated creation, resolving issues in multi-CPU runs.
-- **GPU-Accelerated Radiation (ATON):** Exploring modern GPU ports (CUDA/HIP/SYCL) for the legacy ATON radiation module.
+## 🚩 Phase 24: New Physics & Parity (Completed)
+- **Relativistic Hydrodynamics (RHD):** Ported `legacy/rhd/` to create a modern `RhdSolver`. Implemented Newton-Raphson primitive recovery and HLLC/HLL/LLF solvers with 'TM' EOS support.
+- **Turbulence Driving:** Ported forcing routines from `legacy/turb/`. Implemented `TurbulenceSolver` with Mode-Sum spectral driving as a robust, dependency-free fallback.
+- **Sink Particle MPI Fix:** Implemented `SinkSolver` with robust cross-rank synchronization. Added `MPI_Allreduce` for accretion and `MPI_Bcast` for coordinated creation, resolving critical numerical stalls.
+- **BIT-PERFECT Alignment (24.1):** Standardized `RamsesWriter` record ordering (`ilevel -> ibound -> ic -> ivar`) and grid coordinate scaling to match legacy RAMSES binary format exactly.
 
-## 🚩 Phase 22: Distributed Cosmology & MPI Scaling
+## 🚩 Phase 23: Final Optimization and Parity
 - **MPI Manager:** Implemented centralized rank management and asynchronous buffer swaps.
 - **Global Reductions:** Integrated MPI-aware CFL timestep calculations and total mass/density reductions.
 - **Hilbert Load Balancing:** Ported the Hilbert curve partitioning logic to handle massive octree distributions.

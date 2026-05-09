@@ -6,10 +6,14 @@ A modern, high-performance C++17 port of the legacy [RAMSES-2025](https://github
 
 ## 🚀 Core Features
 - **Multi-Dimensional Engine:** Simultaneous support for 1D, 2D, and 3D simulations via specialized library targets.
-- **Distributed Physics:** Full MPI-scaled implementation of Hydrodynamics, MHD, and Radiation Transport (RT).
-- **AI-Assisted Patch System:** Seamlessly translate and inject legacy Fortran physics overrides into the C++ engine using the `ramses-patch-porter`.
+- **Relativistic Hydrodynamics (RHD):** High-energy physics with specialized Riemann solvers (HLLC/HLL) and 'TM' EOS support.
+- **Turbulence Driving:** Stochastic forcing via spectral mode-sum driving for realistic ISM environments.
+- **Distributed Physics:** Full MPI-scaled implementation of Hydro, MHD, RT, and **Sink Particles**.
 - **Numerical Parity:** Achieves bit-perfect compatibility with standard RAMSES binary record formats.
 - **AMR Reliability:** Robust tree management with unified level indexing and safe memory boundaries.
+
+## 🔗 Heritage
+RAMSES-CPP is a modern port of the legendary [RAMSES-2025](https://github.com/ramses-organisation/ramses/releases/tag/2025.05) code. We maintain strict binary parity to honor the decades of research and validation built into the original Fortran engine.
 
 ## 🛠️ Building the Project
 

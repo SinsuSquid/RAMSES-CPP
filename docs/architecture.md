@@ -32,12 +32,14 @@ The `RamsesWriter` and `RamsesReader` modules are designed for **Bit-Perfect Par
 ## 🛰️ Distributed Scalability
 The engine uses a sophisticated `MpiManager` and `LoadBalancer` to distribute octs across nodes. Communication is minimized using asynchronous MPI primitives, and the `TreeUpdater` ensures that the grid hierarchy remains consistent across rank boundaries.
 
-## 🚩 Future Roadmap (Phase 24+)
-To complete the full parity with the legacy RAMSES-2025 ecosystem, the following modules are planned for integration:
-- **RhdSolver:** Relativistic hydrodynamics implementation with Newton-Raphson primitive recovery.
-- **Turbulence Forcing:** Support for external driving terms in the hydro equations via spectral mode-sum driving.
+- **RhdSolver:** Relativistic hydrodynamics implementation with Newton-Raphson primitive recovery and 'TM' EOS support.
+- **TurbulenceSolver:** Stochastic forcing in Fourier space using mode-sum spectral driving.
 - **Sink Dynamics:** Robust MPI-aware sink particle creation and management using global reductions and broadcasts.
+
+## 🚩 Future Roadmap (Phase 25+)
+To reach the ultimate goal of full RAMSES-2025 parity, the following modules are planned:
 - **ATON Integration:** High-performance GPU radiation transport.
+- **Chemistry Overhaul:** Extended cooling/heating networks for high-z galaxies.
 
 ---
 🚀 *Engineered for performance and parity.* 🚀
