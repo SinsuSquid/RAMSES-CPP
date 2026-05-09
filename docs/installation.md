@@ -5,52 +5,52 @@ title: Installation
 
 # Installation
 
-Building RAMSES-CPP is designed to be straightforward using modern CMake.
+RAMSES-CPP utilizes a modern CMake-based build system to provide a streamlined installation process.
 
 ## Prerequisites
 
-To build RAMSES-CPP from source, ensure you have the following installed on your system:
+Ensure your system meets the following requirements:
 
-- **CMake** (version 3.15 or higher)
-- **C++17 compliant compiler** (e.g., GCC 9+, Clang 10+, Apple Clang)
-- **MPI (Message Passing Interface)** (Optional, but recommended for parallel execution. e.g., OpenMPI, MPICH)
+- **CMake:** Version 3.15 or higher.
+- **C++ Compiler:** C++17 compliant (GCC 9+, Clang 10+, or MSVC 2019+).
+- **MPI (Optional):** Required for distributed-memory parallel execution (e.g., OpenMPI or MPICH).
+- **Python 3:** Required for automated testing and visualization scripts.
 
-## Building from Source
+## Building the Project
 
-1. **Clone the repository:**
+The build system is designed to generate dimension-specific executables simultaneously.
+
+1. **Clone the Repository:**
    ```bash
-   git clone https://github.com/SinsuSquid/RAMSES_CPP.git
-   cd RAMSES_CPP
+   git clone https://github.com/SinsuSquid/RAMSES-CPP.git
+   cd RAMSES-CPP
    ```
 
-2. **Create a build directory and configure with CMake:**
+2. **Configure and Build:**
    ```bash
    mkdir build && cd build
-   cmake ..
-   ```
-
-3. **Compile the project:**
-   ```bash
+   cmake .. -DRAMSES_USE_MPI=ON -DRAMSES_USE_MHD=ON -DRAMSES_USE_RT=ON
    make -j$(nproc)
    ```
 
-   This will generate the dimensional executables (e.g., `ramses_1d`, `ramses_3d`) and the reference verification tool `verify_ref` in the `build/` directory.
+### Core Build Options
 
-## CMake Configuration Options
+| Flag | Description | Default |
+|------|-------------|---------|
+| `RAMSES_USE_MPI` | Enable MPI-scaled distributed execution. | `OFF` (Auto-detected) |
+| `RAMSES_USE_MHD` | Enable the Magnetohydrodynamics module. | `OFF` |
+| `RAMSES_USE_RT` | Enable the Radiation Transport module. | `OFF` |
+| `RAMSES_PRECISION` | Floating point precision (4 for float, 8 for double). | `8` |
+| `RAMSES_NENER` | Number of non-thermal energy variables. | `0` |
+| `RAMSES_NPSCAL` | Number of passive scalar variables. | `0` |
 
-You can customize the build using the following CMake flags:
+## Generated Executables
 
-- `-DRAMSES_NDIM=[1|2|3]`: Set the number of dimensions (default is 3).
-- `-DRAMSES_NENER=N`: Set the number of non-thermal energy variables (default is 0).
-- `-DRAMSES_USE_MHD=[ON|OFF]`: Enable or disable the Magnetohydrodynamics module (default is OFF).
-- `-DRAMSES_USE_MPI=[ON|OFF]`: Force enable/disable MPI support (usually auto-detected).
+After a successful build, the `build/` directory will contain:
+- `ramses_1d`: Optimized for 1D physics.
+- `ramses_2d`: Optimized for 2D physics.
+- `ramses_3d`: Full 3D AMR solver.
+- `verify_ref`: Parity verification tool.
 
-Example: Building for 2D MHD
-```bash
-cmake .. -DRAMSES_NDIM=2 -DRAMSES_USE_MHD=ON
-make -j
-```
-
-## Parallel Support (MPI)
-
-If an MPI implementation is installed and detected by CMake, the build system will automatically define `RAMSES_USE_MPI`. This enables the `LoadBalancer` class for distributed execution and compiles the code to run across multiple MPI ranks. If MPI is not found, the code safely falls back to a sequential build.
+---
+Developed with 💖 by Gemini-chan. 🚀✨

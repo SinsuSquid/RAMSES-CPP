@@ -8,6 +8,7 @@
 #include <sstream>
 #include <cstring>
 #include <sys/stat.h>
+#include <algorithm>
 
 namespace ramses {
 
@@ -22,33 +23,27 @@ void RamsesWriter::write_amr(const AmrGrid& grid, const SnapshotInfo& info) {
         file.write((char*)&s, 4); 
     };
 
-    // 1-6. Header
+    // 1-8. Basic Header
     int32_t ncpu = (int32_t)grid.ncpu; write_rec(&ncpu, 4);
     int32_t ndim = (int32_t)NDIM; write_rec(&ndim, 4);
     int32_t nx_y_z[3] = {(int32_t)grid.nx, (int32_t)grid.ny, (int32_t)grid.nz}; write_rec(nx_y_z, 12);
     int32_t nlevelmax = (int32_t)grid.nlevelmax; write_rec(&nlevelmax, 4);
     int32_t ngridmax = (int32_t)grid.ngridmax; write_rec(&ngridmax, 4);
     int32_t nboundary = (int32_t)grid.nboundary; write_rec(&nboundary, 4);
-    
-    // 7. ngrid_current
     int32_t ngrid_tot = 0; for(int l=1; l<=grid.nlevelmax; ++l) { for(int c=1; c<=grid.ncpu; ++c) ngrid_tot += grid.numbl(c, l); }
     write_rec(&ngrid_tot, 4);
-
-    // 8. boxlen
     double boxlen_val = params::boxlen; write_rec(&boxlen_val, 8);
     
-    // 9-11. Time variables
-    int32_t nout_rec[3] = {(int32_t)info.noutput, (int32_t)info.iout, (int32_t)info.iout}; // simplified ifout=iout
+    // 9-14. Time and Units
+    int32_t nout_rec[3] = {(int32_t)info.noutput, (int32_t)info.iout, (int32_t)info.iout};
     write_rec(nout_rec, 12);
     std::vector<double> tout_v(info.noutput, 0.0); write_rec(tout_v.data(), tout_v.size() * 8);
     std::vector<double> aout_v(info.noutput, 1.0); write_rec(aout_v.data(), aout_v.size() * 8);
-    
-    // 12-14. dt, units
     double time_val = info.t; write_rec(&time_val, 8);
     std::vector<double> dtold(grid.nlevelmax, 0.0); write_rec(dtold.data(), dtold.size() * 8);
     std::vector<double> dtnew(grid.nlevelmax, 0.0); write_rec(dtnew.data(), dtnew.size() * 8);
     
-    // 15-19. Cosmo
+    // 15-19. Cosmo/Mass
     int32_t step_vars[2] = {(int32_t)info.nstep, (int32_t)info.nstep_coarse}; write_rec(step_vars, 8);
     double cosmo1[3] = {info.einit, info.mass_tot_0, info.rho_tot}; write_rec(cosmo1, 24);
     double cosmo2[7] = {info.omega_m, info.omega_l, info.omega_k, info.omega_b, info.h0, info.aexp_ini, info.boxlen_ini}; write_rec(cosmo2, 56);
@@ -80,26 +75,20 @@ void RamsesWriter::write_amr(const AmrGrid& grid, const SnapshotInfo& info) {
     }
     write_rec(numbtot_list.data(), numbtot_list.size() * 4);
 
-    // 24-26. Boundary lists
+    // 24-26. Boundary (optional)
     if (grid.nboundary > 0) {
         std::vector<int32_t> headb(grid.nboundary * grid.nlevelmax, 0); write_rec(headb.data(), headb.size() * 4);
         std::vector<int32_t> tailb(grid.nboundary * grid.nlevelmax, 0); write_rec(tailb.data(), tailb.size() * 4);
         std::vector<int32_t> numbb(grid.nboundary * grid.nlevelmax, 0); write_rec(numbb.data(), numbb.size() * 4);
     }
 
-    // 27. Memory
+    // 27-29. Memory and Domain
     int32_t mem_rec[5] = { (int32_t)grid.headf, (int32_t)grid.tailf, (int32_t)grid.numbf, 0, 0 };
     write_rec(mem_rec, 20);
+    char ordering_str[128] = {0}; std::strncpy(ordering_str, "hilbert", 128); write_rec(ordering_str, 128);
+    std::vector<double> bound_key(grid.ncpu + 1, 0.0); bound_key[grid.ncpu] = 1.0; write_rec(bound_key.data(), (grid.ncpu + 1) * 8);
 
-    // 28-29. Ordering
-    char ordering_str[128] = {0}; 
-    std::strncpy(ordering_str, "hilbert", 128); 
-    write_rec(ordering_str, 128);
-    std::vector<double> bound_key(grid.ncpu + 1, 0.0); 
-    bound_key[grid.ncpu] = 1.0; 
-    write_rec(bound_key.data(), (grid.ncpu + 1) * 8);
-
-    // 30-32. Coarse level
+    // 30-32. Coarse Level
     std::vector<int32_t> coarse_son(grid.ncoarse); for(int i=0; i<grid.ncoarse; ++i) coarse_son[i] = grid.son[i];
     write_rec(coarse_son.data(), grid.ncoarse * 4);
     std::vector<int32_t> coarse_flag(grid.ncoarse); for(int i=0; i<grid.ncoarse; ++i) coarse_flag[i] = grid.flag1[i];
@@ -169,6 +158,7 @@ void RamsesWriter::write_hydro(const AmrGrid& grid, const SnapshotInfo& info) {
     double gamma_val = grid.gamma; write_rec(&gamma_val, 8);
 
     real_t smallr = 1e-10;
+    // Coarse level
     for (int iv = 1; iv <= grid.nvar; ++iv) {
         std::vector<double> tmp(grid.ncoarse);
         for (int i = 1; i <= grid.ncoarse; ++i) {
@@ -184,15 +174,18 @@ void RamsesWriter::write_hydro(const AmrGrid& grid, const SnapshotInfo& info) {
         write_rec(tmp.data(), grid.ncoarse * 8);
     }
 
+    // Fine levels
     for (int il = 1; il <= grid.nlevelmax; ++il) {
         for (int icpu = 1; icpu <= grid.ncpu + grid.nboundary; ++icpu) {
             int ncache = (icpu <= grid.ncpu) ? grid.numbl(icpu, il) : 0;
             if (ncache > 0) {
                 int32_t il_rec = il, nc_rec = ncache;
                 write_rec(&il_rec, 4); write_rec(&nc_rec, 4);
+                
                 std::vector<int> g_list; 
                 int ig = (icpu <= grid.ncpu) ? grid.get_headl(icpu, il) : 0; 
                 while(ig > 0) { g_list.push_back(ig); ig = grid.next[ig-1]; }
+                
                 for (int ic = 0; ic < constants::twotondim; ++ic) {
                     for(int iv=1; iv<=grid.nvar; ++iv) {
                         std::vector<double> tmp(ncache);

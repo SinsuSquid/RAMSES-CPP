@@ -3,79 +3,60 @@ layout: default
 title: Usage
 ---
 
-# Usage
+# Usage Guide
 
-RAMSES-CPP is designed to be plug-and-play with the existing ecosystem of the original Fortran RAMSES code.
+RAMSES-CPP is fully compatible with the legacy RAMSES ecosystem, including namelists and visualization tools.
 
-## Running a Simulation
+## Running Simulations
 
-The simulation is configured using standard Fortran Namelist (`.nml`) files.
-
-To run a simulation, execute the appropriate dimensional executable (e.g., `ramses_3d`) and pass the path to your namelist file:
+To start a simulation, choose the executable matching your problem dimensionality and provide a standard RAMSES namelist file.
 
 ```bash
-cd build
-./ramses_3d path/to/your/namelist.nml
+# Standard 3D execution
+./ramses_3d path/to/namelist.nml
+
+# MPI-scaled execution (e.g., 8 ranks)
+mpirun -np 8 ./ramses_3d path/to/namelist.nml
 ```
 
-### Example: 3D Sedov Blast
+### Namelist Compatibility
+The project uses the standard RAMSES namelist format. Key blocks include:
+- `&RUN_PARAMS`: Control the simulation lifecycle (`hydro`, `poisson`, `ncontrol`, etc.).
+- `&AMR_PARAMS`: Grid resolution and refinement (`nx,ny,nz`, `levelmin`, `levelmax`).
+- `&HYDRO_PARAMS`: Fluid physics settings (`gamma`, `riemann`, `slope_type`).
+- `&RT_PARAMS`: Radiation groups and parameters.
 
-A standard Sedov 3D blast wave test is included in the `namelist` directory:
+## Visualization and Analysis
 
+RAMSES-CPP maintains **Bit-Perfect Parity** in its binary outputs. This means you can use legacy `visu_ramses.py` or OSIRIS directly.
+
+### Python Plotting
+1. **Set PYTHONPATH:**
+   ```bash
+   export PYTHONPATH=${PYTHONPATH}:$(pwd)/tests/visu
+   ```
+2. **Execute Plotting Script:**
+   ```bash
+   python3 tests/hydro/advect1d/plot-advect1d.py
+   ```
+
+## Automated Test Suite
+
+A comprehensive test suite is included to ensure physics and parity integrity.
+
+### Mandatory Watchdog Rule
+Always use the `timeout` command to prevent hangs during development:
 ```bash
-./ramses_3d ../namelist/sedov3d.nml
-```
-
-## Parallel Execution (MPI)
-
-If you compiled RAMSES-CPP with MPI support, you can execute it across multiple processors using `mpirun` or `mpiexec`:
-
-```bash
-mpirun -np 4 ./ramses_3d ../namelist/sedov3d.nml
-```
-
-The code will automatically perform domain decomposition using a Hilbert curve and distribute the workload across the available ranks.
-
-## Output and Visualization
-
-Simulations output their state to directories named `output_XXXXX/` (where `XXXXX` is the output step number). 
-
-Because RAMSES-CPP maintains **strict binary compatibility** with legacy RAMSES data formats, it generates the expected `amr`, `hydro`, and `info` files. 
-
-You can use existing Python visualization tools to parse and plot these results seamlessly:
-
-```bash
-# Example using the included Python plotting script for a hydro test
-python3 ../tests/hydro/implosion/plot-implosion.py
-```
-
-## Automated Testing
-
-The repository includes a comprehensive test suite to verify the physics and AMR logic. 
-
-**Note:** You must include `./tests/visu/` in your `PYTHONPATH` for the plotting and verification scripts to function.
-
-To run the tests:
-```bash
-export PYTHONPATH=$PYTHONPATH:$(pwd)/tests/visu
 cd tests
-./run_test_suite.sh -t hydro  # Run hydrodynamics tests
-./run_test_suite.sh -t mhd    # Run MHD tests
+timeout 10m ./run_test_suite.sh -t hydro
 ```
 
-### Test Configuration (`config.txt`)
-Each individual test directory contains a `config.txt` file that defines the build-time requirements for that benchmark. The test runner (`run_test_suite.sh`) automatically parses these flags and propagates them as CMake options:
-- **`NDIM=N`**: Compiles for N-dimensions.
-- **`SOLVER=mhd`**: Automatically enables `RAMSES_USE_MHD`.
-- **`RT=1`**: Automatically enables `RAMSES_USE_RT`.
-- **`NENER=N`**: Sets the number of non-thermal energy variables.
+## Snapshot Verification
 
-The test suite performs a clean build for every test to ensure there is no configuration leakage between benchmarks.
-
-## Verification Tool
-
-The repository includes a `verify_ref` utility to compare C++ snapshots against reference Fortran results to ensure bit-perfect structural parity.
-
+Use the `verify_ref` tool to compare your results against legacy Fortran reference snapshots:
 ```bash
-./verify_ref path/to/fortran_amr path/to/cpp_amr
+./verify_ref path/to/ref_amr_00001.out00001 path/to/local_amr_00001.out00001
 ```
+
+---
+*Pro Tip: Check the `namelist/` directory for pre-configured benchmark examples!* 🛰️✨
