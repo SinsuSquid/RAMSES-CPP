@@ -32,10 +32,7 @@ void RamsesWriter::write_amr(const AmrGrid& grid, const SnapshotInfo& info) {
     int32_t nboundary = (int32_t)grid.nboundary; write_rec(&nboundary, 4);
     int32_t ngrid_tot = 0; for(int l=1; l<=grid.nlevelmax; ++l) { for(int c=1; c<=grid.ncpu; ++c) ngrid_tot += grid.numbl(c, l); }
     write_rec(&ngrid_tot, 4);
-    
-    // Scale boxlen for visu_ramses.py compatibility (it assumes nx=2)
-    double boxlen_val = params::boxlen * (2.0 / (double)grid.nx); 
-    write_rec(&boxlen_val, 8);
+    double boxlen_val = params::boxlen; write_rec(&boxlen_val, 8);
     
     // 9-14. Time and Units
     int32_t nout_rec[3] = {(int32_t)info.noutput, (int32_t)info.iout, (int32_t)info.iout};
@@ -103,6 +100,9 @@ void RamsesWriter::write_amr(const AmrGrid& grid, const SnapshotInfo& info) {
     for (int il = 1; il <= grid.nlevelmax; ++il) {
         for (int ib = 1; ib <= grid.nboundary + grid.ncpu; ++ib) {
             int ncache = (ib <= grid.ncpu) ? grid.numbl(ib, il) : 0;
+            int32_t il_rec = il, nc_rec = ncache;
+            write_rec(&il_rec, 4); write_rec(&nc_rec, 4);
+
             if (ncache > 0) {
                 std::vector<int> g_list; 
                 int ig = (ib <= grid.ncpu) ? grid.get_headl(ib, il) : 0; 
@@ -116,9 +116,7 @@ void RamsesWriter::write_amr(const AmrGrid& grid, const SnapshotInfo& info) {
                 
                 std::vector<double> tmp_d(n);
                 for(int d=0; d<NDIM; ++d) { 
-                    for(int i=0; i<n; ++i) {
-                        tmp_d[i] = grid.xg[d*grid.ngridmax + g_list[i]-1];
-                    }
+                    for(int i=0; i<n; ++i) tmp_d[i] = grid.xg[d*grid.ngridmax + g_list[i]-1]; 
                     write_rec(tmp_d.data(), n * 8); 
                 }
                 for(int i=0; i<n; ++i) tmp_i[i] = grid.father[g_list[i]-1]; write_rec(tmp_i.data(), n * 4);
@@ -163,36 +161,21 @@ void RamsesWriter::write_hydro(const AmrGrid& grid, const SnapshotInfo& info) {
     double gamma_val = grid.gamma; write_rec(&gamma_val, 8);
 
     real_t smallr = 1e-10;
-    // Coarse level
-    for (int iv = 1; iv <= grid.nvar; ++iv) {
-        std::vector<double> tmp(grid.ncoarse);
-        for (int i = 1; i <= grid.ncoarse; ++i) {
-            real_t d = std::max(grid.uold(i, 1), smallr);
-            if (iv == 1) tmp[i-1] = d;
-            else if (iv >= 2 && iv <= 1 + NDIM) tmp[i-1] = grid.uold(i, iv) / d; 
-            else if (iv == NDIM + 2) { 
-                real_t v2 = 0; for (int j = 1; j <= NDIM; ++j) { real_t v = grid.uold(i, 1+j)/d; v2 += v*v; }
-                tmp[i-1] = std::max((grid.uold(i, iv) - 0.5 * d * v2) * (grid.gamma - 1.0), 0.0);
-            }
-            else tmp[i-1] = grid.uold(i, iv);
-        }
-        write_rec(tmp.data(), grid.ncoarse * 8);
-    }
 
     // Fine levels
     for (int il = 1; il <= grid.nlevelmax; ++il) {
         for (int icpu = 1; icpu <= grid.ncpu + grid.nboundary; ++icpu) {
             int ncache = (icpu <= grid.ncpu) ? grid.numbl(icpu, il) : 0;
+            int32_t il_rec = il, nc_rec = ncache;
+            write_rec(&il_rec, 4); write_rec(&nc_rec, 4);
+            
             if (ncache > 0) {
-                int32_t il_rec = il, nc_rec = ncache;
-                write_rec(&il_rec, 4); write_rec(&nc_rec, 4);
-                
                 std::vector<int> g_list; 
                 int ig = (icpu <= grid.ncpu) ? grid.get_headl(icpu, il) : 0; 
                 while(ig > 0) { g_list.push_back(ig); ig = grid.next[ig-1]; }
                 
-                for(int iv=1; iv<=grid.nvar; ++iv) {
-                    for (int ic = 0; ic < constants::twotondim; ++ic) {
+                for (int ic = 0; ic < constants::twotondim; ++ic) {
+                    for(int iv=1; iv<=grid.nvar; ++iv) {
                         std::vector<double> tmp(ncache);
                         for(int i=0; i<ncache; ++i) {
                             int idc = grid.ncoarse + ic*grid.ngridmax + g_list[i];

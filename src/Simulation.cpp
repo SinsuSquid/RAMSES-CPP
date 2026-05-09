@@ -152,7 +152,14 @@ void Simulation::initialize(const std::string& nml_path) {
     nstepmax_ = config_.get_int("run_params", "nstepmax", 1000000);
     ncontrol_ = config_.get_int("run_params", "ncontrol", 1);
     
-    if (!tout_.empty() && tend_ > tout_.back()) {
+    std::string tout_s = config_.get("output_params", "tout", "");
+    if (!tout_s.empty()) {
+        tout_.clear(); std::replace(tout_s.begin(), tout_s.end(), ',', ' ');
+        std::stringstream ss(tout_s); double t; while(ss >> t) tout_.push_back(t);
+    }
+    if (tout_.empty()) tout_.push_back(tend_);
+
+    if (tend_ > tout_.back()) {
         tend_ = tout_.back();
     }
     
@@ -169,13 +176,6 @@ void Simulation::initialize(const std::string& nml_path) {
         real_t texp;
         cosmo_.get_cosmo_params(t_, aexp_, hexp_, texp);
     }
-    
-    std::string tout_s = config_.get("output_params", "tout", "");
-    if (!tout_s.empty()) {
-        tout_.clear(); std::replace(tout_s.begin(), tout_s.end(), ',', ' ');
-        std::stringstream ss(tout_s); double t; while(ss >> t) tout_.push_back(t);
-    }
-    if (tout_.empty()) tout_.push_back(tend_);
 }
 
 void Simulation::run() {

@@ -58,8 +58,7 @@ void TreeUpdater::make_grid_fine(int ilevel) {
             idx %= (grid_.nx * grid_.ny); 
             ixyz[1] = idx / grid_.nx; 
             ixyz[0] = idx % grid_.nx;
-            real_t dx_coarse = grid_.boxlen / (real_t)std::max({grid_.nx, grid_.ny, grid_.nz});
-            for (int d = 1; d <= NDIM; ++d) grid_.xg[(d - 1) * grid_.ngridmax + new_ig - 1] = (ixyz[d - 1] + 0.5) * dx_coarse;
+            for (int d = 1; d <= NDIM; ++d) grid_.xg[(d - 1) * grid_.ngridmax + new_ig - 1] = (real_t)ixyz[d - 1] + 0.5;
         } else {
             int ig = ((idc - grid_.ncoarse) % grid_.ngridmax) + 1;
             int ic = ((idc - grid_.ncoarse) / grid_.ngridmax) + 1;
@@ -67,9 +66,9 @@ void TreeUpdater::make_grid_fine(int ilevel) {
             int icn_nb[6]; grid_.get_nbor_cells(ign, ic, icn_nb, ig);
             for (int i = 0; i < 6; ++i) grid_.nbor[i * grid_.ngridmax + new_ig - 1] = icn_nb[i];
             for (int d = 1; d <= NDIM; ++d) {
-                real_t dx_level = grid_.boxlen / (real_t)(grid_.nx * (1 << (ilevel - 1)));
+                real_t dx_level = 1.0 / (real_t)(1 << (ilevel - 1));
                 int ix = (ic - 1) & 1, iy = ((ic - 1) & 2) >> 1, iz = ((ic - 1) & 4) >> 2; int ixyz[3] = {ix, iy, iz};
-                grid_.xg[(d - 1) * grid_.ngridmax + (new_ig - 1)] = grid_.xg[(d - 1) * grid_.ngridmax + (ig - 1)] + (ixyz[d - 1] - 0.5) * dx_level;
+                grid_.xg[(d - 1) * grid_.ngridmax + (new_ig - 1)] = grid_.xg[(d - 1) * grid_.ngridmax + (ig - 1)] + (real_t)(ixyz[d - 1] - 0.5) * dx_level;
             }
         }
         

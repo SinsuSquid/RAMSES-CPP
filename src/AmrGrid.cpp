@@ -203,7 +203,8 @@ void AmrGrid::get_cell_center(int icell, real_t xc[3]) const {
             level++;
         }
         real_t dx = boxlen / (real_t)(nx * (1 << level));
-        for(int d=0; d<3; ++d) xc[d] = xg[d * ngridmax + ig - 1] + (ixyz[d] - 0.5) * dx;
+        real_t scale = boxlen / (real_t)nx;
+        for(int d=0; d<3; ++d) xc[d] = xg[d * ngridmax + ig - 1] * scale + (real_t)(ixyz[d] - 0.5) * dx;
     }
 }
 

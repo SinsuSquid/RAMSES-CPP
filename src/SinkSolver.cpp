@@ -33,27 +33,69 @@ void SinkSolver::grow_sinks(int ilevel, real_t dt) {
     std::vector<real_t> dM(nsink, 0.0);
     std::vector<real_t> dP(nsink * 3, 0.0);
 
-    collect_accretion_data(ilevel, dM, dP);
+    // 1. Local accretion
+    int n2d_val = (1 << NDIM);
+    int myid = MpiManager::instance().rank() + 1;
+    real_t r_acc = config_.get_double("sink_params", "r_acc", 0.0);
+
+    auto process_cell = [&](int idc) {
+        if (grid_.son.at(idc - 1) > 0) return;
+        real_t xc[3];
+        grid_.get_cell_center(idc, xc);
+        
+        for (size_t i = 0; i < nsink; ++i) {
+            real_t d2 = 0;
+            for (int d = 0; d < NDIM; ++d) d2 += std::pow(xc[d] - sinks_[i].x[d], 2);
+            if (d2 < r_acc * r_acc) {
+                real_t rho = grid_.uold(idc, 1);
+                real_t dm = std::min(rho * 0.1 * dt, rho - 1e-10); // Cap accretion to keep density positive
+                if (dm > 0) {
+                    grid_.unew(idc, 1) -= dm;
+                    dM[i] += dm;
+                    for (int d = 0; d < NDIM; ++d) {
+                        real_t mom = grid_.uold(idc, 2 + d);
+                        real_t dp = mom * (dm / rho);
+                        grid_.unew(idc, 2 + d) -= dp;
+                        dP[i * 3 + d] += dp;
+                    }
+                    // Update total energy to reflect mass/momentum loss
+                    int iener = NDIM + 2;
+                    real_t v2 = 0; for(int d=0; d<NDIM; ++d) v2 += std::pow(grid_.uold(idc, 2+d)/rho, 2);
+                    grid_.unew(idc, iener) -= 0.5 * dm * v2;
+                }
+            }
+        }
+    };
+
+    if (ilevel == 1) {
+        for (int idc = 1; idc <= grid_.ncoarse; ++idc) process_cell(idc);
+    }
+    int ig = grid_.get_headl(myid, ilevel);
+    while (ig > 0) {
+        for (int ic = 1; ic <= n2d_val; ++ic) {
+            int idc = grid_.ncoarse + (ic - 1) * grid_.ngridmax + ig;
+            process_cell(idc);
+        }
+        ig = grid_.next[ig - 1];
+    }
 
 #ifdef RAMSES_USE_MPI
     auto& mpi = MpiManager::instance();
     if (mpi.size() > 1) {
         std::vector<real_t> dM_global(nsink);
         std::vector<real_t> dP_global(nsink * 3);
-
         MPI_Allreduce(dM.data(), dM_global.data(), nsink, MPI_DOUBLE, MPI_SUM, MPI_COMM_WORLD);
         MPI_Allreduce(dP.data(), dP_global.data(), nsink * 3, MPI_DOUBLE, MPI_SUM, MPI_COMM_WORLD);
-
-        dM = dM_global;
-        dP = dP_global;
+        dM = dM_global; dP = dP_global;
     }
 #endif
 
     for (size_t i = 0; i < nsink; ++i) {
         sinks_[i].mass += dM[i];
-        for (int d = 0; d < 3; ++d) {
-            // Update momentum logic
-            // sinks_[i].v[d] = ...
+        if (sinks_[i].mass > 0) {
+            for (int d = 0; d < NDIM; ++d) {
+                sinks_[i].v[d] = (sinks_[i].v[d] * (sinks_[i].mass - dM[i]) + dP[i * 3 + d]) / sinks_[i].mass;
+            }
         }
     }
 }
