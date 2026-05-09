@@ -12,8 +12,8 @@ This document tracks the major milestones and architectural shifts during the mi
 ## 🚩 Phase 24: Future Roadmap (Planned)
 - **Relativistic Hydrodynamics (RHD):** Porting `legacy/rhd/` to create a modern `RhdSolver` for high-energy astrophysics.
 - **Turbulence Driving:** Implementing forcing routines from `legacy/turb/` to support simulated turbulent ISM environments.
-- **GPU-Accelerated Radiation (ATON):** Exploring modern GPU ports (CUDA/HIP/SYCL) for the legacy ATON radiation module.
 - **Sink Particle MPI Fix:** Resolving cross-rank distribution issues for sink/stellar particles as flagged in `stellar-HII.nml`.
+- **GPU-Accelerated Radiation (ATON):** Exploring modern GPU ports (CUDA/HIP/SYCL) for the legacy ATON radiation module.
 
 ## 🚩 Phase 22: Distributed Cosmology & MPI Scaling
 - **MPI Manager:** Implemented centralized rank management and asynchronous buffer swaps.
