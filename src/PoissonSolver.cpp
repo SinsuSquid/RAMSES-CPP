@@ -32,6 +32,7 @@ void PoissonSolver::vcycle(int ilevel, real_t fourpi, real_t rho_tot) {
     if (ilevel > 1) {
         restrict(ilevel);
         vcycle(ilevel - 1, fourpi, rho_tot);
+        compute_force(ilevel - 1);
         prolong(ilevel);
     }
     smooth(ilevel, fourpi, rho_tot);
@@ -91,9 +92,20 @@ void PoissonSolver::prolong(int ilevel) {
             int ifather_cell = grid_.father[igrid - 1];
             if (ifather_cell > 0) {
                 real_t phi_c = grid_.phi[ifather_cell - 1];
+                real_t dx_parent = params::boxlen / (real_t)(params::nx * (1 << (ilevel - 2)));
                 for (int ic = 1; ic <= constants::twotondim; ++ic) {
                     int icell = grid_.ncoarse + (ic - 1) * grid_.ngridmax + igrid;
-                    grid_.phi[icell - 1] += phi_c;
+                    
+                    // Linear interpolation from parent using force
+                    int ix = (ic - 1) & 1, iy = ((ic - 1) & 2) >> 1, iz = ((ic - 1) & 4) >> 2;
+                    real_t offset[3] = {(ix - 0.5f) * 0.5f * dx_parent, 
+                                        (iy - 0.5f) * 0.5f * dx_parent, 
+                                        (iz - 0.5f) * 0.5f * dx_parent};
+                    
+                    real_t corr = 0;
+                    for(int d=1; d<=NDIM; ++d) corr -= grid_.f(ifather_cell, d) * offset[d-1];
+                    
+                    grid_.phi[icell - 1] = phi_c + corr;
                 }
             }
             igrid = grid_.next[igrid - 1];

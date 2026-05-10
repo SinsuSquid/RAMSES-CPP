@@ -79,6 +79,24 @@ void Simulation::initialize(const std::string& nml_path) {
     real_t gamma = config_.get_double("hydro_params", "gamma", 1.4);
     grid_.gamma = gamma;
     
+    // Barotropic EOS parameters
+    p::barotropic_eos = config_.get_bool("cooling_params", "barotropic_eos", false);
+    p::barotropic_eos_form = config_.get("cooling_params", "barotropic_eos_form", "isothermal");
+    p::polytrope_rho = config_.get_double("cooling_params", "polytrope_rho", 1e-15);
+    p::polytrope_index = config_.get_double("cooling_params", "polytrope_index", 1.4);
+    p::T_eos = config_.get_double("cooling_params", "T_eos", 10.0);
+    p::mu_gas = config_.get_double("cooling_params", "mu_gas", 1.0);
+
+    // Physical units
+    p::units_density = config_.get_double("units_params", "units_density", 1.0);
+    p::units_time = config_.get_double("units_params", "units_time", 1.0);
+    p::units_length = config_.get_double("units_params", "units_length", 1.0);
+    p::units_velocity = p::units_length / p::units_time;
+    p::units_mass = p::units_density * std::pow(p::units_length, 3);
+    p::units_energy = p::units_mass * std::pow(p::units_velocity, 2);
+    p::units_pressure = p::units_density * std::pow(p::units_velocity, 2);
+    p::units_number_density = p::units_density / (p::mu_gas * constants::mH);
+
     bool do_poisson = config_.get_bool("run_params", "poisson", false);
 
     int ncpu = MpiManager::instance().size();
@@ -186,77 +204,11 @@ void Simulation::run() {
     dump_snapshot(snapshot_count++);
 
     while (t_ < tout_.back() && nstep_ < nstepmax_) {
-        bool do_poisson = config_.get_bool("run_params", "poisson", false);
-        if (do_poisson) {
-            for (int il = grid_.nlevelmax; il >= 1; --il) rho_fine(il);
-            
-            for (int il = grid_.nlevelmax; il >= 2; --il) {
-                int myid = MpiManager::instance().rank() + 1, n2d_val = (1 << NDIM);
-                int ig = grid_.get_headl(myid, il);
-                while (ig > 0) {
-                    int id_p = grid_.father[ig - 1];
-                    if (id_p > 0) {
-                        real_t sum = 0;
-                        for (int ic = 1; ic <= n2d_val; ++ic) {
-                            size_t idx = (size_t)grid_.ncoarse + (size_t)(ic - 1) * grid_.ngridmax + ig - 1;
-                            sum += grid_.rho[idx];
-                        }
-                        grid_.rho[id_p - 1] += sum / (real_t)n2d_val;
-                    }
-                    ig = grid_.next[ig - 1];
-                }
-            }
-            
-            real_t omega_m = config_.get_double("cosmo_params", "omega_m", 0.3);
-            real_t rho_tot = config_.get_double("poisson_params", "rho_tot", 0.0);
-            if (config_.get_bool("run_params", "cosmo", false)) rho_tot = 1.0;
-            
-            for (int il = 1; il <= grid_.nlevelmax; ++il) {
-                poisson_->solve(il, aexp_, omega_m, rho_tot);
-                poisson_->compute_force(il);
-            }
-        }
-
         real_t min_dt = 1e10;
         for (int il = 1; il <= grid_.nlevelmax; ++il) {
             if (grid_.count_grids_at_level(il) == 0 && il > 1) continue;
             real_t dx = p::boxlen / (real_t)(p::nx * (1 << (il - 1)));
-            
-            if (il == 1) {
-                for (int i = 1; i <= grid_.ncoarse; ++i) {
-                    if (grid_.son[i - 1] > 0) continue;
-                    real_t d = std::max(grid_.uold(i, 1), 1e-10), v2 = 0;
-                    for (int j = 1; j <= NDIM; ++j) { real_t v = grid_.uold(i, 1 + j) / d; v2 += v * v; }
-                    real_t p = std::max((grid_.uold(i, NDIM + 2) - 0.5 * d * v2) * (grid_.gamma - 1.0), d * 1e-10);
-                    real_t c = std::sqrt(grid_.gamma * p / d);
-                    min_dt = std::min(min_dt, courant * dx / (std::sqrt(v2) + c));
-                    for (int j = 1; j <= NDIM; ++j) {
-                        real_t acc = std::abs(grid_.f(i, j));
-                        if (acc > 0) min_dt = std::min(min_dt, courant * std::sqrt(dx / acc));
-                    }
-                }
-            } else {
-                int myid = MpiManager::instance().rank() + 1;
-                int ig = grid_.get_headl(myid, il);
-                int n2d_val = (1 << NDIM);
-                while (ig > 0) {
-                    for (int ic = 1; ic <= n2d_val; ++ic) {
-                        int idc = grid_.ncoarse + (ic - 1) * grid_.ngridmax + ig;
-                        if (grid_.son[idc - 1] > 0) continue;
-
-                        real_t d = std::max(grid_.uold(idc, 1), 1e-10), v2 = 0;
-                        for(int j=1; j<=NDIM; ++j) { real_t v = grid_.uold(idc, 1+j)/d; v2 += v*v; }
-                        real_t p = std::max((grid_.uold(idc, NDIM + 2) - 0.5*d*v2)*(grid_.gamma-1.0), d * 1e-10);
-                        real_t c = std::sqrt(grid_.gamma*p/d);
-                        min_dt = std::min(min_dt, courant * dx / (std::sqrt(v2) + c));
-                        for (int j = 1; j <= NDIM; ++j) {
-                            real_t acc = std::abs(grid_.f(idc, j));
-                            if (acc > 0) min_dt = std::min(min_dt, courant * std::sqrt(dx / acc));
-                        }
-                    }
-                    ig = grid_.next[ig - 1];
-                }
-            }
+            min_dt = std::min(min_dt, hydro_->compute_courant_step(il, dx, grid_.gamma, courant));
         }
 
         real_t global_min_dt = min_dt;
@@ -301,6 +253,61 @@ void Simulation::amr_step(int ilevel, real_t dt, int icount) {
 
     if (do_poisson) {
         hydro_->synchro_hydro_fine(ilevel, -0.5 * dt);
+
+        // Calculate total mass and mean density for Poisson stability
+        real_t total_mass = 0, total_vol = 0;
+        int n2d_val = (1 << NDIM);
+        for (int i = 1; i <= grid_.ncoarse; ++i) {
+            real_t dx_c = p::boxlen / (real_t)p::nx;
+            real_t dV = std::pow(dx_c, NDIM);
+            if (grid_.son[i-1] == 0) { total_mass += grid_.uold(i, 1) * dV; total_vol += dV; }
+        }
+        for (int il = 2; il <= grid_.nlevelmax; ++il) {
+            int my_id = MpiManager::instance().rank() + 1;
+            int ig = grid_.get_headl(my_id, il);
+            real_t dx_l = p::boxlen / (real_t)(p::nx * (1 << (il - 1)));
+            real_t dV = std::pow(dx_l, NDIM);
+            while (ig > 0) {
+                for (int ic = 1; ic <= n2d_val; ++ic) {
+                    int idc = grid_.ncoarse + (ic - 1) * grid_.ngridmax + ig - 1;
+                    if (grid_.son[idc] == 0) { total_mass += grid_.uold(idc + 1, 1) * dV; total_vol += dV; }
+                }
+                ig = grid_.next[ig - 1];
+            }
+        }
+        real_t global_mass = total_mass, global_vol = total_vol;
+#ifdef RAMSES_USE_MPI
+        if (MpiManager::instance().size() > 1) {
+            MPI_Allreduce(&total_mass, &global_mass, 1, MPI_DOUBLE, MPI_SUM, MPI_COMM_WORLD);
+            MPI_Allreduce(&total_vol, &global_vol, 1, MPI_DOUBLE, MPI_SUM, MPI_COMM_WORLD);
+        }
+#endif
+        real_t rho_mean = global_mass / std::max(global_vol, 1e-10);
+        
+        // Update density and aggregate for multi-grid
+        for (int il = ilevel; il >= 1; --il) rho_fine(il);
+        for (int il = ilevel; il >= 2; --il) {
+            int my_id = MpiManager::instance().rank() + 1;
+            int ig = grid_.get_headl(my_id, il);
+            while (ig > 0) {
+                int id_p = grid_.father[ig - 1];
+                if (id_p > 0) {
+                    real_t sum = 0;
+                    for (int ic = 1; ic <= n2d_val; ++ic) {
+                        size_t idx = (size_t)grid_.ncoarse + (size_t)(ic - 1) * grid_.ngridmax + ig - 1;
+                        sum += grid_.rho[idx];
+                    }
+                    grid_.rho[id_p - 1] += sum / (real_t)n2d_val;
+                }
+                ig = grid_.next[ig - 1];
+            }
+        }
+        
+        real_t omega_m = config_.get_double("cosmo_params", "omega_m", 0.3);
+        poisson_->solve(ilevel, aexp_, omega_m, rho_mean);
+        poisson_->compute_force(ilevel);
+
+        hydro_->synchro_hydro_fine(ilevel, 0.5 * dt);
         particles_->move_fine(ilevel, 0.5 * dt);
     }
 

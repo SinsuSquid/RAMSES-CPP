@@ -1,8 +1,24 @@
 #include "ramses/RiemannSolver.hpp"
+#include "ramses/Parameters.hpp"
+#include "ramses/Constants.hpp"
 #include <cmath>
 #include <algorithm>
 
 namespace ramses {
+
+static real_t get_cs2(real_t d, real_t p, real_t gamma) {
+    if (params::barotropic_eos) {
+        real_t T2 = params::T_eos / params::mu_gas * (constants::kB / constants::mH);
+        real_t v2_unit = params::units_velocity * params::units_velocity;
+        if (params::barotropic_eos_form == "isothermal") return T2 / v2_unit;
+        if (params::barotropic_eos_form == "polytrope") return params::polytrope_index * T2 * std::pow(d * params::units_density / params::polytrope_rho, params::polytrope_index - 1.0) / v2_unit;
+        if (params::barotropic_eos_form == "double_polytrope") {
+            real_t fac = std::pow(d * params::units_density / params::polytrope_rho, params::polytrope_index - 1.0);
+            return T2 * (1.0 + params::polytrope_index * fac) / v2_unit;
+        }
+    }
+    return gamma * p / std::max(d, 1e-10);
+}
 
 void RiemannSolver::solve_llf(const real_t ql[], const real_t qr[], real_t flux[], real_t gamma) {
     real_t fl[20], fr[20];
@@ -13,8 +29,8 @@ void RiemannSolver::solve_llf(const real_t ql[], const real_t qr[], real_t flux[
     prim_to_cons(qr, ur, gamma);
     
     int ipress = NDIM + 1;
-    real_t al = std::sqrt(gamma * ql[ipress] / std::max(ql[0], 1e-10));
-    real_t ar = std::sqrt(gamma * qr[ipress] / std::max(qr[0], 1e-10));
+    real_t al = std::sqrt(get_cs2(ql[0], ql[ipress], gamma));
+    real_t ar = std::sqrt(get_cs2(qr[0], qr[ipress], gamma));
     real_t a_max = std::max(std::abs(ql[1]) + al, std::abs(qr[1]) + ar);
     for (int i = 0; i < NDIM + 2; ++i) {
         flux[i] = 0.5 * (fl[i] + fr[i]) - 0.5 * a_max * (ur[i] - ul[i]);
@@ -30,8 +46,8 @@ void RiemannSolver::solve_hll(const real_t ql[], const real_t qr[], real_t flux[
     prim_to_cons(qr, ur_vec, gamma);
     
     int ipress = NDIM + 1;
-    real_t al = std::sqrt(gamma * std::max(ql[ipress], 0.0) / std::max(ql[0], 1e-10));
-    real_t ar = std::sqrt(gamma * std::max(qr[ipress], 0.0) / std::max(qr[0], 1e-10));
+    real_t al = std::sqrt(get_cs2(ql[0], ql[ipress], gamma));
+    real_t ar = std::sqrt(get_cs2(qr[0], qr[ipress], gamma));
     
     real_t sl = std::min(0.0, std::min(ql[1] - al, qr[1] - ar));
     real_t sr = std::max(0.0, std::max(ql[1] + al, qr[1] + ar));
@@ -59,8 +75,8 @@ void RiemannSolver::solve_hllc(const real_t ql[], const real_t qr[], real_t flux
     real_t pr = std::max(qr[ipress], rr * smallp);
 
     // Sound speeds
-    real_t cl = std::sqrt(gamma * pl / rl);
-    real_t cr = std::sqrt(gamma * pr / rr);
+    real_t cl = std::sqrt(get_cs2(rl, pl, gamma));
+    real_t cr = std::sqrt(get_cs2(rr, pr, gamma));
 
     // Einfeldt wave speed estimates for robustness
     real_t sl = std::min(ul - cl, ur - cr);
@@ -121,6 +137,10 @@ void RiemannSolver::prim_to_cons(const real_t q[], real_t u[], real_t gamma) {
     int ipress = NDIM + 1;
     real_t e_kin = 0.5 * q[0] * v2;
     real_t e_int = q[ipress] / (gamma - 1.0);
+    if (params::barotropic_eos && params::barotropic_eos_form == "isothermal") {
+        // For isothermal, e_int doesn't really matter for dynamics, 
+        // but we keep it consistent with the pressure-based definition.
+    }
     u[ipress] = e_kin + e_int;
 }
 

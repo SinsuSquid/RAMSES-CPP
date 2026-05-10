@@ -211,9 +211,24 @@ void HydroSolver::ctoprim(const real_t u[], real_t q[], real_t gamma) {
     real_t d = std::max(u[0], 1e-10); q[0] = d;
     real_t v2 = 0.0; for (int i = 1; i <= NDIM; ++i) { q[i] = u[i] / d; v2 += q[i] * q[i]; }
     int iener = NDIM + 1; // 0-based index in local array
-    real_t e_thermal_dens = u[iener] - 0.5 * d * v2;
-    for (int ie = 0; ie < nener_; ++ie) e_thermal_dens -= u[iener + 1 + ie];
-    q[iener] = std::max(e_thermal_dens * (gamma - 1.0), d * 1e-10);
+    
+    if (params::barotropic_eos) {
+        // Calculate pressure from density only
+        real_t nH = d * params::units_density / (params::mu_gas * constants::mH);
+        real_t T2 = params::T_eos / params::mu_gas * (constants::kB / constants::mH);
+        real_t temp_mu = T2;
+        if (params::barotropic_eos_form == "polytrope") {
+            temp_mu = T2 * std::pow(d * params::units_density / params::polytrope_rho, params::polytrope_index - 1.0);
+        } else if (params::barotropic_eos_form == "double_polytrope") {
+            temp_mu = T2 * (1.0 + std::pow(d * params::units_density / params::polytrope_rho, params::polytrope_index - 1.0));
+        }
+        q[iener] = d * temp_mu / (params::units_velocity * params::units_velocity);
+    } else {
+        real_t e_thermal_dens = u[iener] - 0.5 * d * v2;
+        for (int ie = 0; ie < nener_; ++ie) e_thermal_dens -= u[iener + 1 + ie];
+        q[iener] = std::max(e_thermal_dens * (gamma - 1.0), d * 1e-10);
+    }
+    
     for (int iv = iener + 1; iv < grid_.nvar; ++iv) { if (iv < iener + 1 + nener_) q[iv] = u[iv] * (gamma - 1.0); else q[iv] = u[iv] / d; }
 }
 
@@ -239,7 +254,20 @@ void HydroSolver::trace(const real_t q[], const real_t dq[], real_t dtdx, real_t
     real_t su0 = -u * dq[1] - dq[NDIM+1] / r;
     int iener = NDIM + 1;
     for(int ie=0; ie<nener_; ++ie) su0 -= dq[iener+1+ie] / r;
-    real_t sp0 = -u * dq[iener] - dq[1] * gamma * p;
+    
+    real_t cs2 = gamma * p / r;
+    if (params::barotropic_eos) {
+        real_t T2 = params::T_eos / params::mu_gas * (constants::kB / constants::mH);
+        real_t v2_unit = params::units_velocity * params::units_velocity;
+        if (params::barotropic_eos_form == "isothermal") cs2 = T2 / v2_unit;
+        else if (params::barotropic_eos_form == "polytrope") cs2 = params::polytrope_index * T2 * std::pow(r * params::units_density / params::polytrope_rho, params::polytrope_index - 1.0) / v2_unit;
+        else if (params::barotropic_eos_form == "double_polytrope") {
+            real_t fac = std::pow(r * params::units_density / params::polytrope_rho, params::polytrope_index - 1.0);
+            cs2 = T2 * (1.0 + params::polytrope_index * fac) / v2_unit;
+        }
+    }
+    
+    real_t sp0 = -u * dq[iener] - dq[1] * r * cs2;
     for (int iv = 0; iv < grid_.nvar; ++iv) {
         real_t dqi = dq[iv], src = -u * dqi;
         if (iv == 0) src = sr0; else if (iv == 1) src = su0; else if (iv == iener) src = sp0;
@@ -266,7 +294,18 @@ void HydroSolver::interpol_hydro(const real_t u1[7][64], real_t u2[8][64]) {
     }
     int iener = NDIM + 1;
     for (int i = 0; i < 8; ++i) {
-        real_t d = std::max(q2[i][0], 1e-10), p = std::max(q2[i][iener], 1e-20);
+        real_t d = std::max(q2[i][0], 1e-10);
+        real_t p = 0;
+        if (params::barotropic_eos) {
+            real_t T2 = params::T_eos / params::mu_gas * (constants::kB / constants::mH);
+            real_t temp_mu = T2;
+            if (params::barotropic_eos_form == "polytrope") temp_mu = T2 * std::pow(d * params::units_density / params::polytrope_rho, params::polytrope_index - 1.0);
+            else if (params::barotropic_eos_form == "double_polytrope") temp_mu = T2 * (1.0 + std::pow(d * params::units_density / params::polytrope_rho, params::polytrope_index - 1.0));
+            p = d * temp_mu / (params::units_velocity * params::units_velocity);
+        } else {
+            p = std::max(q2[i][iener], 1e-20);
+        }
+        
         u2[i][0] = d;
         real_t v2 = 0;
         for(int d_idx=1; d_idx<=NDIM; ++d_idx) { u2[i][d_idx] = d * q2[i][d_idx]; v2 += q2[i][d_idx] * q2[i][d_idx]; }
@@ -280,14 +319,44 @@ void HydroSolver::interpol_hydro(const real_t u1[7][64], real_t u2[8][64]) {
 real_t HydroSolver::compute_courant_step(int ilevel, real_t dx, real_t gamma, real_t courant_factor) {
     int myid = MpiManager::instance().rank() + 1;
     real_t dt_max = 1e30;
+    
+    auto get_cs = [&](real_t d, real_t p) {
+        if (params::barotropic_eos) {
+            // Sound speed for polytrope: cs^2 = dP/drho
+            real_t T2 = params::T_eos / params::mu_gas * (constants::kB / constants::mH);
+            real_t v2_unit = params::units_velocity * params::units_velocity;
+            if (params::barotropic_eos_form == "isothermal") return std::sqrt(T2 / v2_unit);
+            if (params::barotropic_eos_form == "polytrope") {
+                return std::sqrt(params::polytrope_index * T2 * std::pow(d * params::units_density / params::polytrope_rho, params::polytrope_index - 1.0) / v2_unit);
+            }
+            if (params::barotropic_eos_form == "double_polytrope") {
+                real_t fac = std::pow(d * params::units_density / params::polytrope_rho, params::polytrope_index - 1.0);
+                real_t cs2 = T2 * (1.0 + params::polytrope_index * fac) / v2_unit;
+                return std::sqrt(cs2);
+            }
+        }
+        return std::sqrt(gamma * p / d);
+    };
+
     if (ilevel == 1) {
         for (int id = 1; id <= grid_.ncoarse; ++id) {
             if (grid_.son.at(id - 1) > 0) continue;
             real_t d = std::max(grid_.uold(id, 1), 1e-10), v2 = 0.0;
             for (int i = 1; i <= NDIM; ++i) { real_t v = grid_.uold(id, 1 + i) / d; v2 += v * v; }
             int iener = NDIM + 2;
-            real_t p = std::max((grid_.uold(id, iener) - 0.5 * d * v2) * (gamma - 1.0), d * 1e-10);
-            real_t cs = std::sqrt(gamma * p / d);
+            
+            real_t p = 0;
+            if (params::barotropic_eos) {
+                real_t T2 = params::T_eos / params::mu_gas * (constants::kB / constants::mH);
+                real_t temp_mu = T2;
+                if (params::barotropic_eos_form == "polytrope") temp_mu = T2 * std::pow(d * params::units_density / params::polytrope_rho, params::polytrope_index - 1.0);
+                else if (params::barotropic_eos_form == "double_polytrope") temp_mu = T2 * (1.0 + std::pow(d * params::units_density / params::polytrope_rho, params::polytrope_index - 1.0));
+                p = d * temp_mu / (params::units_velocity * params::units_velocity);
+            } else {
+                p = std::max((grid_.uold(id, iener) - 0.5 * d * v2) * (gamma - 1.0), d * 1e-10);
+            }
+            
+            real_t cs = get_cs(d, p);
             real_t v_mag = std::sqrt(v2);
             dt_max = std::min(dt_max, courant_factor * dx / (v_mag + cs));
         }
@@ -300,8 +369,19 @@ real_t HydroSolver::compute_courant_step(int ilevel, real_t dx, real_t gamma, re
                 real_t d = std::max(grid_.uold(id, 1), 1e-10), v2 = 0.0;
                 for (int i = 1; i <= NDIM; ++i) { real_t v = grid_.uold(id, 1 + i) / d; v2 += v * v; }
                 int iener = NDIM + 2;
-                real_t p = std::max((grid_.uold(id, iener) - 0.5 * d * v2) * (gamma - 1.0), d * 1e-10);
-                real_t cs = std::sqrt(gamma * p / d);
+                
+                real_t p = 0;
+                if (params::barotropic_eos) {
+                    real_t T2 = params::T_eos / params::mu_gas * (constants::kB / constants::mH);
+                    real_t temp_mu = T2;
+                    if (params::barotropic_eos_form == "polytrope") temp_mu = T2 * std::pow(d * params::units_density / params::polytrope_rho, params::polytrope_index - 1.0);
+                    else if (params::barotropic_eos_form == "double_polytrope") temp_mu = T2 * (1.0 + std::pow(d * params::units_density / params::polytrope_rho, params::polytrope_index - 1.0));
+                    p = d * temp_mu / (params::units_velocity * params::units_velocity);
+                } else {
+                    p = std::max((grid_.uold(id, iener) - 0.5 * d * v2) * (gamma - 1.0), d * 1e-10);
+                }
+                
+                real_t cs = get_cs(d, p);
                 real_t v_mag = std::sqrt(v2);
                 dt_max = std::min(dt_max, courant_factor * dx / (v_mag + cs));
                 for(int idim=1; idim<=NDIM; ++idim) {
@@ -350,34 +430,44 @@ void HydroSolver::add_gravity_source_terms(int ilevel, real_t dt) {
 void HydroSolver::synchro_hydro_fine(int ilevel, real_t dt) {
     int myid = MpiManager::instance().rank() + 1, n2d_val = (1 << NDIM);
     int iener = NDIM + 2;
+    real_t gam = grid_.gamma;
+
+    auto apply_synchro = [&](int idc) {
+        if (grid_.son.at(idc - 1) > 0) return;
+        real_t d = std::max(grid_.uold(idc, 1), 1e-10);
+        real_t v2_old = 0;
+        for(int idim=1; idim<=NDIM; ++idim) { real_t v = grid_.uold(idc, 1+idim)/d; v2_old += v*v; }
+        
+        real_t e_int = 0;
+        if (params::barotropic_eos) {
+            real_t T2 = params::T_eos / params::mu_gas * (constants::kB / constants::mH);
+            real_t temp_mu = T2;
+            if (params::barotropic_eos_form == "polytrope") temp_mu = T2 * std::pow(d * params::units_density / params::polytrope_rho, params::polytrope_index - 1.0);
+            else if (params::barotropic_eos_form == "double_polytrope") temp_mu = T2 * (1.0 + std::pow(d * params::units_density / params::polytrope_rho, params::polytrope_index - 1.0));
+            real_t p = d * temp_mu / (params::units_velocity * params::units_velocity);
+            e_int = p / (gam - 1.0);
+        } else {
+            e_int = std::max(grid_.uold(idc, iener) - 0.5*d*v2_old, d * 1e-10 / (gam - 1.0));
+        }
+
+        for (int idim = 1; idim <= NDIM; ++idim) grid_.uold(idc, 1 + idim) += d * grid_.f(idc, idim) * dt;
+        
+        real_t v2_new = 0;
+        for(int idim=1; idim<=NDIM; ++idim) { real_t v = grid_.uold(idc, 1+idim)/d; v2_new += v*v; }
+        grid_.uold(idc, iener) = e_int + 0.5*d*v2_new;
+    };
+
     if (ilevel == 1) {
-        for (int idc = 1; idc <= grid_.ncoarse; ++idc) {
-            if (grid_.son.at(idc - 1) > 0) continue;
-            real_t d = std::max(grid_.uold(idc, 1), 1e-10);
-            real_t v2_old = 0;
-            for(int idim=1; idim<=NDIM; ++idim) { real_t v = grid_.uold(idc, 1+idim)/d; v2_old += v*v; }
-            real_t e_int = std::max(grid_.uold(idc, iener) - 0.5*d*v2_old, d * 1e-10 / (grid_.gamma - 1.0));
-            for (int idim = 1; idim <= NDIM; ++idim) grid_.uold(idc, 1 + idim) += d * grid_.f(idc, idim) * dt;
-            real_t v2_new = 0;
-            for(int idim=1; idim<=NDIM; ++idim) { real_t v = grid_.uold(idc, 1+idim)/d; v2_new += v*v; }
-            grid_.uold(idc, iener) = e_int + 0.5*d*v2_new;
+        for (int idc = 1; idc <= grid_.ncoarse; ++idc) apply_synchro(idc);
+    } else {
+        int igrid = grid_.get_headl(myid, ilevel);
+        while (igrid > 0) {
+            for (int ic = 1; ic <= n2d_val; ++ic) {
+                int idc = grid_.ncoarse + (ic - 1) * grid_.ngridmax + igrid;
+                apply_synchro(idc);
+            }
+            igrid = grid_.next[igrid - 1];
         }
-    }
-    int igrid = grid_.get_headl(myid, ilevel);
-    while (igrid > 0) {
-        for (int ic = 1; ic <= n2d_val; ++ic) {
-            int idc = grid_.ncoarse + (ic - 1) * grid_.ngridmax + igrid;
-            if (grid_.son.at(idc - 1) > 0) continue; 
-            real_t d = std::max(grid_.uold(idc, 1), 1e-10);
-            real_t v2_old = 0;
-            for(int idim=1; idim<=NDIM; ++idim) { real_t v = grid_.uold(idc, 1+idim)/d; v2_old += v*v; }
-            real_t e_int = std::max(grid_.uold(idc, iener) - 0.5*d*v2_old, d * 1e-10 / (grid_.gamma - 1.0));
-            for (int idim = 1; idim <= NDIM; ++idim) grid_.uold(idc, 1 + idim) += d * grid_.f(idc, idim) * dt;
-            real_t v2_new = 0;
-            for(int idim=1; idim<=NDIM; ++idim) { real_t v = grid_.uold(idc, 1+idim)/d; v2_new += v*v; }
-            grid_.uold(idc, iener) = e_int + 0.5*d*v2_new;
-        }
-        igrid = grid_.next[igrid - 1];
     }
 }
 

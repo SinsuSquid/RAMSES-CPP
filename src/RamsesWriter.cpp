@@ -219,9 +219,9 @@ void RamsesWriter::write_header(const AmrGrid& grid, const SnapshotInfo& info) {
     file << "omega_b     = " << info.omega_b << std::endl;
     file << "h0          = " << info.h0 << std::endl;
     file << "aexp        = " << info.aexp << std::endl;
-    file << "unit_l      = 1.0" << std::endl;
-    file << "unit_d      = 1.0" << std::endl;
-    file << "unit_t      = 1.0" << std::endl;
+    file << "unit_l      = " << params::units_length << std::endl;
+    file << "unit_d      = " << params::units_density << std::endl;
+    file << "unit_t      = " << params::units_time << std::endl;
     file << "ordering type= hilbert" << std::endl;
 }
 

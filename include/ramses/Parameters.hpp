@@ -37,6 +37,14 @@ namespace params {
     extern real_t units_pressure;
     extern real_t units_number_density;
 
+    // Barotropic EOS parameters
+    extern bool barotropic_eos;
+    extern std::string barotropic_eos_form;
+    extern real_t polytrope_rho;
+    extern real_t polytrope_index;
+    extern real_t T_eos;
+    extern real_t mu_gas;
+
     // Constants derived from NDIM
     constexpr int twotondim = (1 << NDIM);
     constexpr int threetondim = 1; // Needs to be calculated based on NDIM

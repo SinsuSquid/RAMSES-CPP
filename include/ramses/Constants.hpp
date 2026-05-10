@@ -26,6 +26,10 @@ namespace constants {
     // Coordinate offsets
     extern const real_t xcent[8][3];
 
+    // Physical constants (cgs)
+    constexpr real_t kB = 1.380649e-16; // Boltzmann constant
+    constexpr real_t mH = 1.6735575e-24; // Hydrogen mass
+
 } // namespace constants
 } // namespace ramses
 

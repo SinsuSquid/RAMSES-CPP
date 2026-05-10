@@ -28,5 +28,12 @@ namespace params {
     real_t units_pressure = 1.0;
     real_t units_number_density = 1.0;
 
+    bool barotropic_eos = false;
+    std::string barotropic_eos_form = "isothermal";
+    real_t polytrope_rho = 1e-15;
+    real_t polytrope_index = 1.4;
+    real_t T_eos = 10.0;
+    real_t mu_gas = 1.0;
+
 } // namespace params
 } // namespace ramses
