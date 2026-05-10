@@ -427,7 +427,7 @@ void Simulation::dump_snapshot(int iout) {
 #ifdef RT
     int nGroups = rt_->get_nGroups();
     if (nGroups > 0) {
-        RamsesWriter(get_path("rt", ".out")).write_rt(grid_, info, nGroups, rt_->get_c_speed());
+        RamsesWriter(get_path("rt", ".out")).write_rt(grid_, info, nGroups, rt_->get_nIons(), rt_->get_c_speed());
         RamsesWriter(dir + "/rt_file_descriptor.txt").write_rt_descriptor(grid_, info, nGroups);
     }
 #endif

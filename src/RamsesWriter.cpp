@@ -268,6 +268,65 @@ void RamsesWriter::write_rt_descriptor(const AmrGrid& grid, const SnapshotInfo& 
     }
 }
 
+void RamsesWriter::write_rt(const AmrGrid& grid, const SnapshotInfo& info, int nGroups, int nIons, real_t rt_c) {
+    std::ofstream file(filename_, std::ios::binary);
+    auto write_rec = [&](const void* data, size_t size) {
+        int32_t s = (int32_t)size;
+        file.write((char*)&s, 4);
+        file.write((char*)data, size);
+        file.write((char*)&s, 4);
+    };
+
+    int32_t ncpu = (int32_t)grid.ncpu; write_rec(&ncpu, 4);
+    int32_t nrtvar = (int32_t)nGroups * (1 + NDIM); write_rec(&nrtvar, 4);
+    int32_t ndim = (int32_t)NDIM; write_rec(&ndim, 4);
+    int32_t nlevelmax = (int32_t)grid.nlevelmax; write_rec(&nlevelmax, 4);
+    int32_t nboundary = (int32_t)grid.nboundary; write_rec(&nboundary, 4);
+    double gamma_val = grid.gamma; write_rec(&gamma_val, 8);
+
+    int nvar_hydro = grid.nvar - nIons - nGroups * (1 + NDIM);
+    int ioffset = nvar_hydro + nIons;
+
+    for (int il = 1; il <= grid.nlevelmax; ++il) {
+        for (int icpu = 1; icpu <= grid.ncpu + grid.nboundary; ++icpu) {
+            int ncache = (icpu <= grid.ncpu) ? grid.numbl(icpu, il) : 0;
+            int32_t il_rec = il, nc_rec = ncache;
+            write_rec(&il_rec, 4); write_rec(&nc_rec, 4);
+
+            if (ncache > 0) {
+                std::vector<int> g_list;
+                int ig_head = (icpu <= grid.ncpu) ? grid.get_headl(icpu, il) : 0;
+                int ig_curr = ig_head;
+                while(ig_curr > 0) { g_list.push_back(ig_curr); ig_curr = grid.next[ig_curr-1]; }
+
+                for (int ic = 0; ic < constants::twotondim; ++ic) {
+                    for (int igr = 1; igr <= nGroups; ++igr) {
+                        // Photon density (convert to flux units: density * c)
+                        std::vector<double> tmp_n(ncache);
+                        int iv_n = ioffset + (igr-1)*(1+NDIM) + 1;
+                        for(int i=0; i<ncache; ++i) {
+                            int idc = grid.ncoarse + ic*grid.ngridmax + g_list[i];
+                            tmp_n[i] = grid.uold(idc, iv_n) * rt_c;
+                        }
+                        write_rec(tmp_n.data(), ncache * 8);
+
+                        // Photon flux
+                        for (int d = 1; d <= NDIM; ++d) {
+                            std::vector<double> tmp_f(ncache);
+                            int iv_f = ioffset + (igr-1)*(1+NDIM) + 1 + d;
+                            for(int i=0; i<ncache; ++i) {
+                                int idc = grid.ncoarse + ic*grid.ngridmax + g_list[i];
+                                tmp_f[i] = grid.uold(idc, iv_f);
+                            }
+                            write_rec(tmp_f.data(), ncache * 8);
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
 void RamsesWriter::write_particles(const AmrGrid& grid, const SnapshotInfo& info) {
     std::ofstream file(filename_, std::ios::binary);
     auto write_rec = [&](const void* data, size_t size) { 

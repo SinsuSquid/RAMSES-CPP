@@ -49,9 +49,15 @@ class GCovParser:
                     else:
                         count = 0    # Line is executable but not covered, possibly due to preprocessor directives
                 elif count.endswith("*"):  # Branch execution
-                    count = int(count[:-1])
+                    try:
+                        count = int(count[:-1])
+                    except ValueError:
+                        continue
                 else:
-                    count = int(count)
+                    try:
+                        count = int(count)
+                    except ValueError:
+                        continue
 
                 line_number = int(line_number)
                 # Aggregate counts and keep line content
@@ -108,17 +114,17 @@ class GCovParser:
             with open(output_file, 'w') as file:
                 file.write(f"Source: {source_file}\n")
                 for line_number, (count, line_content, directories) in sorted(coverage.items()):
-                    # put back gcov synthax, for easier visual identification of unexecuted code
-                    if count==0 or count=='#':
-                        count="#####"
-                    #file.write(f"{count:>6}: {line_number:>6}: {line_content:<120}: {', '.join(directories)}\n")
-                    file.write(f"{count:>12}: {line_number:>6}: {line_content}\n")
-
                     # gather stats for file
                     if count!='-':
                         num_lines_tot = num_lines_tot+1
                         if isinstance(count, int) and count>0:
                             num_lines_exec = num_lines_exec+1
+
+                    # put back gcov synthax, for easier visual identification of unexecuted code
+                    if count==0 or count=='#':
+                        count="#####"
+                    #file.write(f"{count:>6}: {line_number:>6}: {line_content:<120}: {', '.join(directories)}\n")
+                    file.write(f"{count:>12}: {line_number:>6}: {line_content}\n")
 
             # print stats on current file and add to total
             if num_lines_tot>0:
@@ -127,7 +133,10 @@ class GCovParser:
                 full_code_tot = full_code_tot + num_lines_tot
                 full_code_coverage = full_code_coverage + num_lines_exec
 
-        coverage = 100*full_code_coverage/full_code_tot
+        if full_code_tot > 0:
+            coverage = 100*full_code_coverage/full_code_tot
+        else:
+            coverage = 0.0
         print(f"Total code coverage {coverage:.2f}% ({full_code_coverage}/{full_code_tot})", file=f)
         print(f"\033[92mTotal code coverage {coverage:.2f}% ({full_code_coverage}/{full_code_tot})\033[0m")
         print("Coverage statistics writen to file:",report_filename)

@@ -79,6 +79,7 @@ done
 TEST_DIRECTORY=$(pwd);                    # The test suite directory
 BASE_DIRECTORY="${TEST_DIRECTORY}/.."; # The main RAMSES directory
 BIN_DIRECTORY="${BASE_DIRECTORY}/build";    # Use build/ for RAMSES-CPP
+RETURN_TO_BIN="cd ${BIN_DIRECTORY}";
 VISU_DIR="${TEST_DIRECTORY}/visu";        # The visualization directory
 
 export PYTHONPATH=${VISU_DIR}:$PYTHONPATH;
@@ -288,6 +289,9 @@ for ((i=0;i<$ntests;i++)); do
       fi
    done
    CMAKE_FLAGS="-DRAMSES_NDIM=${ndim} -DRAMSES_USE_MHD=OFF -DRAMSES_USE_RT=OFF -DRAMSES_NENER=0 ";
+   if ${COVERAGE}; then
+      CMAKE_FLAGS="${CMAKE_FLAGS} -DCMAKE_CXX_FLAGS=--coverage -DCMAKE_EXE_LINKER_FLAGS=--coverage ";
+   fi
    for ((k=0;k<$nflags;k++)); do
       if [[ ${flag_split[$k]} == *"="* ]]; then
          key=$(echo ${flag_split[$k]} | cut -d '=' -f1);
@@ -335,7 +339,7 @@ for ((i=0;i<$ntests;i++)); do
       }
       function run_test
       {
-         (${RUN_TEST_BASE}${ndim}d ${rawname[i]}.nml 2>&1 | tee -a ${LOGFILE})
+         (timeout 5m ${RUN_TEST_BASE}${ndim}d ${rawname[i]}.nml 2>&1 | tee -a ${LOGFILE})
       }
    else
       function run_before_test
@@ -344,7 +348,7 @@ for ((i=0;i<$ntests;i++)); do
       }
       function run_test
       {
-         (${RUN_TEST_BASE}${ndim}d ${rawname[i]}.nml >> ${LOGFILE} 2>&1)
+         (timeout 5m ${RUN_TEST_BASE}${ndim}d ${rawname[i]}.nml >> ${LOGFILE} 2>&1)
       }
    fi
    echo "Running test:" | tee -a $LOGFILE;
@@ -416,10 +420,17 @@ for ((i=0;i<$ntests;i++)); do
 
    # move coverage files to test dir
    if ${COVERAGE} ; then
-      $RETURN_TO_BIN;
-      gcov *.gcno > coverage_stats.txt
-      cd -
-      mv ${BIN_DIRECTORY}/*.gc* .
+      find ${BIN_DIRECTORY} -name "*.gcno" | while read f; do
+         fdir=$(dirname "$f")
+         fname=$(basename "$f")
+         (cd "$fdir" && gcov "$fname" > /dev/null 2>&1)
+         unique_prefix="${fdir//\//#}#"
+         for g in "${fdir}"/*.gcov; do
+            if [ -f "$g" ]; then
+               mv "$g" "./${unique_prefix}$(basename "$g")"
+            fi
+         done
+      done > coverage_stats.txt 2>&1
    fi
 done
 
