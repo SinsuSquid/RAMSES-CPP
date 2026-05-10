@@ -2,12 +2,12 @@
 
 This document tracks the major milestones and architectural shifts during the migration from legacy RAMSES (Fortran) to the modern C++17 distributed engine.
 
-## 🚩 Phase 23: Final Optimization and Parity (Current)
-- **Multi-Dimensional Libraries:** Refactored CMake to build `ramses_lib_1d`, `2d`, and `3d` simultaneously, ensuring macro consistency across the entire call stack.
-- **BIT-PERFECT I/O:** Fully aligned `RamsesWriter` binary records with Fortran unformatted I/O. Corrected record padding and metadata offsets for full compatibility with `visu_ramses.py`.
-- **Numerical Stability:** Fixed a critical "Ghost Grid" bug where restricted child data was being overwritten by stale parent buffers.
-- **Watchdog Mandate:** Integrated `timeout` safety rules into the testing workflow to handle numerical stalls.
-- **Unified Level Indexing:** Synchronized AMR tree traversal to use 1-based indexing for parity with Fortran neighbors.
+## 🚩 Phase 25: Stability & EOS Refinement (Current) ✨
+- **Barotropic EOS Suite:** Implemented full support for Isothermal, Polytrope, and Double Polytrope EOS models. Pressure is now correctly recovered from density when `barotropic_eos` is enabled.
+- **Poisson Stability Fix:** Integrated the Poisson solve into level-specific `amr_step` to match legacy timing. Added mean density subtraction for stable closed-box simulations.
+- **Linear Potential Prolongation:** Replaced naive prolongation with linear interpolation using parent forces, preventing exponential potential growth.
+- **Unified Courant Step:** Consolidated global timestep logic into a barotropic-aware `HydroSolver` method, eliminating redundancy and instability.
+- **Infrastructure Overhaul:** Fixed `multi_gcov_aggregator.py` for multi-dimensional builds and integrated `timeout` safety into `run_test_suite.sh`.
 
 ## 🚩 Phase 24: New Physics & Parity (Completed)
 - **Relativistic Hydrodynamics (RHD):** Ported `legacy/rhd/` to create a modern `RhdSolver`. Implemented Newton-Raphson primitive recovery and HLLC/HLL/LLF solvers with 'TM' EOS support.
