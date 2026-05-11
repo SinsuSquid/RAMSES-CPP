@@ -355,6 +355,10 @@ void RamsesWriter::write_particles(const AmrGrid& grid, const SnapshotInfo& info
         std::vector<double> mp_buf(npart); for (int i = 0; i < npart; ++i) mp_buf[i] = grid.mp[i]; write_rec(mp_buf.data(), npart * 8);
         std::vector<int32_t> idp_buf(npart); for (int i = 0; i < npart; ++i) idp_buf[i] = (int32_t)grid.idp[i]; write_rec(idp_buf.data(), npart * 4);
         std::vector<int32_t> levp_buf(npart); for (int i = 0; i < npart; ++i) levp_buf[i] = (int32_t)grid.levelp[i]; write_rec(levp_buf.data(), npart * 4);
+        std::vector<int32_t> fam_buf(npart); for (int i = 0; i < npart; ++i) fam_buf[i] = (int32_t)grid.family[i]; write_rec(fam_buf.data(), npart * 4);
+        std::vector<int32_t> tag_buf(npart); for (int i = 0; i < npart; ++i) tag_buf[i] = (int32_t)grid.tag[i]; write_rec(tag_buf.data(), npart * 4);
+        std::vector<double> tp_buf(npart); for (int i = 0; i < npart; ++i) tp_buf[i] = grid.tp[i]; write_rec(tp_buf.data(), npart * 8);
+        std::vector<double> zp_buf(npart); for (int i = 0; i < npart; ++i) zp_buf[i] = grid.zp[i]; write_rec(zp_buf.data(), npart * 8);
     }
 }
 
@@ -367,6 +371,10 @@ void RamsesWriter::write_particles_descriptor(const AmrGrid& grid, const Snapsho
     file << ivar++ << ", mass, double" << std::endl;
     file << ivar++ << ", identity, int" << std::endl;
     file << ivar++ << ", level, int" << std::endl;
+    file << ivar++ << ", family, int" << std::endl;
+    file << ivar++ << ", tag, int" << std::endl;
+    file << ivar++ << ", birth_time, double" << std::endl;
+    file << ivar++ << ", metallicity, double" << std::endl;
 }
 
 void RamsesWriter::write_grav(const AmrGrid& grid, const SnapshotInfo& info) {

@@ -15,7 +15,7 @@ ncontrol=1
 &OUTPUT_PARAMS
 noutput=5	!  not used
 tout=1.      	!  (using units_time)
-tend=0.51    	!  active
+tend=1e-5    	!  active
 delta_tout=0.5 	!  active
 /
 

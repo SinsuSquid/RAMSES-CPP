@@ -54,13 +54,14 @@ void Simulation::initialize(const std::string& nml_path) {
     if (RAMSES_NENER > 0) nener_ = RAMSES_NENER;
 #endif
 
-    int npassive = config_.get_int("hydro_params", "nmetals", 0);
-    npassive = config_.get_int("hydro_params", "npassive", npassive);
+    int nmetals = config_.get_int("hydro_params", "nmetals", 0);
+    int npassive = config_.get_int("hydro_params", "npassive", nmetals);
+
 #ifdef RAMSES_NPSCAL
-    if (RAMSES_NPSCAL > 0) npassive = std::max(npassive, (int)RAMSES_NPSCAL);
+    if (RAMSES_NPSCAL > 0 && npassive == 0) npassive = (int)RAMSES_NPSCAL;
 #endif
 #ifdef RAMSES_NMETALS
-    if (RAMSES_NMETALS > 0) npassive = std::max(npassive, (int)RAMSES_NMETALS);
+    if (RAMSES_NMETALS > 0 && npassive == 0) npassive = (int)RAMSES_NMETALS;
 #endif
 
     int nvar = NDIM + 2 + nener_ + npassive;
@@ -453,14 +454,17 @@ void Simulation::dump_snapshot(int iout) {
         std::stringstream ss; ss << dir << "/" << prefix << "_" << std::setfill('0') << std::setw(5) << iout << ext << std::setfill('0') << std::setw(5) << 1;
         return ss.str();
     };
-    RamsesWriter(get_path("amr", ".out")).write_amr(grid_, info);
-    RamsesWriter(get_path("hydro", ".out")).write_hydro(grid_, info);
-    RamsesWriter(get_path("grav", ".out")).write_grav(grid_, info);
+    RamsesWriter(get_path(\"amr\", \".out\")).write_amr(grid_, info);
+    RamsesWriter(get_path(\"hydro\", \".out\")).write_hydro(grid_, info);
+    RamsesWriter(get_path(\"grav\", \".out\")).write_grav(grid_, info);
     if (grid_.npart > 0) {
-        RamsesWriter(get_path("part", ".out")).write_particles(grid_, info);
-        RamsesWriter(dir + "/part_file_descriptor.txt").write_particles_descriptor(grid_, info);
+        RamsesWriter(get_path(\"part\", \".out\")).write_particles(grid_, info);
     }
-#ifdef RT
+    // Always write descriptor if we have particle system
+    RamsesWriter(dir + \"/part_file_descriptor.txt\").write_particles_descriptor(grid_, info);
+
+    #ifdef RT
+
     int nGroups = rt_->get_nGroups();
     if (nGroups > 0) {
         RamsesWriter(get_path("rt", ".out")).write_rt(grid_, info, nGroups, rt_->get_nIons(), rt_->get_c_speed());
