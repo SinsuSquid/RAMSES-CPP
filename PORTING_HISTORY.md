@@ -32,6 +32,19 @@ This document tracks the major milestones and architectural shifts during the mi
 - **Infrastructure Overhaul:** Fixed `multi_gcov_aggregator.py` for multi-dimensional builds and integrated `timeout` safety into `run_test_suite.sh`.
 - **Dynamic AMR Refinement (Phase 25) (Completed) 🔄:** Ported runtime grid adaptation logic (`flag_fine`, `make_grid_fine`, `remove_grid_fine`) into `Simulation::amr_step`. Implemented 1D gradient flagging and `smooth_fine` expansion buffers, enabling the simulation to track moving features (like the advection pulse) at maximum resolution dynamically. ✨💖🚀
 
+## 🚩 Phase 32: Cell Center Fix & Full AMR Tree Growth (Completed) 🎯
+- **Critical Bug: `get_cell_center` Dimension Fix:** Discovered that `AmrGrid::get_cell_center` was computing garbage y/z coordinates for 1D (and z for 2D) simulations by reading uninitialized `xg` entries for unused dimensions. The fix defaults inactive dimensions to `0.5 * boxlen`, which is the center of the unit box. This was the root cause of broken initial conditions — all cells appeared to be inside the high-density region, preventing gradient-based refinement from triggering.
+- **Coarse Neighbor Logic:** Replaced the placeholder `get_nbor_cells_coarse` (which returned boundary markers) with proper periodic neighbor indexing using coordinate math, enabling cross-cell gradient computation at the coarsest level.
+- **Neighbor Grid Linking in `make_grid_fine`:** Added a full neighbor-linking pass after grid creation, so newly created octs at level N+1 can correctly identify their sibling and cousin grids for ghost zone exchanges and gradient computation.
+- **Initializer Loop Fix:** Moved `initializer_->apply_all()` inside the per-level refinement loop so that each newly created level gets properly initialized before gradient flagging at the next level.
+- **`cpu_map` Global Init:** Changed default `cpu_map` initialization from 0 to `myid` so all cells are visible to the output reader regardless of when they were created.
+- **Result:** AMR tree now grows from level 2 to level 10 (matching Fortran), initial conditions correctly show the density step function, and gradient-based refinement properly cascades through all levels.
+
+## 🚩 Phase 31: Testing Infrastructure Integration & Segfault Fix (Completed)
+- **Test Suite CMake Integration:** Updated `tests/run_test_suite.sh` to natively compile RAMSES-CPP using CMake, mapping Fortran flags (`EXEC`, `NDIM`, `SOLVER`) to CMake flags (`-DRAMSES_NDIM`, `-DRAMSES_USE_MHD`).
+- **Rule Relaxation:** Updated `GEMINI.md` to explicitly allow modifying `.sh` files inside `tests/` based on user approval.
+- **TreeUpdater Segfault Fix:** Diagnosed and fixed a segmentation fault in `TreeUpdater::smooth_fine` where `nbor` array values (which represent neighbor cell indices) were incorrectly treated as grid indices, causing `std::vector` out-of-bounds assertions. Refactored the neighbor lookup logic to properly use `AmrGrid::get_nbor_cells`.
+- **Print Optimization:** Fixed a console spam issue in `HydroSolver::hydro_step` by adding a static print guard for `slope_type`.
 ## 🚩 Phase 24: New Physics & Parity (Completed)
 - **Relativistic Hydrodynamics (RHD):** Ported `legacy/rhd/` to create a modern `RhdSolver`. Implemented Newton-Raphson primitive recovery and HLLC/HLL/LLF solvers with 'TM' EOS support.
 - **Turbulence Driving:** Ported forcing routines from `legacy/turb/`. Implemented `TurbulenceSolver` with Mode-Sum spectral driving as a robust, dependency-free fallback.

@@ -158,8 +158,8 @@ void Simulation::initialize(const std::string& nml_path) {
     real_t eb2 = config_.get_double("refine_params", "err_grad_b2", -1.0);
 
     for (int ipass = 1; ipass <= 2; ++ipass) {
-        initializer_->apply_all();
         for (int il = 1; il < levelmax; ++il) {
+            initializer_->apply_all(); // Ensure current level is initialized
             updater_.flag_fine(il, ed, ep, ev, eb2, {}, nexpand_[il]);
             updater_.make_grid_fine(il);
             updater_.remove_grid_fine(il);

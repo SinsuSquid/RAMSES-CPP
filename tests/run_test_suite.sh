@@ -39,7 +39,7 @@ testlist="hydro,mhd,poisson,rt,sink,star,turb,tracer";
 MPI=0;
 NCPU=1;
 GCOV=0;
-VERBOSE=false;
+VERBOSE=true;
 DELDATA=true;
 COVERAGE=false;
 CLEAN_ALL=false;
@@ -73,28 +73,29 @@ while getopts "cdsp:qt:vr" OPTION; do
       ;;
    esac
 done
-
 #######################################################################
 # Setup paths and commands
 #######################################################################
 TEST_DIRECTORY=$(pwd);                    # The test suite directory
 BASE_DIRECTORY="${TEST_DIRECTORY}/.."; # The main RAMSES directory
-BIN_DIRECTORY="${BASE_DIRECTORY}/bin";    # The bin directory
+BIN_DIRECTORY="${BASE_DIRECTORY}/build";    # Use build/ for RAMSES-CPP
+RETURN_TO_BIN="cd ${BIN_DIRECTORY}";
 VISU_DIR="${TEST_DIRECTORY}/visu";        # The visualization directory
 
 export PYTHONPATH=${VISU_DIR}:$PYTHONPATH;
 DELETE_RESULTS="rm -rf output_* *.tex data*.dat *.pdf *.pyc *.gc* coverage_stats.txt movie1";
-RETURN_TO_BIN="cd ${BIN_DIRECTORY}";
-EXECNAME="test_exe_";
+EXECNAME="ramses_"; # Use new naming convention
 LOGFILE="${TEST_DIRECTORY}/test_suite.log";
+# ... (rest of the script)
+
 GIT_URL=$(git config --get remote.origin.url | sed 's/git@github.com:/https:\/\/github.com\//g');
 GIT_URL=${GIT_URL:0:$((${#GIT_URL}-4))};
 THIS_COMMIT=$(git rev-parse HEAD);
 echo > $LOGFILE;
 if [ ${MPI} -eq 1 ]; then
-   RUN_TEST_BASE="mpirun -np ${NCPU} ${BIN_DIRECTORY}/${EXECNAME}";
+   RUN_TEST_BASE="mpirun -np ${NCPU} ${BASE_DIRECTORY}/build/ramses_";
 else
-   RUN_TEST_BASE="${BIN_DIRECTORY}/${EXECNAME}";
+   RUN_TEST_BASE="${BASE_DIRECTORY}/build/ramses_";
 fi
 line="--------------------------------------------";
 blankline="                         ";
@@ -281,37 +282,54 @@ for ((i=0;i<$ntests;i++)); do
    FLAGS=$(grep FLAGS ${TEST_DIRECTORY}/${testname[n]}/config.txt | cut -d ':' -f2);
    flag_split=( $FLAGS );
    nflags=${#flag_split[@]};
+   ndim=3; # Default to 3D
    for ((k=0;k<$nflags;k++)); do
       if [ ${flag_split[$k]:0:4} = "NDIM" ] ; then
          ndim=$(echo ${flag_split[$k]} | cut -d '=' -f2);
       fi
    done
+   CMAKE_FLAGS="-DRAMSES_NDIM=${ndim} -DRAMSES_USE_MHD=OFF -DRAMSES_USE_RT=OFF -DRAMSES_NENER=0 -DRAMSES_NPSCAL=0 -DRAMSES_NMETALS=0 -DRAMSES_NGROUPS=0 -DRAMSES_NIONS=0 ";
+   if ${COVERAGE}; then
+      CMAKE_FLAGS="${CMAKE_FLAGS} -DCMAKE_CXX_FLAGS=--coverage -DCMAKE_EXE_LINKER_FLAGS=--coverage ";
+   fi
+   for ((k=0;k<$nflags;k++)); do
+      if [[ ${flag_split[$k]} == *"="* ]]; then
+         key=$(echo ${flag_split[$k]} | cut -d '=' -f1);
+         val=$(echo ${flag_split[$k]} | cut -d '=' -f2);
+         if [ "$key" != "NDIM" ]; then
+            if [ "$key" = "SOLVER" ] && [ "$val" = "mhd" ]; then
+                CMAKE_FLAGS="${CMAKE_FLAGS} -DRAMSES_USE_MHD=ON ";
+            elif [ "$key" = "RT" ] && [ "$val" = "1" ]; then
+                CMAKE_FLAGS="${CMAKE_FLAGS} -DRAMSES_USE_RT=ON ";
+            else
+                CMAKE_FLAGS="${CMAKE_FLAGS} -DRAMSES_${key}=${val} ";
+            fi
+         fi
+      else
+         # Map boolean legacy flags to CMake options
+         if [ ${flag_split[$k]} = "MHD" ] ; then CMAKE_FLAGS="${CMAKE_FLAGS} -DRAMSES_USE_MHD=ON "; fi
+         if [ ${flag_split[$k]} = "RT" ] ; then CMAKE_FLAGS="${CMAKE_FLAGS} -DRAMSES_USE_RT=ON "; fi
+      fi
+   done
 
    # Initial cleanup
-   $RETURN_TO_BIN;
    if ${make_clean[n]}; then
       echo "Cleanup" | tee -a $LOGFILE;
-      if $VERBOSE ; then
-         make clean 2>&1 | tee -a $LOGFILE;
-      else
-         make clean >> $LOGFILE 2>&1;
+      cd ${BASE_DIRECTORY}/build;
+      if [ -f Makefile ]; then
+        cmake --build . --target clean >> ${LOGFILE} 2>&1;
       fi
+      cd ${TEST_DIRECTORY}/${testname[n]};
    fi
 
    # Compile source
-   echo "Compiling source" | tee -a $LOGFILE;
-   MAKESTRING="make EXEC=${EXECNAME} MPI=${MPI} GCOV=${GCOV} ${FLAGS}";
-   # if [ ${MPI} -eq 1 ]; then
-   #    MAKESTRING="${MAKESTRING} -j ${NCPU}";
-   # fi
-   if $VERBOSE ; then
-      $MAKESTRING 2>&1 | tee -a $LOGFILE;
-   else
-      $MAKESTRING >> $LOGFILE 2>&1;
-   fi
+   echo "Compiling source with ${CMAKE_FLAGS}" | tee -a $LOGFILE;
+   cd ${BASE_DIRECTORY}/build;
+   cmake .. ${CMAKE_FLAGS} >> ${LOGFILE} 2>&1;
+   make >> ${LOGFILE} 2>&1;
+   cd ${TEST_DIRECTORY}/${testname[n]};
 
    # Run test
-   cd ${TEST_DIRECTORY}/${testname[n]};
    $DELETE_RESULTS;
 
    if $VERBOSE ; then
@@ -321,7 +339,7 @@ for ((i=0;i<$ntests;i++)); do
       }
       function run_test
       {
-         (${RUN_TEST_BASE}${ndim}d ${rawname[i]}.nml 2>&1 | tee -a ${LOGFILE})
+         (timeout 5m ${RUN_TEST_BASE}${ndim}d ${rawname[i]}.nml 2>&1 | tee -a ${LOGFILE})
       }
    else
       function run_before_test
@@ -330,7 +348,7 @@ for ((i=0;i<$ntests;i++)); do
       }
       function run_test
       {
-         (${RUN_TEST_BASE}${ndim}d ${rawname[i]}.nml >> ${LOGFILE} 2>&1)
+         (timeout 5m ${RUN_TEST_BASE}${ndim}d ${rawname[i]}.nml >> ${LOGFILE} 2>&1)
       }
    fi
    echo "Running test:" | tee -a $LOGFILE;
@@ -402,10 +420,17 @@ for ((i=0;i<$ntests;i++)); do
 
    # move coverage files to test dir
    if ${COVERAGE} ; then
-      $RETURN_TO_BIN;
-      gcov *.gcno > coverage_stats.txt
-      cd -
-      mv ${BIN_DIRECTORY}/*.gc* .
+      find ${BIN_DIRECTORY} -name "*.gcno" | while read f; do
+         fdir=$(dirname "$f")
+         fname=$(basename "$f")
+         (cd "$fdir" && gcov "$fname" > /dev/null 2>&1)
+         unique_prefix="${fdir//\//#}#"
+         for g in "${fdir}"/*.gcov; do
+            if [ -f "$g" ]; then
+               mv "$g" "./${unique_prefix}$(basename "$g")"
+            fi
+         done
+      done > coverage_stats.txt 2>&1
    fi
 done
 

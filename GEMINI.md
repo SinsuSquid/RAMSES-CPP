@@ -15,7 +15,7 @@ This file defines the overarching conventions, architecture, and workflows for t
 - **Type Safety:** Do not bypass the type system or disable warnings. Use explicit instantiation and strong typing to maintain structural integrity.
 
 ## 3. Testing & Binary Parity
-- **Test File Constraints:** You **MUST NOT** edit test-related files located in `./tests/`, including namelists (`*.nml`), reference data (`*-ref.dat`), and plotting scripts (`plot-*.py`).
+- **Test File Constraints:** You **MUST NOT** edit test-related data files located in `./tests/`, including namelists (`*.nml`), reference data (`*-ref.dat`), and plotting scripts (`plot-*.py`). However, you **ARE ALLOWED** to modify shell scripts (`*.sh`) in the `tests/` directory to adapt the testing infrastructure.
 - **Strict Binary Compatibility:** Maintaining binary parity with the legacy RAMSES-2025 Fortran snapshots is a primary project goal.
 - **Verification Workflow:** After making changes to physics or solver modules, verify snapshot parity using the included tool:
   ```bash

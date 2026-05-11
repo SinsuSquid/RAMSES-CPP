@@ -161,7 +161,7 @@ void RamsesWriter::write_hydro(const AmrGrid& grid, const SnapshotInfo& info) {
     double gamma_val = grid.gamma; write_rec(&gamma_val, 8);
 
     real_t smallr = 1e-10;
-
+    
     // Fine levels
     for (int il = 1; il <= grid.nlevelmax; ++il) {
         for (int icpu = 1; icpu <= grid.ncpu + grid.nboundary; ++icpu) {

@@ -102,8 +102,47 @@ void TreeUpdater::make_grid_fine(int ilevel) {
                 grid_.uold(id_child + 1, iv) = u2[isc-1][iv-1];
                 grid_.unew(id_child + 1, iv) = u2[isc-1][iv-1];
             }
+            grid_.cpu_map[id_child] = myid;
         }
         grid_.add_to_level_list(new_ig, ilevel + 1);
+    }
+
+    // Link neighbors for all grids at the new level (Phase 31.6)
+    int ig_child = grid_.get_headl(myid, ilevel + 1);
+    while (ig_child > 0) {
+        int id_p = grid_.father[ig_child - 1];
+        int ig_p = (id_p > grid_.ncoarse) ? ((id_p - 1 - grid_.ncoarse) % grid_.ngridmax) + 1 : 0;
+        int ic_p = (id_p > grid_.ncoarse) ? ((id_p - 1 - grid_.ncoarse) / grid_.ngridmax) + 1 : id_p;
+
+        int ign_p[7] = {0};
+        if (ig_p > 0) {
+            grid_.get_nbor_grids(ig_p, ign_p);
+        } else {
+            // Coarse parent: simplified neighbor logic
+            int icn_p[6]; grid_.get_nbor_cells_coarse(id_p, icn_p);
+            ign_p[0] = 0; 
+            // In 1D, coarse neighbors are handled by specialized logic
+            // For now, let's assume get_nbor_grids handles coarse if ncoarse=1
+        }
+
+        for (int idim = 0; idim < NDIM; ++idim) {
+            for (int inbor = 0; inbor < 2; ++inbor) {
+                int ic_nb_p = constants::jjj[idim][inbor][ic_p - 1];
+                int ig_nb_p = ign_p[constants::iii[idim][inbor][ic_p - 1]];
+                int idc_nb_p;
+                if (ig_nb_p == 0) { // Same parent grid or coarse
+                    if (ig_p > 0) idc_nb_p = grid_.ncoarse + (ic_nb_p - 1) * grid_.ngridmax + ig_p;
+                    else idc_nb_p = ic_nb_p; // Coarse
+                } else { // Neighbor parent grid
+                    idc_nb_p = grid_.ncoarse + (ic_nb_p - 1) * grid_.ngridmax + ig_nb_p;
+                }
+                
+                if (idc_nb_p > 0 && idc_nb_p <= grid_.ncell) {
+                    grid_.nbor[(idim * 2 + inbor) * grid_.ngridmax + ig_child - 1] = grid_.son[idc_nb_p - 1];
+                }
+            }
+        }
+        ig_child = grid_.next[ig_child - 1];
     }
 }
 
@@ -155,23 +194,24 @@ void TreeUpdater::smooth_fine(int ilevel) {
 
     int ig = grid_.get_headl(myid, ilevel);
     while (ig > 0) {
+        int ign[7];
+        grid_.get_nbor_grids(ig, ign);
         for (int ic = 1; ic <= n2d; ++ic) {
             int idc = grid_.ncoarse + (ic - 1) * ngridmax + ig - 1;
             if (grid_.flag1[idc] == 0) {
-                // Check neighbors in 1D/2D/3D
-                bool has_flagged_nbor = false;
-                for (int idim = 0; idim < NDIM; ++idim) {
-                    for (int side = 0; side < 2; ++side) {
-                        int inbor = grid_.nbor[(idim * 2 + side) * ngridmax + ig - 1];
-                        if (inbor > 0) {
-                            for (int jc = 1; jc <= n2d; ++jc) {
-                                int idc_n = grid_.ncoarse + (jc - 1) * ngridmax + inbor - 1;
-                                if (grid_.flag1[idc_n] == 1) has_flagged_nbor = true;
-                            }
+                int icn_nb[6];
+                grid_.get_nbor_cells(ign, ic, icn_nb, ig);
+                int num_flagged_nbors = 0;
+                for (int inbor = 0; inbor < 2 * NDIM; ++inbor) {
+                    int neighbor_cell = icn_nb[inbor];
+                    if (neighbor_cell > 0 && neighbor_cell <= grid_.ncell) {
+                        if (grid_.flag1[neighbor_cell - 1] == 1) {
+                            num_flagged_nbors++;
                         }
                     }
                 }
-                if (has_flagged_nbor) grid_.flag2[idc] = 1;
+                // Step 1 logic: flag if at least 1 neighbor is flagged
+                if (num_flagged_nbors > 0) grid_.flag2[idc] = 1;
             }
         }
         ig = grid_.next[ig - 1];
@@ -191,27 +231,49 @@ void TreeUpdater::flag_fine(int ilevel, real_t ed, real_t ep, real_t ev, real_t 
     if (ilevel == 1) {
         for (int i = 0; i < (int)grid_.ncell; ++i) grid_.flag1[i] = 0;
         for (int i = 1; i <= grid_.ncoarse; ++i) {
+            grid_.cpu_map[i-1] = myid;
             if (ilevel < lmin) { grid_.flag1[i-1] = 1; }
-            else if (NDIM == 1 && ed > 0 && i > 1 && i < grid_.ncoarse) {
-                real_t dL = grid_.uold(i - 1, 1), dR = grid_.uold(i + 1, 1), dC = grid_.uold(i, 1);
-                if (std::abs(dR - dL) / dC > ed) grid_.flag1[i-1] = 1;
-            }
-            else if (NDIM > 1 && ed > 0 && grid_.uold(i, 1) > ed) {
-                grid_.flag1[i-1] = 1;
+            else if (ed > 0) {
+                real_t dC = grid_.uold(i, 1);
+                real_t error = 0.0;
+                for (int idim = 0; idim < NDIM; ++idim) {
+                    int nx_dim = (idim == 0) ? grid_.nx : ((idim == 1) ? grid_.ny : grid_.nz);
+                    int nskip = (idim == 0) ? 1 : ((idim == 1) ? grid_.nx : grid_.nx * grid_.ny);
+                    int id_l = i - nskip; if (id_l < 1) id_l += nx_dim * nskip; // simplified periodic
+                    int id_r = i + nskip; if (id_r > grid_.ncoarse) id_r -= nx_dim * nskip;
+                    real_t dL = grid_.uold(id_l, 1), dR = grid_.uold(id_r, 1);
+                    real_t cur_err = 2.0 * std::max(
+                        std::abs(dR - dC) / (dR + dC + 1e-10),
+                        std::abs(dC - dL) / (dC + dL + 1e-10)
+                    );
+                    error = std::max(error, cur_err);
+                }
+                if (error > ed) grid_.flag1[i-1] = 1;
             }
         }
     } else {
         int ig = grid_.get_headl(myid, ilevel);
         while (ig > 0) {
+            int ign[7]; grid_.get_nbor_grids(ig, ign);
             for (int ic = 1; ic <= n2d; ++ic) {
                 int idc = grid_.ncoarse + (ic - 1) * grid_.ngridmax + ig - 1;
                 if (ilevel < lmin) { grid_.flag1[idc] = 1; }
-                else if (NDIM == 1 && ed > 0) {
+                else if (ed > 0) {
                     real_t dC = grid_.uold(idc + 1, 1);
-                    if (dC > 1.1) grid_.flag1[idc] = 1; 
-                }
-                else if (NDIM > 1 && ed > 0 && grid_.uold(idc + 1, 1) > ed) {
-                    grid_.flag1[idc] = 1;
+                    int icn_nb[6]; grid_.get_nbor_cells(ign, ic, icn_nb, ig);
+                    real_t error = 0.0;
+                    for (int idim = 0; idim < NDIM; ++idim) {
+                        int id_l = icn_nb[idim*2];
+                        int id_r = icn_nb[idim*2+1];
+                        real_t dL = (id_l > 0 && id_l <= grid_.ncell) ? grid_.uold(id_l, 1) : dC;
+                        real_t dR = (id_r > 0 && id_r <= grid_.ncell) ? grid_.uold(id_r, 1) : dC;
+                        real_t cur_err = 2.0 * std::max(
+                            std::abs(dR - dC) / (dR + dC + 1e-10),
+                            std::abs(dC - dL) / (dC + dL + 1e-10)
+                        );
+                        error = std::max(error, cur_err);
+                    }
+                    if (error > ed) grid_.flag1[idc] = 1;
                 }
             }
             ig = grid_.next[ig - 1];

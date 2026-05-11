@@ -28,7 +28,7 @@ void AmrGrid::allocate(int nx_val, int ny_val, int nz_val, int ngridmax_val, int
     nbor.assign(6 * ngridmax, 0);
     flag1.assign(ncell, 0);
     flag2.assign(ncell, 0);
-    cpu_map.assign(ncell, 0);
+    cpu_map.assign(ncell, MpiManager::instance().rank() + 1);
 
     xg.assign(3 * ngridmax, 0.0);
     rho.assign(ncell, 0.0);
@@ -186,14 +186,16 @@ void AmrGrid::synchronize_level_counts() {
 }
 
 void AmrGrid::get_cell_center(int icell, real_t xc[3]) const {
+    // Default: center of box for unused dimensions
+    xc[0] = 0.5 * boxlen; xc[1] = 0.5 * boxlen; xc[2] = 0.5 * boxlen;
     if (icell <= ncoarse) {
         int idx = icell - 1;
         int iz = idx / (nx * ny); idx %= (nx * ny);
         int iy = idx / nx; int ix = idx % nx;
         real_t dx_coarse = boxlen / std::max({nx, ny, nz});
         xc[0] = (ix + 0.5) * dx_coarse;
-        xc[1] = (iy + 0.5) * dx_coarse;
-        xc[2] = (iz + 0.5) * dx_coarse;
+        if (NDIM > 1) xc[1] = (iy + 0.5) * dx_coarse;
+        if (NDIM > 2) xc[2] = (iz + 0.5) * dx_coarse;
     } else {
         int ig = ((icell - ncoarse - 1) % ngridmax) + 1;
         int ic = ((icell - ncoarse - 1) / ngridmax) + 1;
@@ -213,7 +215,9 @@ void AmrGrid::get_cell_center(int icell, real_t xc[3]) const {
         }
         real_t dx = boxlen / (real_t)(nx * (1 << level));
         real_t scale = boxlen / (real_t)nx;
-        for(int d=0; d<3; ++d) xc[d] = xg[d * ngridmax + ig - 1] * scale + (real_t)(ixyz[d] - 0.5) * dx;
+        // Only compute coordinates for active dimensions; unused dims default to 0.5*boxlen
+        xc[0] = 0.5 * boxlen; xc[1] = 0.5 * boxlen; xc[2] = 0.5 * boxlen;
+        for(int d=0; d<NDIM; ++d) xc[d] = xg[d * ngridmax + ig - 1] * scale + (real_t)(ixyz[d] - 0.5) * dx;
     }
 }
 
@@ -303,10 +307,29 @@ void AmrGrid::get_27_cell_neighbors(int icell, int nbors[27]) const {
 void AmrGrid::get_nbor_cells_coarse(int icell, int icn[6]) const {
     for (int i = 0; i < 6; ++i) icn[i] = 0;
     if (icell <= 0 || icell > ncoarse) return;
-    // Simple coarse neighbor logic for Nx*Ny*Nz grids
-    // This is placeholder logic; full RAMSES coarse neighbors use a linked list or coordinate math
-    // For now, return boundaries as negative indices
-    for (int i = 0; i < 6; ++i) icn[i] = - (i + 1);
+    
+    int idx = icell - 1;
+    int iz = idx / (nx * ny); idx %= (nx * ny);
+    int iy = idx / nx; int ix = idx % nx;
+
+    // Direct neighbor indexing with periodic boundaries
+    auto get_idx = [&](int x, int y, int z) {
+        int rx = (x + nx) % nx;
+        int ry = (y + ny) % ny;
+        int rz = (z + nz) % nz;
+        return rz * nx * ny + ry * nx + rx + 1;
+    };
+
+    icn[0] = get_idx(ix - 1, iy, iz);
+    icn[1] = get_idx(ix + 1, iy, iz);
+    if (NDIM > 1) {
+        icn[2] = get_idx(ix, iy - 1, iz);
+        icn[3] = get_idx(ix, iy + 1, iz);
+    }
+    if (NDIM > 2) {
+        icn[4] = get_idx(ix, iy, iz - 1);
+        icn[5] = get_idx(ix, iy, iz + 1);
+    }
 }
 
 } // namespace ramses
