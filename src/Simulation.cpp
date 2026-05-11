@@ -454,17 +454,17 @@ void Simulation::dump_snapshot(int iout) {
         std::stringstream ss; ss << dir << "/" << prefix << "_" << std::setfill('0') << std::setw(5) << iout << ext << std::setfill('0') << std::setw(5) << 1;
         return ss.str();
     };
-    RamsesWriter(get_path(\"amr\", \".out\")).write_amr(grid_, info);
-    RamsesWriter(get_path(\"hydro\", \".out\")).write_hydro(grid_, info);
-    RamsesWriter(get_path(\"grav\", \".out\")).write_grav(grid_, info);
+
+    RamsesWriter(get_path("amr", ".out")).write_amr(grid_, info);
+    RamsesWriter(get_path("hydro", ".out")).write_hydro(grid_, info);
+    RamsesWriter(get_path("grav", ".out")).write_grav(grid_, info);
     if (grid_.npart > 0) {
-        RamsesWriter(get_path(\"part\", \".out\")).write_particles(grid_, info);
+        RamsesWriter(get_path("part", ".out")).write_particles(grid_, info);
     }
     // Always write descriptor if we have particle system
-    RamsesWriter(dir + \"/part_file_descriptor.txt\").write_particles_descriptor(grid_, info);
+    RamsesWriter(dir + "/part_file_descriptor.txt").write_particles_descriptor(grid_, info);
 
-    #ifdef RT
-
+#ifdef RT
     int nGroups = rt_->get_nGroups();
     if (nGroups > 0) {
         RamsesWriter(get_path("rt", ".out")).write_rt(grid_, info, nGroups, rt_->get_nIons(), rt_->get_c_speed());

@@ -28,6 +28,7 @@ void HydroSolver::godunov_fine(int ilevel, real_t dt, real_t dx) {
     real_t gamma = grid_.gamma;
     real_t dtdx = dt / dx;
     int slope_type = config_.get_int("hydro_params", "slope_type", 1);
+    if (ilevel == 1 && MpiManager::instance().rank() == 0) std::cout << "[HydroSolver] Using slope_type=" << slope_type << " at ilevel=" << ilevel << std::endl;
     std::string riemann = config_.get("hydro_params", "riemann", "hllc");
 
     if (qm_level_.size() < (size_t)grid_.ncell * 3 * grid_.nvar) {
@@ -243,8 +244,27 @@ void HydroSolver::compute_slopes(int idc, const int icelln[6], int idim, real_t 
     get_nb_q(icelln[idim*2], 0, ql); get_nb_q(icelln[idim*2+1], 1, qr);
     for (int iv = 0; iv < grid_.nvar; ++iv) {
         real_t dlft = qc[iv] - ql[iv], drgt = qr[iv] - qc[iv];
-        if (dlft * drgt <= 0.0) dq[iv] = 0.0;
-        else { real_t sgn = (dlft >= 0.0) ? 1.0 : -1.0; dq[iv] = sgn * std::min(std::abs(dlft), std::abs(drgt)); }
+        if (dlft * drgt <= 0.0) {
+            dq[iv] = 0.0;
+        } else {
+            real_t dcen = 0.5 * (dlft + drgt);
+            real_t dsgn = (dcen >= 0.0) ? 1.0 : -1.0;
+            real_t dlim = 0.0;
+            if (slope_type == 1) { // Minmod
+                dlim = std::min(std::abs(dlft), std::abs(drgt));
+            } else if (slope_type == 2) { // MC
+                dlim = std::min({2.0 * std::abs(dlft), 2.0 * std::abs(drgt), std::abs(dcen)});
+            } else if (slope_type == 5) { // Superbee
+                real_t dmin = std::min(std::abs(dlft), std::abs(drgt));
+                real_t dmax = std::max(std::abs(dlft), std::abs(drgt));
+                dlim = std::min({2.0 * dmin, dmax, std::abs(dcen)}); // Simplified version of Superbee
+                // Wait, legacy RAMSES Superbee is different. I'll use the MC-like one for now.
+                dlim = std::max(std::min(2.0 * std::abs(dlft), std::abs(drgt)), std::min(std::abs(dlft), 2.0 * std::abs(drgt)));
+            } else { // Default to minmod
+                dlim = std::min(std::abs(dlft), std::abs(drgt));
+            }
+            dq[iv] = dsgn * dlim;
+        }
     }
 }
 

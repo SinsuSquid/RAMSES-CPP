@@ -78,7 +78,7 @@ void Initializer::region_condinit(int ilevel) {
     auto apply_to_cell = [&](int idc, real_t x, real_t y, real_t z) {
         for (int ir = 0; ir < nreg; ++ir) {
             bool in_reg = false;
-            if (reg_type[ir] == "cube") {
+            if (reg_type[ir] == "cube" || reg_type[ir] == "square") {
                 if (std::abs(x - x_c[ir]) <= 0.5 * lx[ir] + 1e-10 &&
                     std::abs(y - y_c[ir]) <= 0.5 * ly[ir] + 1e-10 &&
                     std::abs(z - z_c[ir]) <= 0.5 * lz[ir] + 1e-10) in_reg = true;

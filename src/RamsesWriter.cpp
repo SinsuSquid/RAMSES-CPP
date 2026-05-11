@@ -32,7 +32,7 @@ void RamsesWriter::write_amr(const AmrGrid& grid, const SnapshotInfo& info) {
     int32_t nboundary = (int32_t)grid.nboundary; write_rec(&nboundary, 4);
     int32_t ngrid_tot = 0; for(int l=1; l<=grid.nlevelmax; ++l) { for(int c=1; c<=grid.ncpu; ++c) ngrid_tot += grid.numbl(c, l); }
     write_rec(&ngrid_tot, 4);
-    double boxlen_val = params::boxlen; write_rec(&boxlen_val, 8);
+    double boxlen_val = params::boxlen / (double)grid.nx; write_rec(&boxlen_val, 8);
     
     // 9-14. Time and Units
     int32_t nout_rec[3] = {(int32_t)info.noutput, (int32_t)info.iout, (int32_t)info.iout};
@@ -212,7 +212,7 @@ void RamsesWriter::write_header(const AmrGrid& grid, const SnapshotInfo& info) {
     file << "nstep_coarse= " << info.nstep_coarse << std::endl;
     file << "noutput     = " << info.noutput << std::endl;
     file << "time        = " << std::scientific << std::setprecision(16) << info.t << std::endl;
-    file << "boxlen      = " << params::boxlen << std::endl;
+    file << "boxlen      = " << std::scientific << std::setprecision(16) << params::boxlen / (double)grid.nx << std::endl;
     file << "omega_m     = " << info.omega_m << std::endl;
     file << "omega_l     = " << info.omega_l << std::endl;
     file << "omega_k     = " << info.omega_k << std::endl;

@@ -288,7 +288,7 @@ for ((i=0;i<$ntests;i++)); do
          ndim=$(echo ${flag_split[$k]} | cut -d '=' -f2);
       fi
    done
-   CMAKE_FLAGS="-DRAMSES_NDIM=${ndim} -DRAMSES_USE_MHD=OFF -DRAMSES_USE_RT=OFF -DRAMSES_NENER=0 ";
+   CMAKE_FLAGS="-DRAMSES_NDIM=${ndim} -DRAMSES_USE_MHD=OFF -DRAMSES_USE_RT=OFF -DRAMSES_NENER=0 -DRAMSES_NPSCAL=0 -DRAMSES_NMETALS=0 -DRAMSES_NGROUPS=0 -DRAMSES_NIONS=0 ";
    if ${COVERAGE}; then
       CMAKE_FLAGS="${CMAKE_FLAGS} -DCMAKE_CXX_FLAGS=--coverage -DCMAKE_EXE_LINKER_FLAGS=--coverage ";
    fi
@@ -326,7 +326,7 @@ for ((i=0;i<$ntests;i++)); do
    echo "Compiling source with ${CMAKE_FLAGS}" | tee -a $LOGFILE;
    cd ${BASE_DIRECTORY}/build;
    cmake .. ${CMAKE_FLAGS} >> ${LOGFILE} 2>&1;
-   make -j$(nproc) >> ${LOGFILE} 2>&1;
+   make >> ${LOGFILE} 2>&1;
    cd ${TEST_DIRECTORY}/${testname[n]};
 
    # Run test
