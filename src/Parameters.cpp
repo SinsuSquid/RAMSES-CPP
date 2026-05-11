@@ -16,6 +16,8 @@ namespace params {
     real_t boxlen = 1.0;
     int iriemann = 1; // Default to LLF
 
+    real_t t = 0.0;
+    real_t tend = 1e10;
     int nstepmax = 1000000;
     real_t trestart = 0.0;
 
@@ -27,6 +29,13 @@ namespace params {
     real_t units_energy = 1.0;
     real_t units_pressure = 1.0;
     real_t units_number_density = 1.0;
+
+    real_t scale_l = 1.0;
+    real_t scale_t = 1.0;
+    real_t scale_d = 1.0;
+    real_t scale_v = 1.0;
+    real_t scale_nH = 1.0;
+    real_t scale_T2 = 1.0;
 
     bool barotropic_eos = false;
     std::string barotropic_eos_form = "isothermal";

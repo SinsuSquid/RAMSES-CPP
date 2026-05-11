@@ -7,6 +7,9 @@
 #include "TurbulenceSolver.hpp"
 #include "SinkSolver.hpp"
 #include "StarSolver.hpp"
+#include "FeedbackSolver.hpp"
+#include "ClumpFinder.hpp"
+#include "LightCone.hpp"
 #include "MhdSolver.hpp"
 #include "PoissonSolver.hpp"
 #include "TreeUpdater.hpp"
@@ -43,6 +46,9 @@ private:
     std::unique_ptr<TurbulenceSolver> turb_;
     std::unique_ptr<SinkSolver> sink_;
     std::unique_ptr<StarSolver> star_;
+    std::unique_ptr<FeedbackSolver> feedback_;
+    std::unique_ptr<ClumpFinder> clump_finder_;
+    std::unique_ptr<LightCone> light_cone_;
     std::unique_ptr<MhdSolver> mhd_;
     std::unique_ptr<RtSolver> rt_;
     std::unique_ptr<PoissonSolver> poisson_;

@@ -2,6 +2,22 @@
 
 This document tracks the major milestones and architectural shifts during the migration from legacy RAMSES (Fortran) to the modern C++17 distributed engine.
 
+## 🚩 Phase 30: Modern Infrastructure (Completed) 📂
+- **HDF5 Snapshot Suite:** Implemented `Hdf5Writer` with support for hierarchical data groups matching legacy RAMSES schema.
+- **Cosmological Light-cone:** Ported light-cone shell identification and particle crossing logic from `legacy/amr/light_cone.f90`.
+
+## 🚩 Phase 29: Clump Finder (Completed) 🏔️
+- **Structure Identification:** Ported the iterative peak-finding and saddle-point merging algorithm from `legacy/pm/clump_finder.f90`.
+- **Property Computation:** Implemented mass, COM, and velocity dispersion calculations for identified clumps.
+
+## 🚩 Phase 28: Advanced Sink Dynamics (Completed) 🕳️
+- **Coordinated Creation:** Implemented the `clump_finder`-linked sink creation logic.
+- **Sink Merging:** Added robust sink-sink merging and angular momentum transfer during accretion.
+
+## 🚩 Phase 27: Feedback & Metals (Completed) 💥
+- **Supernova Feedback:** Implemented thermal energy injection and delayed cooling (Phase 25) logic.
+- **Metal Enrichment:** Added `imetal` passive scalar field and yield-based metal injection from star particles.
+
 ## 🚩 Phase 26: Star Formation (StarSolver) (Completed) 🌟
 - **Star Spawning Engine:** Implemented `StarSolver` with Poisson-based particle creation logic from `legacy/pm/star_formation.f90`.
 - **Deterministic RNG:** Integrated a grid-based spatial hashing seed for `std::mt19937`, ensuring bit-perfect reproducibility across any MPI rank configuration.

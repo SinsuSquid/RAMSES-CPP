@@ -41,6 +41,10 @@ void AmrGrid::allocate(int nx_val, int ny_val, int nz_val, int ngridmax_val, int
     xp.assign(3 * npartmax, 0.0);
     vp.assign(3 * npartmax, 0.0);
     mp.assign(npartmax, 0.0);
+    tp.assign(npartmax, 0.0);
+    zp.assign(npartmax, 0.0);
+    family.assign(npartmax, 0);
+    tag.assign(npartmax, 0);
     idp.assign(npartmax, 0);
     levelp.assign(npartmax, 0);
     headp.assign(ngridmax, 0);
@@ -78,6 +82,10 @@ void AmrGrid::resize_particles(int new_npartmax) {
     xp = std::move(new_xp);
     vp = std::move(new_vp);
     mp.resize(new_npartmax, 0.0);
+    tp.resize(new_npartmax, 0.0);
+    zp.resize(new_npartmax, 0.0);
+    family.resize(new_npartmax, 0);
+    tag.resize(new_npartmax, 0);
     idp.resize(new_npartmax, 0);
     levelp.resize(new_npartmax, 0);
     

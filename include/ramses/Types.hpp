@@ -29,6 +29,13 @@ using i4b_t = int32_t;
     using i8b_t = int32_t;
 #endif
 
+// Particle Families
+constexpr uint8_t FAM_DM = 1;
+constexpr uint8_t FAM_STAR = 2;
+constexpr uint8_t FAM_SINK = 3;
+constexpr uint8_t FAM_CLOUD = 4;
+constexpr uint8_t FAM_DEBRIS = 5;
+
 } // namespace ramses
 
 #endif // RAMSES_TYPES_HPP

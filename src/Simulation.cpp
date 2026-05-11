@@ -28,6 +28,9 @@ Simulation::Simulation() : grid_(),
     turb_ = create_turbulence_solver(grid_, config_);
     sink_ = create_sink_solver(grid_, config_);
     star_ = create_star_solver(grid_, config_);
+    feedback_ = create_feedback_solver(grid_, config_);
+    clump_finder_ = create_clump_finder(grid_, config_);
+    light_cone_ = create_light_cone(grid_, config_);
     mhd_ = create_mhd_solver(grid_, config_);
     rt_ = create_rt_solver(grid_, config_);
     poisson_ = create_poisson_solver(grid_, config_);
@@ -97,6 +100,13 @@ void Simulation::initialize(const std::string& nml_path) {
     p::units_energy = p::units_mass * std::pow(p::units_velocity, 2);
     p::units_pressure = p::units_density * std::pow(p::units_velocity, 2);
     p::units_number_density = p::units_density / (p::mu_gas * constants::mH);
+
+    p::scale_l = p::units_length;
+    p::scale_t = p::units_time;
+    p::scale_d = p::units_density;
+    p::scale_v = p::units_velocity;
+    p::scale_nH = p::units_number_density;
+    p::scale_T2 = p::units_pressure / p::units_density; // Simplified scale for T/mu
 
     bool do_poisson = config_.get_bool("run_params", "poisson", false);
 
@@ -168,6 +178,7 @@ void Simulation::initialize(const std::string& nml_path) {
     particles_->relink();
 
     tend_ = config_.get_double("run_params", "tend", 1e10);
+    p::tend = tend_;
     nstepmax_ = config_.get_int("run_params", "nstepmax", 1000000);
     ncontrol_ = config_.get_int("run_params", "ncontrol", 1);
     
@@ -221,7 +232,7 @@ void Simulation::run() {
         real_t dt = global_min_dt;
         if (iout < (int)tout_.size()) dt = std::min(dt, tout_[iout] - t_);
 
-        amr_step(1, dt); t_ += dt; nstep_++;
+        amr_step(1, dt); t_ += dt; p::t = t_; nstep_++;
 
         if (config_.get_bool("run_params", "cosmo", false)) {
             real_t texp;
@@ -330,6 +341,14 @@ void Simulation::amr_step(int ilevel, real_t dt, int icount) {
         star_->form_stars(ilevel, dt);
     }
 
+    if (config_.get_bool("run_params", "star", false) && config_.get_double("feedback_params", "eta_sn", 0.0) > 0) {
+        feedback_->thermal_feedback(ilevel, dt);
+    }
+
+    if (config_.get_bool("run_params", "cosmo", false) && config_.get_bool("run_params", "lightcone", false)) {
+        light_cone_->update(t_, dt);
+    }
+
     if (do_poisson) {
         hydro_->add_gravity_source_terms(ilevel, dt);
         particles_->move_fine(ilevel, 0.5 * dt);
@@ -425,6 +444,11 @@ void Simulation::dump_snapshot(int iout) {
         info.omega_k = config_.get_double("cosmo_params", "omega_k", 0.0);
         info.h0 = config_.get_double("cosmo_params", "h0", 70.0);
     }
+
+    if (config_.get_bool("run_params", "clumpfind", false)) {
+        clump_finder_->find_clumps();
+    }
+
     auto get_path = [&](const std::string& prefix, const std::string& ext) -> std::string {
         std::stringstream ss; ss << dir << "/" << prefix << "_" << std::setfill('0') << std::setw(5) << iout << ext << std::setfill('0') << std::setw(5) << 1;
         return ss.str();

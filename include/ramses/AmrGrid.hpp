@@ -38,9 +38,14 @@ public:
 
     // Particles
     int npart = 0, npartmax = 0;
-    std::vector<real_t> xp, vp, mp;
+    std::vector<real_t> xp, vp, mp, tp, zp;
+    std::vector<uint8_t> family, tag;
     std::vector<int> idp, levelp, headp, nextp, prevp, tailp, numbp;
     int headp_free = 0, tailp_free = 0, numbp_free = 0;
+
+    // Field indices
+    int imetal = 0;
+    int idelay = 0;
 
     std::vector<int> ibound_min, ibound_max, jbound_min, jbound_max, kbound_min, kbound_max, bound_type;
 

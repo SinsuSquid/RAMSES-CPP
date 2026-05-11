@@ -29,6 +29,10 @@ namespace constants {
     // Physical constants (cgs)
     constexpr real_t kB = 1.380649e-16; // Boltzmann constant
     constexpr real_t mH = 1.6735575e-24; // Hydrogen mass
+    constexpr real_t Myr2sec = 3.15576e13;
+    constexpr real_t pc2cm = 3.08567758e18;
+    constexpr real_t M_sun = 1.9891e33;
+    constexpr real_t SN_energy = 1.0e51;
 
 } // namespace constants
 } // namespace ramses

@@ -16,6 +16,8 @@ struct Sink {
     real_t ang_mom[3];
     real_t acc_rate;
     int level;
+    real_t t_creation;
+    bool merged = false;
 };
 
 /**
@@ -29,6 +31,7 @@ public:
     void init();
     void create_sinks(int ilevel);
     void grow_sinks(int ilevel, real_t dt);
+    void merge_sinks();
     void synchronize_sinks();
 
 private:

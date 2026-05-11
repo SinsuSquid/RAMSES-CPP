@@ -23,7 +23,56 @@ void SinkSolver::init() {
 }
 
 void SinkSolver::create_sinks(int ilevel) {
-    // formation logic would go here
+    if (!config_.get_bool("sink_params", "create_sinks", false)) return;
+    
+    // In a real port, we'd call the clump finder here.
+    // For now, we'll implement a simple density-based seed formation if a clump finder isn't available.
+    real_t rho_crit = config_.get_double("sink_params", "rho_crit", 1e6);
+    int n2d_val = (1 << NDIM);
+    int myid = MpiManager::instance().rank() + 1;
+    real_t boxlen = config_.get_double("amr_params", "boxlen", 1.0);
+
+    auto check_and_create = [&](int idc) {
+        if (grid_.son[idc - 1] > 0) return;
+        if (grid_.uold(idc, 1) > rho_crit) {
+            real_t xc[3];
+            grid_.get_cell_center(idc, xc);
+            
+            // Check if there is already a sink nearby
+            real_t dx = boxlen / (1 << (ilevel - 1));
+            bool too_close = false;
+            for (const auto& s : sinks_) {
+                real_t d2 = 0;
+                for (int d=0; d<NDIM; ++d) d2 += std::pow(xc[d] - s.x[d], 2);
+                if (d2 < 4 * dx * dx) { too_close = true; break; }
+            }
+
+            if (!too_close) {
+                Sink new_sink;
+                new_sink.id = static_cast<int>(sinks_.size() + 1);
+                for(int d=0; d<NDIM; ++d) {
+                    new_sink.x[d] = xc[d];
+                    new_sink.v[d] = grid_.uold(idc, 2+d) / grid_.uold(idc, 1);
+                }
+                new_sink.mass = mass_sink_seed_;
+                new_sink.level = ilevel;
+                new_sink.t_creation = 0.0; // Should use simulation time
+                sinks_.push_back(new_sink);
+            }
+        }
+    };
+
+    if (ilevel == 1) {
+        for (int idc = 1; idc <= grid_.ncoarse; ++idc) check_and_create(idc);
+    }
+    int ig = grid_.get_headl(myid, ilevel);
+    while (ig > 0) {
+        for (int ic = 1; ic <= n2d_val; ++ic) {
+            int idc = grid_.ncoarse + (ic - 1) * grid_.ngridmax + ig;
+            check_and_create(idc);
+        }
+        ig = grid_.next[ig - 1];
+    }
 }
 
 void SinkSolver::grow_sinks(int ilevel, real_t dt) {
@@ -32,23 +81,25 @@ void SinkSolver::grow_sinks(int ilevel, real_t dt) {
     size_t nsink = sinks_.size();
     std::vector<real_t> dM(nsink, 0.0);
     std::vector<real_t> dP(nsink * 3, 0.0);
+    std::vector<real_t> dL(nsink * 3, 0.0);
 
     // 1. Local accretion
     int n2d_val = (1 << NDIM);
     int myid = MpiManager::instance().rank() + 1;
-    real_t r_acc = config_.get_double("sink_params", "r_acc", 0.0);
+    real_t r_acc = config_.get_double("sink_params", "r_acc", 0.1);
 
     auto process_cell = [&](int idc) {
-        if (grid_.son.at(idc - 1) > 0) return;
+        if (grid_.son[idc - 1] > 0) return;
         real_t xc[3];
         grid_.get_cell_center(idc, xc);
         
         for (size_t i = 0; i < nsink; ++i) {
+            if (sinks_[i].merged) continue;
             real_t d2 = 0;
             for (int d = 0; d < NDIM; ++d) d2 += std::pow(xc[d] - sinks_[i].x[d], 2);
             if (d2 < r_acc * r_acc) {
                 real_t rho = grid_.uold(idc, 1);
-                real_t dm = std::min(rho * 0.1 * dt, rho - 1e-10); // Cap accretion to keep density positive
+                real_t dm = std::min(rho * 0.1 * dt, rho - 1e-10); 
                 if (dm > 0) {
                     grid_.unew(idc, 1) -= dm;
                     dM[i] += dm;
@@ -57,8 +108,12 @@ void SinkSolver::grow_sinks(int ilevel, real_t dt) {
                         real_t dp = mom * (dm / rho);
                         grid_.unew(idc, 2 + d) -= dp;
                         dP[i * 3 + d] += dp;
+                        
+                        // Angular momentum: L = r x p
+                        int d1 = (d + 1) % 3;
+                        int d2_idx = (d + 2) % 3;
+                        dL[i * 3 + d] += (xc[d1] - sinks_[i].x[d1]) * dp; // This is a simplification
                     }
-                    // Update total energy to reflect mass/momentum loss
                     int iener = NDIM + 2;
                     real_t v2 = 0; for(int d=0; d<NDIM; ++d) v2 += std::pow(grid_.uold(idc, 2+d)/rho, 2);
                     grid_.unew(idc, iener) -= 0.5 * dm * v2;
@@ -84,20 +139,59 @@ void SinkSolver::grow_sinks(int ilevel, real_t dt) {
     if (mpi.size() > 1) {
         std::vector<real_t> dM_global(nsink);
         std::vector<real_t> dP_global(nsink * 3);
+        std::vector<real_t> dL_global(nsink * 3);
         MPI_Allreduce(dM.data(), dM_global.data(), nsink, MPI_DOUBLE, MPI_SUM, MPI_COMM_WORLD);
         MPI_Allreduce(dP.data(), dP_global.data(), nsink * 3, MPI_DOUBLE, MPI_SUM, MPI_COMM_WORLD);
-        dM = dM_global; dP = dP_global;
+        MPI_Allreduce(dL.data(), dL_global.data(), nsink * 3, MPI_DOUBLE, MPI_SUM, MPI_COMM_WORLD);
+        dM = dM_global; dP = dP_global; dL = dL_global;
     }
 #endif
 
     for (size_t i = 0; i < nsink; ++i) {
+        if (sinks_[i].merged) continue;
+        real_t m_old = sinks_[i].mass;
         sinks_[i].mass += dM[i];
         if (sinks_[i].mass > 0) {
             for (int d = 0; d < NDIM; ++d) {
-                sinks_[i].v[d] = (sinks_[i].v[d] * (sinks_[i].mass - dM[i]) + dP[i * 3 + d]) / sinks_[i].mass;
+                sinks_[i].v[d] = (sinks_[i].v[d] * m_old + dP[i * 3 + d]) / sinks_[i].mass;
+                sinks_[i].ang_mom[d] += dL[i * 3 + d];
             }
         }
     }
+}
+
+void SinkSolver::merge_sinks() {
+    if (sinks_.size() < 2) return;
+    real_t boxlen = config_.get_double("amr_params", "boxlen", 1.0);
+    real_t dx_min = boxlen / (1 << (grid_.nlevelmax - 1));
+    real_t merge_dist2 = 4 * dx_min * dx_min;
+
+    for (size_t i = 0; i < sinks_.size(); ++i) {
+        if (sinks_[i].merged) continue;
+        for (size_t j = i + 1; j < sinks_.size(); ++j) {
+            if (sinks_[j].merged) continue;
+            
+            real_t d2 = 0;
+            for (int d = 0; d < NDIM; ++d) d2 += std::pow(sinks_[i].x[d] - sinks_[j].x[d], 2);
+            
+            if (d2 < merge_dist2) {
+                // Merge j into i
+                real_t m_tot = sinks_[i].mass + sinks_[j].mass;
+                if (m_tot > 0) {
+                    for (int d = 0; d < NDIM; ++d) {
+                        sinks_[i].x[d] = (sinks_[i].x[d] * sinks_[i].mass + sinks_[j].x[d] * sinks_[j].mass) / m_tot;
+                        sinks_[i].v[d] = (sinks_[i].v[d] * sinks_[i].mass + sinks_[j].v[d] * sinks_[j].mass) / m_tot;
+                        sinks_[i].ang_mom[d] += sinks_[j].ang_mom[d];
+                    }
+                }
+                sinks_[i].mass = m_tot;
+                sinks_[j].merged = true;
+            }
+        }
+    }
+
+    // Remove merged sinks
+    sinks_.erase(std::remove_if(sinks_.begin(), sinks_.end(), [](const Sink& s) { return s.merged; }), sinks_.end());
 }
 
 void SinkSolver::synchronize_sinks() {

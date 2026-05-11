@@ -24,6 +24,8 @@ namespace params {
     extern int iriemann; // 1=llf, 2=hllc
 
     // Time step parameters
+    extern real_t t;
+    extern real_t tend;
     extern int nstepmax;
     extern real_t trestart;
 
@@ -36,6 +38,14 @@ namespace params {
     extern real_t units_energy;
     extern real_t units_pressure;
     extern real_t units_number_density;
+
+    // Scale factors for code units to cgs
+    extern real_t scale_l;
+    extern real_t scale_t;
+    extern real_t scale_d;
+    extern real_t scale_v;
+    extern real_t scale_nH;
+    extern real_t scale_T2;
 
     // Barotropic EOS parameters
     extern bool barotropic_eos;

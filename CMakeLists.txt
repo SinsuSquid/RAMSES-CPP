@@ -28,6 +28,11 @@ set(LIB_SRCS
     src/CoolingSolver.cpp
     src/TurbulenceSolver.cpp
     src/SinkSolver.cpp
+    src/StarSolver.cpp
+    src/FeedbackSolver.cpp
+    src/ClumpFinder.cpp
+    src/LightCone.cpp
+    src/Hdf5Writer.cpp
     src/HydroSolver.cpp
     src/RhdSolver.cpp
     src/Initializer.cpp
