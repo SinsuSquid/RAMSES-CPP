@@ -35,6 +35,7 @@ The engine uses a sophisticated `MpiManager` and `LoadBalancer` to distribute oc
 - **RhdSolver:** Relativistic hydrodynamics implementation with Newton-Raphson primitive recovery and 'TM' EOS support.
 - **TurbulenceSolver:** Stochastic forcing in Fourier space using mode-sum spectral driving.
 - **Sink Dynamics:** Robust MPI-aware sink particle creation and management using global reductions and broadcasts.
+- **StarSolver:** Gas-to-star conversion using Poisson statistics and a deterministic, grid-based RNG for bit-perfect reproducibility.
 
 ## 🚩 Future Roadmap (Phase 25+)
 To reach the ultimate goal of full RAMSES-2025 parity, the following modules are planned:

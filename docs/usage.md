@@ -24,7 +24,26 @@ The project uses the standard RAMSES namelist format. Key blocks include:
 - `&RUN_PARAMS`: Control the simulation lifecycle (`hydro`, `poisson`, `ncontrol`, etc.).
 - `&AMR_PARAMS`: Grid resolution and refinement (`nx,ny,nz`, `levelmin`, `levelmax`).
 - `&HYDRO_PARAMS`: Fluid physics settings (`gamma`, `riemann`, `slope_type`).
+- `&SF_PARAMS`: Star formation settings (`n_star`, `eps_star`, `m_star`).
 - `&RT_PARAMS`: Radiation groups and parameters.
+
+## Star Formation (StarSolver)
+
+To enable star formation, add `star=true` to the `&RUN_PARAMS` block.
+
+```fortran
+&RUN_PARAMS
+hydro=true
+poisson=true
+star=true
+/
+
+&SF_PARAMS
+n_star=0.1      ! SF density threshold [H/cc]
+eps_star=0.01   ! Efficiency per free-fall time
+m_star=1.5      ! Base star mass [Code units]
+/
+```
 
 ## Visualization and Analysis
 

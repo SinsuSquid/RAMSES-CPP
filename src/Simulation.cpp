@@ -27,6 +27,7 @@ Simulation::Simulation() : grid_(),
     cooling_ = create_cooling_solver(grid_, config_);
     turb_ = create_turbulence_solver(grid_, config_);
     sink_ = create_sink_solver(grid_, config_);
+    star_ = create_star_solver(grid_, config_);
     mhd_ = create_mhd_solver(grid_, config_);
     rt_ = create_rt_solver(grid_, config_);
     poisson_ = create_poisson_solver(grid_, config_);
@@ -323,6 +324,10 @@ void Simulation::amr_step(int ilevel, real_t dt, int icount) {
         sink_->create_sinks(ilevel);
         sink_->grow_sinks(ilevel, dt);
         sink_->synchronize_sinks();
+    }
+
+    if (config_.get_bool("run_params", "star", false)) {
+        star_->form_stars(ilevel, dt);
     }
 
     if (do_poisson) {

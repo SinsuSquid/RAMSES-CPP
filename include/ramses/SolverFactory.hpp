@@ -13,12 +13,15 @@
 #include "Initializer.hpp"
 #include <memory>
 
+#include "StarSolver.hpp"
+
 namespace ramses {
 
 std::unique_ptr<HydroSolver> create_hydro_solver(AmrGrid& grid, Config& config);
 std::unique_ptr<RhdSolver> create_rhd_solver(AmrGrid& grid, Config& config);
 std::unique_ptr<TurbulenceSolver> create_turbulence_solver(AmrGrid& grid, Config& config);
 std::unique_ptr<SinkSolver> create_sink_solver(AmrGrid& grid, Config& config);
+std::unique_ptr<StarSolver> create_star_solver(AmrGrid& grid, Config& config);
 std::unique_ptr<CoolingSolver> create_cooling_solver(AmrGrid& grid, Config& config);
 std::unique_ptr<MhdSolver> create_mhd_solver(AmrGrid& grid, Config& config);
 std::unique_ptr<RtSolver> create_rt_solver(AmrGrid& grid, Config& config);

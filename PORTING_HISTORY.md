@@ -2,7 +2,13 @@
 
 This document tracks the major milestones and architectural shifts during the migration from legacy RAMSES (Fortran) to the modern C++17 distributed engine.
 
-## 🚩 Phase 25: Stability & EOS Refinement (Current) ✨
+## 🚩 Phase 26: Star Formation (StarSolver) (Completed) 🌟
+- **Star Spawning Engine:** Implemented `StarSolver` with Poisson-based particle creation logic from `legacy/pm/star_formation.f90`.
+- **Deterministic RNG:** Integrated a grid-based spatial hashing seed for `std::mt19937`, ensuring bit-perfect reproducibility across any MPI rank configuration.
+- **Gas Depletion:** Implemented mass, momentum, and energy conservation during star spawning, with a 90% gas depletion safety cap.
+- **Simulation Integration:** Integrated `StarSolver` into `amr_step` with namelist control (`run_params: star`).
+
+## 🚩 Phase 25: Stability & EOS Refinement
 - **Barotropic EOS Suite:** Implemented full support for Isothermal, Polytrope, and Double Polytrope EOS models. Pressure is now correctly recovered from density when `barotropic_eos` is enabled.
 - **Poisson Stability Fix:** Integrated the Poisson solve into level-specific `amr_step` to match legacy timing. Added mean density subtraction for stable closed-box simulations.
 - **Linear Potential Prolongation:** Replaced naive prolongation with linear interpolation using parent forces, preventing exponential potential growth.

@@ -26,6 +26,12 @@ std::unique_ptr<SinkSolver> create_sink_solver(AmrGrid& grid, Config& config) {
 }
 #endif
 
+#ifndef RAMSES_HAS_PATCH_STAR
+std::unique_ptr<StarSolver> create_star_solver(AmrGrid& grid, Config& config) {
+    return std::make_unique<StarSolver>(grid, config);
+}
+#endif
+
 #ifndef RAMSES_HAS_PATCH_COOLING
 std::unique_ptr<CoolingSolver> create_cooling_solver(AmrGrid& grid, Config& config) {
     return std::make_unique<CoolingSolver>(grid, config);
