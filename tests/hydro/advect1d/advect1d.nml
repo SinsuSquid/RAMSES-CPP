@@ -9,9 +9,8 @@ ncontrol=10000
 /
 
 &AMR_PARAMS
-nx=50
-levelmin=2
-levelmax=2
+levelmin=4
+levelmax=10
 ngridmax=1000
 nexpand=1
 boxlen=1.0

@@ -30,6 +30,7 @@ This document tracks the major milestones and architectural shifts during the mi
 - **Linear Potential Prolongation:** Replaced naive prolongation with linear interpolation using parent forces, preventing exponential potential growth.
 - **Unified Courant Step:** Consolidated global timestep logic into a barotropic-aware `HydroSolver` method, eliminating redundancy and instability.
 - **Infrastructure Overhaul:** Fixed `multi_gcov_aggregator.py` for multi-dimensional builds and integrated `timeout` safety into `run_test_suite.sh`.
+- **Dynamic AMR Refinement (Phase 25) (Completed) 🔄:** Ported runtime grid adaptation logic (`flag_fine`, `make_grid_fine`, `remove_grid_fine`) into `Simulation::amr_step`. Implemented 1D gradient flagging and `smooth_fine` expansion buffers, enabling the simulation to track moving features (like the advection pulse) at maximum resolution dynamically. ✨💖🚀
 
 ## 🚩 Phase 24: New Physics & Parity (Completed)
 - **Relativistic Hydrodynamics (RHD):** Ported `legacy/rhd/` to create a modern `RhdSolver`. Implemented Newton-Raphson primitive recovery and HLLC/HLL/LLF solvers with 'TM' EOS support.

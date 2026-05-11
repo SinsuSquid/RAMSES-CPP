@@ -23,7 +23,7 @@ public:
     real_t gamma = 1.4;
 
     std::vector<int> headl_vec, taill_vec, numbl_vec;
-    std::vector<int> next, prev, father, son, nbor, flag1, cpu_map;
+    std::vector<int> next, prev, father, son, nbor, flag1, flag2, cpu_map;
     std::vector<real_t> xg, uold_vec, unew_vec;
     int headf, tailf, numbf;
 

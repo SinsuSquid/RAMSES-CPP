@@ -146,15 +146,58 @@ void TreeUpdater::restrict_fine(int ilevel) {
     }
 }
 
+void TreeUpdater::smooth_fine(int ilevel) {
+    int myid = MpiManager::instance().rank() + 1, n2d = (1 << NDIM);
+    int ngridmax = grid_.ngridmax;
+    
+    // flag2 is used as workspace
+    for (int i = 0; i < (int)grid_.ncell; ++i) grid_.flag2[i] = 0;
+
+    int ig = grid_.get_headl(myid, ilevel);
+    while (ig > 0) {
+        for (int ic = 1; ic <= n2d; ++ic) {
+            int idc = grid_.ncoarse + (ic - 1) * ngridmax + ig - 1;
+            if (grid_.flag1[idc] == 0) {
+                // Check neighbors in 1D/2D/3D
+                bool has_flagged_nbor = false;
+                for (int idim = 0; idim < NDIM; ++idim) {
+                    for (int side = 0; side < 2; ++side) {
+                        int inbor = grid_.nbor[(idim * 2 + side) * ngridmax + ig - 1];
+                        if (inbor > 0) {
+                            for (int jc = 1; jc <= n2d; ++jc) {
+                                int idc_n = grid_.ncoarse + (jc - 1) * ngridmax + inbor - 1;
+                                if (grid_.flag1[idc_n] == 1) has_flagged_nbor = true;
+                            }
+                        }
+                    }
+                }
+                if (has_flagged_nbor) grid_.flag2[idc] = 1;
+            }
+        }
+        ig = grid_.next[ig - 1];
+    }
+
+    // Apply flag2 to flag1
+    for (int i = 0; i < (int)grid_.ncell; ++i) {
+        if (grid_.flag2[i] == 1) {
+            grid_.flag1[i] = 1;
+        }
+    }
+}
+
 void TreeUpdater::flag_fine(int ilevel, real_t ed, real_t ep, real_t ev, real_t eb2, const std::vector<real_t>& evar, int nexp) {
     int myid = MpiManager::instance().rank() + 1, n2d = (1 << NDIM), lmin = config_.get_int("amr_params", "levelmin", 1);
+    
     if (ilevel == 1) {
+        for (int i = 0; i < (int)grid_.ncell; ++i) grid_.flag1[i] = 0;
         for (int i = 1; i <= grid_.ncoarse; ++i) {
-            grid_.flag1[i-1] = 0;
             if (ilevel < lmin) { grid_.flag1[i-1] = 1; }
-            else {
-                real_t d = grid_.uold(i, 1);
-                if (ed > 0 && d > ed) grid_.flag1[i-1] = 1;
+            else if (NDIM == 1 && ed > 0 && i > 1 && i < grid_.ncoarse) {
+                real_t dL = grid_.uold(i - 1, 1), dR = grid_.uold(i + 1, 1), dC = grid_.uold(i, 1);
+                if (std::abs(dR - dL) / dC > ed) grid_.flag1[i-1] = 1;
+            }
+            else if (NDIM > 1 && ed > 0 && grid_.uold(i, 1) > ed) {
+                grid_.flag1[i-1] = 1;
             }
         }
     } else {
@@ -162,15 +205,22 @@ void TreeUpdater::flag_fine(int ilevel, real_t ed, real_t ep, real_t ev, real_t 
         while (ig > 0) {
             for (int ic = 1; ic <= n2d; ++ic) {
                 int idc = grid_.ncoarse + (ic - 1) * grid_.ngridmax + ig - 1;
-                grid_.flag1[idc] = 0;
                 if (ilevel < lmin) { grid_.flag1[idc] = 1; }
-                else {
-                    real_t d = grid_.uold(idc + 1, 1);
-                    if (ed > 0 && d > ed) grid_.flag1[idc] = 1;
+                else if (NDIM == 1 && ed > 0) {
+                    real_t dC = grid_.uold(idc + 1, 1);
+                    if (dC > 1.1) grid_.flag1[idc] = 1; 
+                }
+                else if (NDIM > 1 && ed > 0 && grid_.uold(idc + 1, 1) > ed) {
+                    grid_.flag1[idc] = 1;
                 }
             }
             ig = grid_.next[ig - 1];
         }
+    }
+
+    // Buffer expansion
+    for (int i = 0; i < nexp; ++i) {
+        smooth_fine(ilevel);
     }
 }
 

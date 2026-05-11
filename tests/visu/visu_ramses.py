@@ -1,4 +1,3 @@
-import os
 import numpy as np
 import struct
 import math
@@ -48,8 +47,6 @@ def load_snapshot(nout, read_hydro=True, read_grav=False, read_rt=False):
                 info[sp[0].strip()] = eval(sp[1].strip())
             except NameError:
                 info[sp[0].strip()] = sp[1].strip()
-    
-    print("DEBUG: Parsed info keys:", info.keys())
 
     # Read the number of variables from the hydro_file_descriptor.txt
     hydrofile = infile+"/hydro_file_descriptor.txt"
@@ -104,15 +101,7 @@ def load_snapshot(nout, read_hydro=True, read_grav=False, read_rt=False):
     partinfofile = infile+"/header_"+infile.split("_")[-1]+".txt"
     info["particle_count"] = {}
     try:
-        # Open in binary mode to check if it's actually text or just garbage
-        with open(partinfofile, 'rb') as f:
-            raw_content = f.read()
-        
-        # If the file is small and looks like it could be binary garbage from RamsesWriter, skip it
-        if len(raw_content) > 0 and raw_content[0] < 32:
-             raise FileNotFoundError("Binary header detected, likely no particles.")
-
-        _lines = raw_content.decode('utf-8').splitlines()[1:-2]
+        _lines = open(partinfofile).readlines()[1:-2]
         Nparttot = 0
         for line in _lines:
             part_type, _tmp = line.split()
@@ -122,10 +111,9 @@ def load_snapshot(nout, read_hydro=True, read_grav=False, read_rt=False):
         info["particle_count"]["total"] = Nparttot
 
         particle_vars, particle_dtypes = read_descriptor(infile + "/part_file_descriptor.txt")
-    except (FileNotFoundError, UnicodeDecodeError, ValueError):
+    except FileNotFoundError:
         info["particle_count"]["total"] = 0
-        particle_vars = []
-        particle_dtypes = []
+        particle_vars, particle_dtypes = []
     npart_var = len(particle_vars)
     npart_read = 0
 
@@ -426,34 +414,31 @@ def load_snapshot(nout, read_hydro=True, read_grav=False, read_rt=False):
         # Read binary particle file
         if info["particle_count"]["total"] > 0:
             part_fname = generate_fname(nout,ftype="part",cpuid=k+1)
-            if os.path.exists(part_fname):
-                with open(part_fname, mode='rb') as part_file:
-                    partContent = part_file.read()
-                npart, = struct.unpack("i", partContent[28:32])
-                pcounts = info["particle_count"]
-                has_tracers = any(v for k, v in pcounts.items() if k.endswith("_tracer"))
-                # Offset to "mstar_tot"
-                offset = 72
-                if has_tracers:
-                    offset += struct.calcsize("4i")  # tracer_seed
+            with open(part_fname, mode='rb') as part_file:
+                partContent = part_file.read()
+            npart, = struct.unpack("i", partContent[28:32])
+            pcounts = info["particle_count"]
+            has_tracers = any(v for k, v in pcounts.items() if k.endswith("_tracer"))
+            # Offset to "mstar_tot"
+            offset = 72
+            if has_tracers:
+                offset += struct.calcsize("4i")  # tracer_seed
 
-                # Read mstar, mstar_lost
-                mstar, = struct.unpack("d", partContent[offset+4:offset+12])
-                offset += 4+8+4  # mstar
-                mstar_lost, = struct.unpack("d", partContent[offset+4:offset+12])
-                offset += 4+8+4  # mstar_lost
-                offset += 4+4+4  # nsink
-                offset += 4      # jump to beginning of record
+            # Read mstar, mstar_lost
+            mstar, = struct.unpack("d", partContent[offset+4:offset+12])
+            offset += 4+8+4  # mstar
+            mstar_lost, = struct.unpack("d", partContent[offset+4:offset+12])
+            offset += 4+8+4  # mstar_lost
+            offset += 4+4+4  # nsink
+            offset += 4      # jump to beginning of record
 
-                for ivar, var_dtype in enumerate(particle_dtypes):
-                    s = struct.calcsize(var_dtype)
-                    endPos = offset + s * npart
-                    part_data[npart_read:npart_read+npart, ivar] = struct.unpack("%s%s" % (npart, var_dtype), partContent[offset:endPos])
-                    offset = endPos + 8
+            for ivar, var_dtype in enumerate(particle_dtypes):
+                s = struct.calcsize(var_dtype)
+                endPos = offset + s * npart
+                part_data[npart_read:npart_read+npart, ivar] = struct.unpack("%s%s" % (npart, var_dtype), partContent[offset:endPos])
+                offset = endPos + 8
 
-                npart_read += npart
-            else:
-                mstar = mstar_lost = np.nan
+            npart_read += npart
         else:
             mstar = mstar_lost = np.nan
 

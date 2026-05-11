@@ -281,6 +281,20 @@ void Simulation::amr_step(int ilevel, real_t dt, int icount) {
         std::cout << " Entering amr_step(" << icount << ") for level " << ilevel << std::endl;
     }
 
+    // Dynamic Refinement (Phase 25)
+    if (ilevel < grid_.nlevelmax) {
+        real_t ed = config_.get_double("refine_params", "err_grad_d", -1.0);
+        real_t ep = config_.get_double("refine_params", "err_grad_p", -1.0);
+        real_t ev = config_.get_double("refine_params", "err_grad_v", -1.0);
+        real_t eb2 = config_.get_double("refine_params", "err_grad_b2", -1.0);
+        int nexp = config_.get_int("amr_params", "nexpand", 1);
+        
+        updater_.flag_fine(ilevel, ed, ep, ev, eb2, {}, nexp);
+        updater_.make_grid_fine(ilevel);
+        updater_.remove_grid_fine(ilevel);
+        grid_.synchronize_level_counts();
+    }
+
     real_t dx = p::boxlen / (real_t)(p::nx * (1 << (ilevel - 1)));
     bool do_poisson = config_.get_bool("run_params", "poisson", false);
 

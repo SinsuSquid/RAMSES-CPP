@@ -27,6 +27,7 @@ void AmrGrid::allocate(int nx_val, int ny_val, int nz_val, int ngridmax_val, int
     son.assign(ncell, 0);
     nbor.assign(6 * ngridmax, 0);
     flag1.assign(ncell, 0);
+    flag2.assign(ncell, 0);
     cpu_map.assign(ncell, 0);
 
     xg.assign(3 * ngridmax, 0.0);
