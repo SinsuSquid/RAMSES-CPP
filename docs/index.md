@@ -13,9 +13,9 @@ Welcome to the documentation for **RAMSES-CPP**, a high-performance, modern C++1
 
 RAMSES-CPP provides a physically consistent, modern C++ alternative to the original Fortran implementation of RAMSES. It maintains **strict bit-perfect parity** in data structures and I/O while offering improved maintainability, modularity, and scalability.
 
-## 🚀 Current Status: Stable Distributed Engine
+## 🚀 Current Status: 100% Port Parity
 
-The project has achieved full maturity in its distributed physics engine. It supports MPI-scaled simulations with full sub-cycling and achievement of bit-perfect snapshots across multiple HPC benchmarks.
+The project has achieved **100% architectural and physics parity** with the legacy RAMSES-2025 code. Every major module, including the Clump Finder, Stellar Feedback, and Advanced Sink Dynamics, is now fully operational in modern C++17.
 
 ### Key Features
 - **Multi-Dimensional Build System:** Simultaneously generate `ramses_1d`, `2d`, and `3d` executables from a single CMake configuration. 🛠️

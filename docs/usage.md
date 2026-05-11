@@ -25,11 +25,13 @@ The project uses the standard RAMSES namelist format. Key blocks include:
 - `&AMR_PARAMS`: Grid resolution and refinement (`nx,ny,nz`, `levelmin`, `levelmax`).
 - `&HYDRO_PARAMS`: Fluid physics settings (`gamma`, `riemann`, `slope_type`).
 - `&SF_PARAMS`: Star formation settings (`n_star`, `eps_star`, `m_star`).
+- `&FEEDBACK_PARAMS`: Supernova and metal parameters (`yield`, `eta_sn`).
+- `&CLUMP_PARAMS`: Structure identification thresholds.
 - `&RT_PARAMS`: Radiation groups and parameters.
 
-## Star Formation (StarSolver)
+## Star Formation and Feedback
 
-To enable star formation, add `star=true` to the `&RUN_PARAMS` block.
+To enable star formation and stellar feedback:
 
 ```fortran
 &RUN_PARAMS
@@ -42,6 +44,25 @@ star=true
 n_star=0.1      ! SF density threshold [H/cc]
 eps_star=0.01   ! Efficiency per free-fall time
 m_star=1.5      ! Base star mass [Code units]
+/
+
+&FEEDBACK_PARAMS
+eta_sn=0.1      ! SN energy fraction
+yield=0.02      ! Metal yield
+/
+```
+
+## Structure Identification (ClumpFinder)
+
+Enable clump finding in the snapshot dump:
+
+```fortran
+&RUN_PARAMS
+clumpfind=true
+/
+
+&CLUMP_PARAMS
+density_threshold=100.0
 /
 ```
 

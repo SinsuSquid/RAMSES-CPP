@@ -53,8 +53,8 @@ cd build && ./verify_ref <reference_snapshot> <local_snapshot>
 ## 🧠 Documentation
 Detailed guides are available in the `docs/` directory:
 - [Architecture & Design](./docs/architecture.md) - Deep dive into the polymorphic solver factory and AMR tree.
-- [MHD Module](./docs/mhd.md) - Magnetohydrodynamics implementation details.
-- [RT & Chemistry](./docs/mhd.md) - Radiation transport and non-equilibrium chemistry.
+- [Magnetohydrodynamics (MHD)](./docs/mhd.md) - Flux-CT and staggered grid details.
+- [Poisson Solver (Gravity)](./docs/poisson.md) - Multi-grid comoving self-gravity.
 - [Usage Guide](./docs/usage.md) - Namelist parameters and execution flags.
 
 ## 📜 History
