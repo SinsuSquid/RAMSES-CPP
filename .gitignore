@@ -47,6 +47,7 @@ tests/**/output_*/
 *.tex
 *.log
 **/cosmo_128/
+**/dwarf_galaxy/
 
 # Legacy codes
 legacy/
