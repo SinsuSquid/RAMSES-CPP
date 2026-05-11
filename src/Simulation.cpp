@@ -14,6 +14,7 @@
 #include <sys/stat.h>
 #include <cmath>
 #include <memory>
+#include <chrono>
 
 namespace ramses {
 
@@ -215,8 +216,22 @@ void Simulation::run() {
     int iout = 0;
     
     dump_snapshot(snapshot_count++);
+    bool verbose = config_.get_bool("run_params", "verbose", false);
 
+    if (MpiManager::instance().rank() == 0) {
+        std::cout << "Initial mesh structure" << std::endl;
+        for (int il = 1; il <= grid_.nlevelmax; ++il) {
+            int ngrids = grid_.count_grids_at_level(il);
+            if (ngrids > 0) {
+                std::cout << " Level " << std::setw(2) << il << " has " << std::setw(10) << ngrids << " grids" << std::endl;
+            }
+        }
+        std::cout << "Starting time integration" << std::endl;
+    }
+
+    auto t_start_loop = std::chrono::high_resolution_clock::now();
     while (t_ < tout_.back() && nstep_ < nstepmax_) {
+        auto t_step_start = std::chrono::high_resolution_clock::now();
         real_t min_dt = 1e10;
         for (int il = 1; il <= grid_.nlevelmax; ++il) {
             if (grid_.count_grids_at_level(il) == 0 && il > 1) continue;
@@ -245,7 +260,14 @@ void Simulation::run() {
         if (iout < (int)tout_.size() && t_ >= tout_[iout] - 1e-12 * t_) {
             dump_snapshot(snapshot_count++); iout++;
         }
-        if (nstep_ % ncontrol_ == 0) printf(" Step=%d t=%12.5e dt=%10.3e\n", nstep_, t_, dt);
+        if (nstep_ % ncontrol_ == 0) {
+            auto t_step_end = std::chrono::high_resolution_clock::now();
+            double duration = std::chrono::duration<double>(t_step_end - t_step_start).count();
+            double total_time = std::chrono::duration<double>(t_step_end - t_start_loop).count();
+            if (MpiManager::instance().rank() == 0) {
+                printf(" Step=%d t=%12.5e dt=%10.3e time_elapsed=%8.2fs total_time=%8.2fs\n", nstep_, t_, dt, duration, total_time);
+            }
+        }
     }
     dump_snapshot(snapshot_count);
 }
@@ -254,6 +276,10 @@ void Simulation::amr_step(int ilevel, real_t dt, int icount) {
     if (ilevel > grid_.nlevelmax) return;
     bool grids_exist = (ilevel == 1) || (grid_.count_grids_at_level(ilevel) > 0);
     if (!grids_exist) return;
+
+    if (config_.get_bool("run_params", "verbose", false) && MpiManager::instance().rank() == 0) {
+        std::cout << " Entering amr_step(" << icount << ") for level " << ilevel << std::endl;
+    }
 
     real_t dx = p::boxlen / (real_t)(p::nx * (1 << (ilevel - 1)));
     bool do_poisson = config_.get_bool("run_params", "poisson", false);

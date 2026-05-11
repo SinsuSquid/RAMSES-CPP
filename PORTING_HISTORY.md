@@ -35,7 +35,7 @@ This document tracks the major milestones and architectural shifts during the mi
 - **Relativistic Hydrodynamics (RHD):** Ported `legacy/rhd/` to create a modern `RhdSolver`. Implemented Newton-Raphson primitive recovery and HLLC/HLL/LLF solvers with 'TM' EOS support.
 - **Turbulence Driving:** Ported forcing routines from `legacy/turb/`. Implemented `TurbulenceSolver` with Mode-Sum spectral driving as a robust, dependency-free fallback.
 - **Sink Particle MPI Fix:** Implemented `SinkSolver` with robust cross-rank synchronization. Added `MPI_Allreduce` for accretion and `MPI_Bcast` for coordinated creation, resolving critical numerical stalls.
-- **BIT-PERFECT Alignment (24.1) (Completed):** Standardized `RamsesWriter` record ordering (`ilevel -> ibound -> ic -> ivar`) and grid coordinate scaling to match legacy RAMSES binary format exactly. Implemented Superbee slope limiter and fixed coordinate offsets in `visu_ramses` interaction.
+- **BIT-PERFECT Alignment (24.1) (Completed):** Standardized `RamsesWriter` record ordering (`ilevel -> ibound -> ic -> ivar`) and grid coordinate scaling to match legacy RAMSES binary format exactly. Implemented Superbee slope limiter and fixed coordinate offsets in `visu_ramses` interaction. **Standardized STDOUT** to include legacy-style mesh reports, step timing, and verbose level tracking.
 
 ## 🚩 Phase 23: Final Optimization and Parity
 - **MPI Manager:** Implemented centralized rank management and asynchronous buffer swaps.
