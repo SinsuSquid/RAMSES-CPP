@@ -35,6 +35,7 @@ constexpr uint8_t FAM_STAR = 2;
 constexpr uint8_t FAM_SINK = 3;
 constexpr uint8_t FAM_CLOUD = 4;
 constexpr uint8_t FAM_DEBRIS = 5;
+constexpr uint8_t FAM_TRACER = 6;
 
 } // namespace ramses
 

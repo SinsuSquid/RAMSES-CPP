@@ -93,6 +93,15 @@ void Simulation::initialize(const std::string& nml_path) {
     p::T_eos = config_.get_double("cooling_params", "T_eos", 10.0);
     p::mu_gas = config_.get_double("cooling_params", "mu_gas", 1.0);
 
+    // Tracer parameters
+    p::tracer = config_.get_bool("run_params", "tracer", false);
+    p::MC_tracer = config_.get_bool("tracer_params", "mc_tracer", false);
+    p::tracer_feed = config_.get_int("tracer_params", "tracer_feed", 0);
+    p::tracer_feed_fmt = config_.get("tracer_params", "tracer_feed_fmt", "inplace");
+    p::tracer_mass = config_.get_double("tracer_params", "tracer_mass", 0.0);
+    p::tracer_first_balance_part_per_cell = config_.get_int("tracer_params", "tracer_first_balance_part_per_cell", 0);
+    p::tracer_first_balance_levelmin = config_.get_int("tracer_params", "tracer_first_balance_levelmin", 0);
+
     // Physical units
     p::units_density = config_.get_double("units_params", "units_density", 1.0);
     p::units_time = config_.get_double("units_params", "units_time", 1.0);
@@ -115,6 +124,9 @@ void Simulation::initialize(const std::string& nml_path) {
     if (nparttot > 0) grid_.resize_particles(nparttot);
     hydro_->set_nener(nener_); hydro_->set_nvar_hydro(nvar);
     grid_.set_interpol_hook([this](const real_t u1[7][64], real_t u2[8][64]){ this->hydro_->interpol_hydro(u1, u2); });
+
+    initializer_->apply_all();
+    initializer_->init_tracers();
 
     nsubcycle_.assign(33, 1);
     std::string nsub_s = config_.get("run_params", "nsubcycle", "");

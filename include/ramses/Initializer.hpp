@@ -20,6 +20,7 @@ public:
     virtual void apply_all();
     virtual void region_condinit(int ilevel);
     virtual void load_grafic();
+    virtual void init_tracers();
 
 protected:
     AmrGrid& grid_;

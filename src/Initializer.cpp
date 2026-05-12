@@ -8,6 +8,7 @@
 #include <algorithm>
 #include <cmath>
 #include <sstream>
+#include <random>
 
 namespace ramses {
 
@@ -129,6 +130,76 @@ void Initializer::region_condinit(int ilevel) {
 
 void Initializer::load_grafic() {
     std::cout << "[Initializer] Loading Grafic ICs..." << std::endl;
+}
+
+void Initializer::init_tracers() {
+    namespace p = ramses::params;
+    if (!p::tracer) return;
+
+    if (p::tracer_feed_fmt == "inplace") {
+        if (MpiManager::instance().rank() == 0) {
+            std::cout << "[Initializer] Creating tracers 'inplace' based on gas density..." << std::endl;
+        }
+
+        int myid = MpiManager::instance().rank() + 1;
+        int n2d = (1 << NDIM);
+        
+        // Use a fixed seed for reproducible tracers
+        std::mt19937 gen(1337 + myid);
+        std::uniform_real_distribution<real_t> dis(0.0, 1.0);
+
+        for (int ilevel = p::levelmin; ilevel <= p::nlevelmax; ++ilevel) {
+            real_t dx = p::boxlen / (real_t)(p::nx * (1 << ilevel));
+            real_t vol = std::pow(dx, NDIM);
+
+            auto process_cell = [&](int idc) {
+                if (grid_.son[idc - 1] != 0) return;
+
+                real_t mass = grid_.uold(idc, 1) * vol;
+                if (p::tracer_mass <= 0) return;
+                real_t n_real = mass / p::tracer_mass;
+                int n_int = static_cast<int>(n_real);
+                if (dis(gen) < (n_real - n_int)) n_int++;
+
+                if (n_int > 0) {
+                    real_t xc[3];
+                    grid_.get_cell_center(idc, xc);
+                    for (int i = 0; i < n_int; ++i) {
+                        int ip = grid_.get_free_particle();
+                        if (ip == 0) {
+                            return;
+                        }
+                        for (int idim = 0; idim < NDIM; ++idim) {
+                            grid_.xp[idim * grid_.npartmax + ip - 1] = xc[idim];
+                            grid_.vp[idim * grid_.npartmax + ip - 1] = 0.0;
+                        }
+                        grid_.mp[ip - 1] = p::tracer_mass;
+                        grid_.levelp[ip - 1] = ilevel;
+                        grid_.family[ip - 1] = FAM_TRACER;
+                        grid_.tag[ip - 1] = 0;
+                        grid_.idp[ip - 1] = ip; // Temporary ID
+                    }
+                }
+            };
+
+            if (ilevel == p::levelmin) {
+                for (int i = 1; i <= grid_.ncoarse; ++i) process_cell(i);
+            }
+
+            int ig = grid_.get_headl(myid, ilevel);
+            while (ig > 0) {
+                for (int ic = 1; ic <= n2d; ++ic) {
+                    int idc = grid_.ncoarse + (ic - 1) * grid_.ngridmax + ig;
+                    process_cell(idc);
+                }
+                ig = grid_.next[ig - 1];
+            }
+        }
+    } else {
+        if (MpiManager::instance().rank() == 0) {
+            std::cout << "[Initializer] Warning: tracer_feed_fmt '" << p::tracer_feed_fmt << "' not implemented yet." << std::endl;
+        }
+    }
 }
 
 } // namespace ramses

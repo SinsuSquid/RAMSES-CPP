@@ -14,6 +14,7 @@ namespace params {
     extern bool pic;
     extern bool poisson;
     extern bool cosmo;
+    extern bool tracer;
 
     // Mesh parameters
     extern int nx, ny, nz;
@@ -54,6 +55,14 @@ namespace params {
     extern real_t polytrope_index;
     extern real_t T_eos;
     extern real_t mu_gas;
+
+    // Tracer parameters
+    extern bool MC_tracer;
+    extern int tracer_feed;
+    extern std::string tracer_feed_fmt;
+    extern real_t tracer_mass;
+    extern int tracer_first_balance_part_per_cell;
+    extern int tracer_first_balance_levelmin;
 
     // Constants derived from NDIM
     constexpr int twotondim = (1 << NDIM);

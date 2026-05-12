@@ -29,6 +29,8 @@ void ParticleSolver::assign_mass_fine(int ilevel) {
     int myid = MpiManager::instance().rank() + 1;
     for (int igrid = grid_.get_headl(myid, ilevel); igrid > 0; igrid = grid_.next[igrid - 1]) {
         for (int ip = grid_.headp[igrid - 1]; ip > 0; ip = grid_.nextp[ip - 1]) {
+            if (grid_.family[ip - 1] == FAM_TRACER) continue;
+
             real_t xp = grid_.xp[0 * grid_.npartmax + ip - 1];
             real_t yp = (NDIM > 1) ? grid_.xp[1 * grid_.npartmax + ip - 1] : 0.5 * params::boxlen;
             real_t zp = (NDIM > 2) ? grid_.xp[2 * grid_.npartmax + ip - 1] : 0.5 * params::boxlen;
@@ -160,9 +162,46 @@ void ParticleSolver::move_fine(int ilevel, real_t dt) {
                 interpolate(0, sy, sz, wx1 * wy2 * wz2); interpolate(sx, sy, sz, wx2 * wy2 * wz2);
             }
 
-            for (int idim = 1; idim <= NDIM; ++idim) {
-                grid_.vp[(idim - 1) * grid_.npartmax + ip - 1] += f_interp[idim - 1] * dt;
-                grid_.xp[(idim - 1) * grid_.npartmax + ip - 1] += grid_.vp[(idim - 1) * grid_.npartmax + ip - 1] * dt;
+            if (grid_.family[ip - 1] == FAM_TRACER) {
+                // Classical tracers: follow the gas velocity
+                // We need to interpolate gas velocity from the grid.
+                // Currently f_interp contains the force (from grid_.f).
+                // We need a way to get velocity.
+                // In RAMSES, velocity is uold(2:4)/uold(1).
+                
+                real_t v_gas[3] = {0, 0, 0};
+                auto interp_v = [&](int off_x, int off_y, int off_z, real_t w) {
+                    int idx = 13 + off_x + 3 * off_y + 9 * off_z;
+                    if (idx < 0 || idx >= 27) return;
+                    int target = nbors[idx];
+                    if (target > 0) {
+                        real_t rho_val = std::max(grid_.uold(target, 1), 1e-10);
+                        for (int idim = 0; idim < NDIM; ++idim) {
+                            v_gas[idim] += (grid_.uold(target, 2 + idim) / rho_val) * w;
+                        }
+                    }
+                };
+
+                if (NDIM == 1) { interp_v(0, 0, 0, wx1); interp_v(sx, 0, 0, wx2); }
+                else if (NDIM == 2) {
+                    interp_v(0, 0, 0, wx1 * wy1); interp_v(sx, 0, 0, wx2 * wy1);
+                    interp_v(0, sy, 0, wx1 * wy2); interp_v(sx, sy, 0, wx2 * wy2);
+                } else {
+                    interp_v(0, 0, 0, wx1 * wy1 * wz1); interp_v(sx, 0, 0, wx2 * wy1 * wz1);
+                    interp_v(0, sy, 0, wx1 * wy2 * wz1); interp_v(sx, sy, 0, wx2 * wy2 * wz1);
+                    interp_v(0, 0, sz, wx1 * wy1 * wz2); interp_v(sx, 0, sz, wx2 * wy1 * wz2);
+                    interp_v(0, sy, sz, wx1 * wy2 * wz2); interp_v(sx, sy, sz, wx2 * wy2 * wz2);
+                }
+
+                for (int idim = 0; idim < NDIM; ++idim) {
+                    grid_.vp[idim * grid_.npartmax + ip - 1] = v_gas[idim];
+                    grid_.xp[idim * grid_.npartmax + ip - 1] += grid_.vp[idim * grid_.npartmax + ip - 1] * dt;
+                }
+            } else {
+                for (int idim = 1; idim <= NDIM; ++idim) {
+                    grid_.vp[(idim - 1) * grid_.npartmax + ip - 1] += f_interp[idim - 1] * dt;
+                    grid_.xp[(idim - 1) * grid_.npartmax + ip - 1] += grid_.vp[(idim - 1) * grid_.npartmax + ip - 1] * dt;
+                }
             }
 
             for (int idim = 0; idim < NDIM; ++idim) {
@@ -208,6 +247,8 @@ void ParticleSolver::exchange_particles() {
                     p.mp = grid_.mp[ip - 1];
                     p.idp = grid_.idp[ip - 1];
                     p.levelp = grid_.levelp[ip - 1];
+                    p.family = grid_.family[ip - 1];
+                    p.tag = grid_.tag[ip - 1];
                     
                     send_queues[target_cpu].push_back(p);
                     particles_to_free.push_back(ip);
@@ -270,6 +311,8 @@ void ParticleSolver::exchange_particles() {
             grid_.mp[ip - 1] = p.mp;
             grid_.idp[ip - 1] = p.idp;
             grid_.levelp[ip - 1] = p.levelp;
+            grid_.family[ip - 1] = p.family;
+            grid_.tag[ip - 1] = p.tag;
         }
     }
 #endif

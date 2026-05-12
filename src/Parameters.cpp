@@ -8,6 +8,7 @@ namespace params {
     bool pic = false;
     bool poisson = false;
     bool cosmo = false;
+    bool tracer = false;
 
     int nx = 1, ny = 1, nz = 1;
     int levelmin = 1;
@@ -43,6 +44,13 @@ namespace params {
     real_t polytrope_index = 1.4;
     real_t T_eos = 10.0;
     real_t mu_gas = 1.0;
+
+    bool MC_tracer = false;
+    int tracer_feed = 0;
+    std::string tracer_feed_fmt = "inplace";
+    real_t tracer_mass = 0.0;
+    int tracer_first_balance_part_per_cell = 0;
+    int tracer_first_balance_levelmin = 0;
 
 } // namespace params
 } // namespace ramses

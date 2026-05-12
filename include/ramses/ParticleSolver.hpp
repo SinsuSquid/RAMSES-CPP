@@ -45,6 +45,8 @@ public:
         real_t mp;
         int idp;
         int levelp;
+        uint8_t family;
+        uint8_t tag;
     };
 
 protected:

@@ -7,6 +7,7 @@ A modern, high-performance C++17 port of the legacy [RAMSES-2025](https://github
 ## 🚀 Core Features
 - **Multi-Dimensional Engine:** Simultaneous support for 1D, 2D, and 3D simulations via specialized library targets.
 - **Relativistic Hydrodynamics (RHD):** High-energy physics with specialized Riemann solvers (HLLC/HLL) and 'TM' EOS support.
+- **Tracer Particles:** Massless particles for tracking fluid trajectories with in-place density-based initialization.
 - **Turbulence Driving:** Stochastic forcing via spectral mode-sum driving for realistic ISM environments.
 - **Distributed Physics:** Full MPI-scaled implementation of Hydro, MHD, RT, and **Sink Particles**.
 - **Numerical Parity:** Achieves bit-perfect compatibility with standard RAMSES binary record formats.

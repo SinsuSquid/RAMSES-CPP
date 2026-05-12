@@ -2,6 +2,13 @@
 
 This document tracks the major milestones and architectural shifts during the migration from legacy RAMSES (Fortran) to the modern C++17 distributed engine.
 
+## 🚩 Phase 34: Tracer Particle Implementation (Active) 🛰️
+- **Tracer Physics Engine:** Implemented classical tracer particles that follow gas velocity using trilinear interpolation from the AMR grid.
+- **In-place Initialization:** Ported the `load_tracers_inplace` logic, allowing tracers to be spawned proportionally to gas density at simulation start.
+- **Particle Metadata Parity:** Expanded the `ParticlePacket` and type system to include `family` and `tag` fields, ensuring tracers are correctly identified and preserved across MPI rank boundaries.
+- **I/O Fixes:** Corrected `RamsesWriter` to properly handle sparse particle arrays by only writing active particles (based on `idp > 0`), maintaining binary compatibility with legacy tools.
+- **C++17 Optimization:** Utilized `<random>` for deterministic, seed-based tracer spawning, replacing the legacy Fortran RNG while maintaining reproducible spatial distributions.
+
 ## 🚩 Phase 33.1: Stability & I/O Parity (Completed) 🛠️
 - **Godunov Solver Stabilization:** Fixed uninitialized memory access in `godunov_fine` where interface cells between levels were reading garbage traces. Implemented robust fallbacks to raw cell primitives at AMR interfaces, resolving simulation stalls and tiny `dt` issues.
 - **Snapshot Metadata Parity:** Ensured `header_*.txt` and file descriptors (`hydro_file_descriptor.txt`, `part_file_descriptor.txt`) are always produced with correct naming and directory placement, satisfying legacy visualization and analysis scripts.

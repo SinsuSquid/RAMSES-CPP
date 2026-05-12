@@ -342,23 +342,30 @@ void RamsesWriter::write_particles(const AmrGrid& grid, const SnapshotInfo& info
     write_rec(&nstar, 4); write_rec(&mstar, 8); write_rec(&mstar, 8);
     int32_t nsink = 0; write_rec(&nsink, 4);
     if (npart > 0) {
+        std::vector<int> active_indices;
+        for (int i = 0; i < grid.npartmax; ++i) {
+            if (grid.idp[i] > 0) active_indices.push_back(i);
+        }
+        // Safety check: count might not match if something is inconsistent
+        int actual_npart = active_indices.size();
+
         for (int d = 0; d < NDIM; ++d) {
-            std::vector<double> buf(npart);
-            for (int i = 0; i < npart; ++i) buf[i] = grid.xp[d * grid.npartmax + i];
-            write_rec(buf.data(), npart * 8);
+            std::vector<double> buf(actual_npart);
+            for (int i = 0; i < actual_npart; ++i) buf[i] = grid.xp[d * grid.npartmax + active_indices[i]];
+            write_rec(buf.data(), actual_npart * 8);
         }
         for (int d = 0; d < NDIM; ++d) {
-            std::vector<double> buf(npart);
-            for (int i = 0; i < npart; ++i) buf[i] = grid.vp[d * grid.npartmax + i];
-            write_rec(buf.data(), npart * 8);
+            std::vector<double> buf(actual_npart);
+            for (int i = 0; i < actual_npart; ++i) buf[i] = grid.vp[d * grid.npartmax + active_indices[i]];
+            write_rec(buf.data(), actual_npart * 8);
         }
-        std::vector<double> mp_buf(npart); for (int i = 0; i < npart; ++i) mp_buf[i] = grid.mp[i]; write_rec(mp_buf.data(), npart * 8);
-        std::vector<int32_t> idp_buf(npart); for (int i = 0; i < npart; ++i) idp_buf[i] = (int32_t)grid.idp[i]; write_rec(idp_buf.data(), npart * 4);
-        std::vector<int32_t> levp_buf(npart); for (int i = 0; i < npart; ++i) levp_buf[i] = (int32_t)grid.levelp[i]; write_rec(levp_buf.data(), npart * 4);
-        std::vector<int32_t> fam_buf(npart); for (int i = 0; i < npart; ++i) fam_buf[i] = (int32_t)grid.family[i]; write_rec(fam_buf.data(), npart * 4);
-        std::vector<int32_t> tag_buf(npart); for (int i = 0; i < npart; ++i) tag_buf[i] = (int32_t)grid.tag[i]; write_rec(tag_buf.data(), npart * 4);
-        std::vector<double> tp_buf(npart); for (int i = 0; i < npart; ++i) tp_buf[i] = grid.tp[i]; write_rec(tp_buf.data(), npart * 8);
-        std::vector<double> zp_buf(npart); for (int i = 0; i < npart; ++i) zp_buf[i] = grid.zp[i]; write_rec(zp_buf.data(), npart * 8);
+        std::vector<double> mp_buf(actual_npart); for (int i = 0; i < actual_npart; ++i) mp_buf[i] = grid.mp[active_indices[i]]; write_rec(mp_buf.data(), actual_npart * 8);
+        std::vector<int32_t> idp_buf(actual_npart); for (int i = 0; i < actual_npart; ++i) idp_buf[i] = (int32_t)grid.idp[active_indices[i]]; write_rec(idp_buf.data(), actual_npart * 4);
+        std::vector<int32_t> levp_buf(actual_npart); for (int i = 0; i < actual_npart; ++i) levp_buf[i] = (int32_t)grid.levelp[active_indices[i]]; write_rec(levp_buf.data(), actual_npart * 4);
+        std::vector<int32_t> fam_buf(actual_npart); for (int i = 0; i < actual_npart; ++i) fam_buf[i] = (int32_t)grid.family[active_indices[i]]; write_rec(fam_buf.data(), actual_npart * 4);
+        std::vector<int32_t> tag_buf(actual_npart); for (int i = 0; i < actual_npart; ++i) tag_buf[i] = (int32_t)grid.tag[active_indices[i]]; write_rec(tag_buf.data(), actual_npart * 4);
+        std::vector<double> tp_buf(actual_npart); for (int i = 0; i < actual_npart; ++i) tp_buf[i] = grid.tp[active_indices[i]]; write_rec(tp_buf.data(), actual_npart * 8);
+        std::vector<double> zp_buf(actual_npart); for (int i = 0; i < actual_npart; ++i) zp_buf[i] = grid.zp[active_indices[i]]; write_rec(zp_buf.data(), actual_npart * 8);
     }
 }
 

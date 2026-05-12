@@ -41,6 +41,7 @@ The engine uses a sophisticated `MpiManager` and `LoadBalancer` to distribute oc
 - **StarSolver:** Gas-to-star conversion using Poisson statistics and a deterministic, grid-based RNG for bit-perfect reproducibility.
 - **FeedbackSolver:** Supernova energy and metal injection with support for delayed cooling.
 - **ClumpFinder:** On-the-fly structure identification based on density peak finding and saddle-point merging.
+- **Tracer Particles:** Massless particles following fluid trajectories via trilinear interpolation of gas velocity.
 - **LightCone:** Cosmological shell identification for deep-field surveys.
 - **Hdf5Writer:** Parallel HDF5 output mirroring the legacy RAMSES hierarchical schema.
 

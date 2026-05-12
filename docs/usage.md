@@ -52,6 +52,23 @@ yield=0.02      ! Metal yield
 /
 ```
 
+## Tracer Particles
+
+Tracers are massless particles that follow the gas flow. They are useful for tracking the history of specific fluid elements.
+
+```fortran
+&RUN_PARAMS
+hydro=true
+tracer=true
+/
+
+&TRACER_PARAMS
+mc_tracer=false       ! Set to false for classical tracers
+tracer_feed_fmt='inplace'
+tracer_mass=1.0e-6    ! Targeted gas mass per tracer
+/
+```
+
 ## Structure Identification (ClumpFinder)
 
 Enable clump finding in the snapshot dump:
