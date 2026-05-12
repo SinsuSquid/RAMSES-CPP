@@ -5,7 +5,7 @@ title: Usage
 
 # Usage Guide
 
-RAMSES-CPP is fully compatible with the legacy RAMSES ecosystem, including namelists and visualization tools.
+RAMSES-CPP is fully compatible with the legacy RAMSES ecosystem, including namelists and visualization tools. Recent architectural fixes (Phase 32) have significantly improved stability for simulations requiring deep AMR refinement (up to Level 10 and beyond).
 
 ## Running Simulations
 

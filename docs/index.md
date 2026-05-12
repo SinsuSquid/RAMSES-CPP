@@ -15,11 +15,11 @@ RAMSES-CPP provides a physically consistent, modern C++ alternative to the origi
 
 ## 🚀 Current Status: 100% Port Parity
 
-The project has achieved **100% architectural and physics parity** with the legacy RAMSES-2025 code. Every major module, including the Clump Finder, Stellar Feedback, and Advanced Sink Dynamics, is now fully operational in modern C++17.
+The project has achieved **100% architectural and physics parity** with the legacy RAMSES-2025 code. Every major module, including the Clump Finder, Stellar Feedback, and Advanced Sink Dynamics, is now fully operational in modern C++17. Recent Phase 32 updates have further stabilized the AMR engine, ensuring proper tree growth (Level 2 to 10+) and bit-perfect coordinate handling across all dimensions.
 
 ### Key Features
 - **Multi-Dimensional Build System:** Simultaneously generate `ramses_1d`, `2d`, and `3d` executables from a single CMake configuration. 🛠️
-- **Restored AMR Engine:** Constant-time $O(1)$ neighbor lookups and robust tree management with unified 1-based indexing. 🧬
+- **Robust AMR Engine:** Constant-time $O(1)$ neighbor lookups with fixed sub-3D coordinate handling and automated neighbor linking for deep refinement. 🧬
 - **Advanced Physics:** Fully ported modules for MUSCL-Hancock Hydro, HLLD/Flux-CT Magnetohydrodynamics (MHD), and M1 Radiative Transfer (RT). 🛰️
 - **Distributed Gravity:** Multi-grid Poisson solver coupled with a Cloud-In-Cell (CIC) particle-mesh system for cosmological dynamics. 🌌
 - **AI-Assisted Patch System:** Translate legacy Fortran overrides into modern C++ using the `ramses-patch-porter`. 🧠

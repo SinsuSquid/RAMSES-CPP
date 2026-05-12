@@ -8,7 +8,9 @@ RAMSES-CPP is a modern C++17 port of the RAMSES AMR code, designed with modulari
 The `AmrGrid` class manages the distributed octree structure. It handles:
 - Memory allocation for cell and grid (oct) data.
 - 1-based indexing parity with legacy Fortran for algorithmic consistency.
-- Neighbor finding and tree traversal.
+- **Robust Neighbor Finding:** Constant-time neighbor lookups with proper periodic boundary handling at the coarsest level.
+- **Dynamic Grid Linking:** Automated neighbor-linking pass in `make_grid_fine` ensures newly created octs correctly identify sibling/cousin grids.
+- **Dimensional Stability:** Fixed coordinate calculations for 1D and 2D simulations, ensuring cells are correctly centered in unused dimensions ($0.5 \times \text{boxlen}$).
 - MPI rank mapping and ghost cell synchronization.
 
 ### 2. Polymorphic Solvers
@@ -19,6 +21,7 @@ All physics modules (`HydroSolver`, `MhdSolver`, `RtSolver`, etc.) inherit from 
 ### 3. Simulation Core
 The `Simulation` class orchestrates the time-stepping loop, handling:
 - Sub-cycling across AMR levels.
+- **Refinement-Aware Initialization:** The `Initializer` is applied within the refinement loop, ensuring newly created levels are populated before flagging.
 - Global timestep (CFL) reductions.
 - Snapshot dumping via the `RamsesWriter`.
 - Distributed load balancing using Hilbert curves.
@@ -42,7 +45,7 @@ The engine uses a sophisticated `MpiManager` and `LoadBalancer` to distribute oc
 - **Hdf5Writer:** Parallel HDF5 output mirroring the legacy RAMSES hierarchical schema.
 
 ## 🚩 Project Status: 100% Port Parity
-As of Phase 30, the project has achieved complete architectural and physics parity with the RAMSES-2025 release. All core modules, from base AMR to advanced feedback and clump finding, are fully operational in C++17.
+As of Phase 32, the project has achieved complete architectural and physics parity with the RAMSES-2025 release. All core modules, from base AMR to advanced feedback and clump finding, are fully operational in C++17. Recent stabilization efforts fixed a critical bug in AMR tree growth, enabling full refinement depth up to Level 10 and beyond.
 
 ---
 🚀 *Engineered for performance and parity.* 🚀

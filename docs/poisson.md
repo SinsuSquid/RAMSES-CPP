@@ -8,7 +8,7 @@ title: Poisson Solver
 RAMSES-CPP includes a specialized module for calculating self-gravity on Adaptive Mesh Refinement (AMR) grids.
 
 ## 🚀 Current Status: Distributed Scaling
-The Poisson solver is fully functional and supports distributed-memory parallel execution via MPI. It is tightly coupled with the `ParticleSolver` for cosmological simulations.
+The Poisson solver is fully functional and supports distributed-memory parallel execution via MPI. It is tightly coupled with the `ParticleSolver` for cosmological simulations. Recent Phase 25/32 updates have integrated the Poisson solve into level-specific step loops, mirroring legacy RAMSES timing and preventing potential growth in high-refinement regions.
 
 ## 🛠️ Key Implementation Details
 
@@ -20,6 +20,7 @@ The solver utilizes a geometric multi-grid algorithm to solve the comoving Poiss
 ### 2. Comoving Source Scaling
 For cosmological runs, the solver correctly scales the density source term using the expansion factor $a(t)$:
 $$\nabla^2 \phi = 1.5 \Omega_m a \frac{\rho - \bar{\rho}}{\rho}$$
+Stable closed-box simulations are maintained through consistent mean density subtraction.
 
 ### 3. Particle-Mesh (PM) Coupling
 Gravity is coupled to the N-body particle system using the **Cloud-In-Cell (CIC)** projection.
