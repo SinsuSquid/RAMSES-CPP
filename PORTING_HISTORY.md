@@ -2,6 +2,13 @@
 
 This document tracks the major milestones and architectural shifts during the migration from legacy RAMSES (Fortran) to the modern C++17 distributed engine.
 
+## 🚩 Phase 33: Unified Level Indexing & Physics Alignment (Completed) 🧬
+- **Coarse Level Re-indexing:** Shifted the base AMR level from 1 to 0 to perfectly match legacy RAMSES conventions. Coarse cells (ncoarse) are now Level 0, and the first refined grids are Level 1.
+- **Global Refactor:** Updated `TreeUpdater`, `Simulation`, and all physics solvers (`Hydro`, `Mhd`, `Rhd`, `Turbulence`, `Sink`, `Initializer`) to respect the new 0-based level convention.
+- **Correction of $dx$ Scaling:** Fixed the cell size calculation to $dx = \text{boxlen} / (nx \cdot 2^{ilevel})$, ensuring bit-perfect parity with Fortran's geometric scaling.
+- **Improved Simulation Loop:** Corrected the sub-cycling and density aggregation loops to include Level 0, ensuring mass conservation and Poisson stability across the entire AMR tree.
+- **Robust Tree Growth:** Aligned `flag_fine` and `make_grid_fine` logic with the new indexing, enabling deeper and more stable refinement (Level 0 up to `nlevelmax`).
+
 ## 🚩 Phase 32: Cell Center Fix & Full AMR Tree Growth (Completed) 🎯
 - **Critical Bug: `get_cell_center` Dimension Fix:** Discovered that `AmrGrid::get_cell_center` was computing garbage y/z coordinates for 1D (and z for 2D) simulations by reading uninitialized `xg` entries for unused dimensions. The fix defaults inactive dimensions to `0.5 * boxlen`, which is the center of the unit box. This was the root cause of broken initial conditions — all cells appeared to be inside the high-density region, preventing gradient-based refinement from triggering.
 - **Coarse Neighbor Logic:** Replaced the placeholder `get_nbor_cells_coarse` (which returned boundary markers) with proper periodic neighbor indexing using coordinate math, enabling cross-cell gradient computation at the coarsest level.

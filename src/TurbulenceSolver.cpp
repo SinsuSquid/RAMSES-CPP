@@ -53,7 +53,7 @@ void TurbulenceSolver::apply_forcing(int ilevel, real_t dt) {
         }
     };
 
-    if (ilevel == 1) {
+    if (ilevel == 0) {
         for (int idc = 1; idc <= grid_.ncoarse; ++idc) process_cell(idc);
     }
 

@@ -16,20 +16,20 @@ HydroSolver::~HydroSolver() {}
 void HydroSolver::godunov_fine(int ilevel, real_t dt, real_t dx) {
     int myid = MpiManager::instance().rank() + 1;
     std::vector<int> octs;
-    if (ilevel > 1) {
+    if (ilevel > 0) {
         int igrid = grid_.get_headl(myid, ilevel);
         while (igrid > 0) { octs.push_back(igrid); igrid = grid_.next[igrid - 1]; }
     }
     
-    // Level 1 doesn't have grids, it has coarse cells.
-    bool do_level_1 = (ilevel == 1);
-    if (octs.empty() && !do_level_1) return;
+    // Level 0 has coarse cells.
+    bool do_level_0 = (ilevel == 0);
+    if (octs.empty() && !do_level_0) return;
 
     real_t gamma = grid_.gamma;
     real_t dtdx = dt / dx;
     int slope_type = config_.get_int("hydro_params", "slope_type", 1);
     static bool first_print = true;
-    if (first_print && ilevel == 1 && MpiManager::instance().rank() == 0) {
+    if (first_print && ilevel == 0 && MpiManager::instance().rank() == 0) {
         std::cout << "[HydroSolver] Using slope_type=" << slope_type << " at ilevel=" << ilevel << std::endl;
         first_print = false;
     }
@@ -48,7 +48,7 @@ void HydroSolver::godunov_fine(int ilevel, real_t dt, real_t dx) {
     };
 
     // 1. Trace step
-    if (do_level_1) {
+    if (do_level_0) {
         for (int idc_0 = 0; idc_0 < grid_.ncoarse; ++idc_0) {
             real_t u_c[20], q_c[20];
             for(int iv=1; iv<=grid_.nvar; ++iv) u_c[iv-1] = grid_.uold(idc_0 + 1, iv);
@@ -131,7 +131,7 @@ void HydroSolver::godunov_fine(int ilevel, real_t dt, real_t dx) {
                 for(int iv=0; iv<grid_.nvar; ++iv) flux_sum[iv] += sign * flux[iv];
             }
         }
-        for (int iv = 1; iv <= nvar_hydro_; ++iv) grid_.unew(idc_0 + 1, iv) = grid_.uold(idc_0 + 1, iv) + dtdx * flux_sum[iv-1];
+        for (int iv = 1; iv <= grid_.nvar; ++iv) grid_.unew(idc_0 + 1, iv) = grid_.uold(idc_0 + 1, iv) + dtdx * flux_sum[iv-1];
         real_t d_curr = std::max(grid_.unew(idc_0 + 1, 1), 1e-10); grid_.unew(idc_0 + 1, 1) = d_curr;
         real_t v2_curr = 0.0; for(int i=1; i<=NDIM; ++i) { real_t v = grid_.unew(idc_0 + 1, 1+i)/d_curr; v2_curr += v*v; }
         int iener = NDIM + 2;
@@ -143,7 +143,7 @@ void HydroSolver::godunov_fine(int ilevel, real_t dt, real_t dx) {
         }
     };
 
-    if (do_level_1) {
+    if (do_level_0) {
         for (int idc_0 = 0; idc_0 < grid_.ncoarse; ++idc_0) {
             int icn[6];
             for (int idim = 0; idim < 3; ++idim) {
@@ -176,7 +176,7 @@ void HydroSolver::godunov_fine(int ilevel, real_t dt, real_t dx) {
 
 void HydroSolver::set_unew(int ilevel) {
     int myid = MpiManager::instance().rank() + 1, n2d_val = (1 << NDIM);
-    if (ilevel == 1) {
+    if (ilevel == 0) {
         for (int i = 1; i <= grid_.ncoarse; ++i) {
             for (int iv = 1; iv <= grid_.nvar; ++iv) grid_.unew(i, iv) = grid_.uold(i, iv);
         }
@@ -193,7 +193,7 @@ void HydroSolver::set_unew(int ilevel) {
 
 void HydroSolver::set_uold(int ilevel) {
     int myid = MpiManager::instance().rank() + 1, n2d_val = (1 << NDIM);
-    if (ilevel == 1) {
+    if (ilevel == 0) {
         for (int i = 1; i <= grid_.ncoarse; ++i) {
             if (grid_.son.at(i - 1) == 0) {
                 for (int iv = 1; iv <= grid_.nvar; ++iv) grid_.uold(i, iv) = grid_.unew(i, iv);

@@ -158,9 +158,9 @@ void Simulation::initialize(const std::string& nml_path) {
     real_t eb2 = config_.get_double("refine_params", "err_grad_b2", -1.0);
 
     for (int ipass = 1; ipass <= 2; ++ipass) {
-        for (int il = 1; il < levelmax; ++il) {
+        for (int il = 1; il <= levelmax; ++il) {
             initializer_->apply_all(); // Ensure current level is initialized
-            updater_.flag_fine(il, ed, ep, ev, eb2, {}, nexpand_[il]);
+            updater_.flag_fine(il, ed, ep, ev, eb2, {}, nexpand_[std::min(il, (int)nexpand_.size()-1)]);
             updater_.make_grid_fine(il);
             updater_.remove_grid_fine(il);
         }
@@ -233,9 +233,13 @@ void Simulation::run() {
     while (t_ < tout_.back() && nstep_ < nstepmax_) {
         auto t_step_start = std::chrono::high_resolution_clock::now();
         real_t min_dt = 1e10;
+        // Level 0 (ncoarse)
+        real_t dx0 = p::boxlen / (real_t)p::nx;
+        min_dt = std::min(min_dt, hydro_->compute_courant_step(0, dx0, grid_.gamma, courant));
+
         for (int il = 1; il <= grid_.nlevelmax; ++il) {
-            if (grid_.count_grids_at_level(il) == 0 && il > 1) continue;
-            real_t dx = p::boxlen / (real_t)(p::nx * (1 << (il - 1)));
+            if (grid_.count_grids_at_level(il) == 0) continue;
+            real_t dx = p::boxlen / (real_t)(p::nx * (1 << il));
             min_dt = std::min(min_dt, hydro_->compute_courant_step(il, dx, grid_.gamma, courant));
         }
 
@@ -274,7 +278,7 @@ void Simulation::run() {
 
 void Simulation::amr_step(int ilevel, real_t dt, int icount) {
     if (ilevel > grid_.nlevelmax) return;
-    bool grids_exist = (ilevel == 1) || (grid_.count_grids_at_level(ilevel) > 0);
+    bool grids_exist = (ilevel == 0) || (grid_.count_grids_at_level(ilevel) > 0);
     if (!grids_exist) return;
 
     if (config_.get_bool("run_params", "verbose", false) && MpiManager::instance().rank() == 0) {
@@ -289,13 +293,13 @@ void Simulation::amr_step(int ilevel, real_t dt, int icount) {
         real_t eb2 = config_.get_double("refine_params", "err_grad_b2", -1.0);
         int nexp = config_.get_int("amr_params", "nexpand", 1);
         
-        updater_.flag_fine(ilevel, ed, ep, ev, eb2, {}, nexp);
-        updater_.make_grid_fine(ilevel);
-        updater_.remove_grid_fine(ilevel);
+        updater_.flag_fine(ilevel + 1, ed, ep, ev, eb2, {}, nexp);
+        updater_.make_grid_fine(ilevel + 1);
+        updater_.remove_grid_fine(ilevel + 1);
         grid_.synchronize_level_counts();
     }
 
-    real_t dx = p::boxlen / (real_t)(p::nx * (1 << (ilevel - 1)));
+    real_t dx = p::boxlen / (real_t)(p::nx * (1 << ilevel));
     bool do_poisson = config_.get_bool("run_params", "poisson", false);
 
 #ifdef MHD
@@ -315,10 +319,10 @@ void Simulation::amr_step(int ilevel, real_t dt, int icount) {
             real_t dV = std::pow(dx_c, NDIM);
             if (grid_.son[i-1] == 0) { total_mass += grid_.uold(i, 1) * dV; total_vol += dV; }
         }
-        for (int il = 2; il <= grid_.nlevelmax; ++il) {
+        for (int il = 1; il <= grid_.nlevelmax; ++il) {
             int my_id = MpiManager::instance().rank() + 1;
             int ig = grid_.get_headl(my_id, il);
-            real_t dx_l = p::boxlen / (real_t)(p::nx * (1 << (il - 1)));
+            real_t dx_l = p::boxlen / (real_t)(p::nx * (1 << il));
             real_t dV = std::pow(dx_l, NDIM);
             while (ig > 0) {
                 for (int ic = 1; ic <= n2d_val; ++ic) {
@@ -338,8 +342,8 @@ void Simulation::amr_step(int ilevel, real_t dt, int icount) {
         real_t rho_mean = global_mass / std::max(global_vol, 1e-10);
         
         // Update density and aggregate for multi-grid
-        for (int il = ilevel; il >= 1; --il) rho_fine(il);
-        for (int il = ilevel; il >= 2; --il) {
+        for (int il = ilevel; il >= 0; --il) rho_fine(il);
+        for (int il = ilevel; il >= 1; --il) {
             int my_id = MpiManager::instance().rank() + 1;
             int ig = grid_.get_headl(my_id, il);
             while (ig > 0) {
@@ -350,7 +354,7 @@ void Simulation::amr_step(int ilevel, real_t dt, int icount) {
                         size_t idx = (size_t)grid_.ncoarse + (size_t)(ic - 1) * grid_.ngridmax + ig - 1;
                         sum += grid_.rho[idx];
                     }
-                    grid_.rho[id_p - 1] += sum / (real_t)n2d_val;
+                    grid_.rho[id_p - 1] += sum;
                 }
                 ig = grid_.next[ig - 1];
             }
@@ -426,7 +430,7 @@ void Simulation::amr_step(int ilevel, real_t dt, int icount) {
 
 void Simulation::rho_fine(int ilevel) {
     int myid = MpiManager::instance().rank() + 1, n2d_val = (1 << NDIM);
-    if (ilevel == 1) {
+    if (ilevel == 0) {
         for (int i = 1; i <= grid_.ncoarse; ++i) grid_.rho[i - 1] = 0.0;
     } else {
         int igrid = grid_.get_headl(myid, ilevel);
@@ -442,7 +446,7 @@ void Simulation::rho_fine(int ilevel) {
     particles_->assign_mass_fine(ilevel);
 
     if (config_.get_bool("run_params", "hydro", true)) {
-        if (ilevel == 1) {
+        if (ilevel == 0) {
             for (int i = 1; i <= grid_.ncoarse; ++i) if (grid_.son[i - 1] == 0) grid_.rho[i - 1] += grid_.uold(i, 1);
         } else {
             int igrid = grid_.get_headl(myid, ilevel);
@@ -457,7 +461,7 @@ void Simulation::rho_fine(int ilevel) {
     }
 
 #ifdef RAMSES_USE_MPI
-    if (ilevel == 1 && MpiManager::instance().size() > 1) {
+    if (ilevel == 0 && MpiManager::instance().size() > 1) {
         std::vector<real_t> global_rho(grid_.ncoarse);
         MPI_Allreduce(grid_.rho.data(), global_rho.data(), grid_.ncoarse, MPI_DOUBLE, MPI_SUM, MPI_COMM_WORLD);
         std::copy(global_rho.begin(), global_rho.end(), grid_.rho.begin());

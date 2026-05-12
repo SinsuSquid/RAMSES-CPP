@@ -12,14 +12,13 @@ RhdSolver::~RhdSolver() {}
 void RhdSolver::godunov_fine(int ilevel, real_t dt, real_t dx) {
     int myid = MpiManager::instance().rank() + 1;
     std::vector<int> octs;
-    if (ilevel > 1) {
+    if (ilevel > 0) {
         int igrid = grid_.get_headl(myid, ilevel);
         while (igrid > 0) { octs.push_back(igrid); igrid = grid_.next[igrid - 1]; }
     }
-    
-    bool do_level_1 = (ilevel == 1);
-    if (octs.empty() && !do_level_1) return;
 
+    bool do_level_0 = (ilevel == 0);
+    if (octs.empty() && !do_level_0) return;
     real_t gamma = grid_.gamma;
     real_t dtdx = dt / dx;
     int slope_type = config_.get_int("hydro_params", "slope_type", 1);
@@ -39,7 +38,7 @@ void RhdSolver::godunov_fine(int ilevel, real_t dt, real_t dx) {
     };
 
     // 1. Trace step
-    if (do_level_1) {
+    if (do_level_0) {
         for (int idc_0 = 0; idc_0 < grid_.ncoarse; ++idc_0) {
             real_t u_c[20], q_c[20];
             for(int iv=1; iv<=grid_.nvar; ++iv) u_c[iv-1] = grid_.uold(idc_0 + 1, iv);
@@ -108,7 +107,7 @@ void RhdSolver::godunov_fine(int ilevel, real_t dt, real_t dx) {
         for(int iv=1; iv<=grid_.nvar; ++iv) grid_.unew(idc_0 + 1, iv) = grid_.uold(idc_0 + 1, iv) + flux_sum[iv-1];
     };
 
-    if (do_level_1) {
+    if (do_level_0) {
         for (int idc_0 = 0; idc_0 < grid_.ncoarse; ++idc_0) {
             int icn[6]; grid_.get_nbor_cells_coarse(idc_0 + 1, icn);
             compute_fluxes(idc_0, icn, 0);

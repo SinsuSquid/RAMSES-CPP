@@ -108,7 +108,7 @@ void Initializer::region_condinit(int ilevel) {
         }
     };
 
-    if (ilevel == 1) {
+    if (ilevel == 0) {
         for (int i = 1; i <= grid_.ncoarse; ++i) {
             real_t xc[3]; grid_.get_cell_center(i, xc);
             apply_to_cell(i, xc[0], xc[1], xc[2]);
