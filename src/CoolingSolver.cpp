@@ -69,8 +69,12 @@ void CoolingSolver::apply_cooling(int ilevel, real_t dt) {
                 real_t dTemp = rate / (alpha_ct / dt_sub - dratedT);
                 
                 // Limit temperature change to 20%
-                if (std::abs(dTemp / T_new) > 0.2) dTemp = 0.2 * T_new * (dTemp > 0 ? 1.0 : -1.0);
-                
+                if (std::abs(dTemp / T_new) > 0.2) {
+                    dt_sub *= 0.5; // Step too large, reject and retry with smaller dt
+                    iter++;
+                    continue;
+                }
+
                 T_new = std::max(10.0, T_old + dTemp);
                 time += dt_sub;
                 dt_sub = std::min(dt_sec - time, dt_sub * 1.2);

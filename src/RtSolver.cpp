@@ -398,7 +398,7 @@ void RtSolver::apply_source_terms(int ilevel, real_t dt) {
                 for(int d=0; d<NDIM; ++d) Fp[ig][d] = grid_.uold(idc, iP0_abs + 2 + d);
             }
 
-            chem_->solve_chemistry(T2, xion, Np, Fp, nH, dt * params::units_time, 1.0);
+            chem_->solve_chemistry(T2, xion, Np, Fp, nH, dt, 1.0);
 
             for(int i=0; i<std::min(nIons_, 3); ++i) grid_.uold(idc, iIons + i) = xion[i] * grid_.uold(idc, 1);
             for (int ig = 0; ig < std::min(nGroups, 10); ++ig) {

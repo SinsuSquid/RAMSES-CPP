@@ -103,22 +103,19 @@ void HydroSolver::godunov_fine(int ilevel, real_t dt, real_t dx) {
                     if (side == 0) { for(int iv=1; iv<=grid_.nvar; ++iv) { ql_f[iv-1] = qp_nb[iv-1]; qr_f[iv-1] = get_q(idc_0, idim, iv); } }
                     else { for(int iv=1; iv<=grid_.nvar; ++iv) { ql_f[iv-1] = get_qp(idc_0, idim, iv); qr_f[iv-1] = qm_nb[iv-1]; } }
                 } else {
-                    real_t u_nb[20], q_nb[20], dq_nb[20], qm_nb[20], qp_nb[20];
-                    for(int iv=1; iv<=grid_.nvar; ++iv) u_nb[iv-1] = grid_.uold(id_n, iv);
-                    ctoprim(u_nb, q_nb, gamma);
-                    int icn_nb[6], ign_nb[7] = {0}, ic_nb = 1, ig_nb = 0;
-                    if (id_n > grid_.ncoarse) {
-                        ig_nb = ((id_n - grid_.ncoarse - 1) % grid_.ngridmax) + 1;
-                        ic_nb = ((id_n - grid_.ncoarse - 1) / grid_.ngridmax) + 1;
-                        grid_.get_nbor_grids(ig_nb, ign_nb);
+                    int id_n0 = id_n - 1;
+                    if (id_n > grid_.ncoarse && !grid_.son[id_n0] && ((id_n0 - grid_.ncoarse) % grid_.ngridmax + 1) == ig_info) {
+                        // Neighbor is in the same oct; use pre-computed traces
+                        if (side == 0) { for(int iv=1; iv<=grid_.nvar; ++iv) { ql_f[iv-1] = get_qp(id_n0, idim, iv); qr_f[iv-1] = get_q(idc_0, idim, iv); } }
+                        else { for(int iv=1; iv<=grid_.nvar; ++iv) { ql_f[iv-1] = get_qp(idc_0, idim, iv); qr_f[iv-1] = get_q(id_n0, idim, iv); } }
+                    } else {
+                        // Fallback for interface cells: use raw cell primitives
+                        real_t u_nb[20], q_nb[20];
+                        for(int iv=1; iv<=grid_.nvar; ++iv) u_nb[iv-1] = grid_.uold(id_n, iv);
+                        ctoprim(u_nb, q_nb, gamma);
+                        if (side == 0) { for(int iv=0; iv<grid_.nvar; ++iv) { ql_f[iv] = q_nb[iv]; qr_f[iv] = get_q(idc_0, idim, iv+1); } }
+                        else { for(int iv=0; iv<grid_.nvar; ++iv) { ql_f[iv] = get_qp(idc_0, idim, iv+1); qr_f[iv] = q_nb[iv]; } }
                     }
-                    grid_.get_nbor_cells(ign_nb, ic_nb, icn_nb, ig_nb);
-                    compute_slopes(id_n, icn_nb, idim, dq_nb, slope_type);
-                    if (idim > 0) { std::swap(q_nb[1], q_nb[1+idim]); std::swap(dq_nb[1], dq_nb[1+idim]); }
-                    trace(q_nb, dq_nb, dtdx, qm_nb, qp_nb, gamma);
-                    if (idim > 0) { std::swap(qm_nb[1], qm_nb[1+idim]); std::swap(qp_nb[1], qp_nb[1+idim]); }
-                    if (side == 0) { for(int iv=1; iv<=grid_.nvar; ++iv) { ql_f[iv-1] = qp_nb[iv-1]; qr_f[iv-1] = get_q(idc_0, idim, iv); } }
-                    else { for(int iv=1; iv<=grid_.nvar; ++iv) { ql_f[iv-1] = get_qp(idc_0, idim, iv); qr_f[iv-1] = qm_nb[iv-1]; } }
                 }
                 if (idim > 0) { std::swap(ql_f[1], ql_f[1+idim]); std::swap(qr_f[1], qr_f[1+idim]); }
                 if (riemann == "hllc") RiemannSolver::solve_hllc(ql_f, qr_f, flux, gamma);

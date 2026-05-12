@@ -78,12 +78,16 @@ real_t MhdSolver::compute_courant_step(int ilevel, real_t dx, real_t gamma, real
                 real_t p = std::max((etot-ekin-emag)*(gamma-1.0), d*1e-10);
                 real_t q_mhd[8] = {d, p, u, 0.5*(A+grid_.uold(idc,grid_.nvar-2)), v, 0.5*(B+grid_.uold(idc,grid_.nvar-1)), w, 0.5*(C+grid_.uold(idc,grid_.nvar))}, vel_fast;
                 find_speed_fast(q_mhd, vel_fast, gamma);
-                dt_max = std::min(dt_max, dx / (std::sqrt(u*u+v*v+w*w) + vel_fast));
+                dt_max = std::min(dt_max, courant_factor * dx / (std::sqrt(u*u+v*v+w*w) + vel_fast));
+                for(int idim=1; idim<=NDIM; ++idim) {
+                    real_t acc = std::abs(grid_.f(idc, idim));
+                    if (acc > 0) dt_max = std::min(dt_max, courant_factor * std::sqrt(dx / acc));
+                }
             }
             igrid = grid_.next[igrid - 1];
         }
     }
-    return dt_max * courant_factor;
+    return dt_max;
 }
 
 void MhdSolver::godunov_fine(int ilevel, real_t dt, real_t dx) {

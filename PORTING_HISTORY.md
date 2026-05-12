@@ -2,6 +2,12 @@
 
 This document tracks the major milestones and architectural shifts during the migration from legacy RAMSES (Fortran) to the modern C++17 distributed engine.
 
+## 🚩 Phase 33.1: Stability & I/O Parity (Completed) 🛠️
+- **Godunov Solver Stabilization:** Fixed uninitialized memory access in `godunov_fine` where interface cells between levels were reading garbage traces. Implemented robust fallbacks to raw cell primitives at AMR interfaces, resolving simulation stalls and tiny `dt` issues.
+- **Snapshot Metadata Parity:** Ensured `header_*.txt` and file descriptors (`hydro_file_descriptor.txt`, `part_file_descriptor.txt`) are always produced with correct naming and directory placement, satisfying legacy visualization and analysis scripts.
+- **Fixed Snapshot Mapping:** Corrected the mapping between C++ Level 0 (coarse) and file Level 1, ensuring bit-perfect alignment with legacy snapshot formats and resolving `struct.unpack` buffer errors in `visu_ramses.py`.
+- **Recursion Safety:** Fixed a segfault in `Simulation::amr_step` by adding strict boundary checks to prevent out-of-bounds recursion beyond `nlevelmax`.
+
 ## 🚩 Phase 33: Unified Level Indexing & Physics Alignment (Completed) 🧬
 - **Coarse Level Re-indexing:** Shifted the base AMR level from 1 to 0 to perfectly match legacy RAMSES conventions. Coarse cells (ncoarse) are now Level 0, and the first refined grids are Level 1.
 - **Global Refactor:** Updated `TreeUpdater`, `Simulation`, and all physics solvers (`Hydro`, `Mhd`, `Rhd`, `Turbulence`, `Sink`, `Initializer`) to respect the new 0-based level convention.

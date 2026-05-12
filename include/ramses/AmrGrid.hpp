@@ -60,30 +60,28 @@ public:
     void add_to_level_list(int igrid, int ilevel);
 
     int get_headl(int icpu, int ilevel) const { 
-        if (ncpu == 0 || nlevelmax == 0) return 0;
-        if (ilevel < 1 || ilevel > nlevelmax || icpu < 1 || icpu > ncpu + nboundary) return 0;
-        size_t idx = (size_t)(ilevel-1)*ncpu + (icpu-1);
-        if (idx >= headl_vec.size()) return 0;
-        return headl_vec.at(idx); 
+        if (ncpu == 0) return 0;
+        if (ilevel < 0 || ilevel > nlevelmax || icpu < 1 || icpu > ncpu + nboundary) return 0;
+        return headl_vec.at((size_t)ilevel * ncpu + (icpu - 1)); 
     }
     int& headl(int icpu, int ilevel) { 
-        return headl_vec.at((ilevel-1)*ncpu + (icpu-1)); 
+        return headl_vec.at((size_t)ilevel * ncpu + (icpu - 1)); 
     }
     int taill(int icpu, int ilevel) const { 
-        if (ncpu == 0 || nlevelmax == 0) return 0;
-        if (ilevel < 1 || ilevel > nlevelmax || icpu < 1 || icpu > ncpu + nboundary) return 0;
-        return taill_vec.at((ilevel-1)*ncpu + (icpu-1)); 
+        if (ncpu == 0) return 0;
+        if (ilevel < 0 || ilevel > nlevelmax || icpu < 1 || icpu > ncpu + nboundary) return 0;
+        return taill_vec.at((size_t)ilevel * ncpu + (icpu - 1)); 
     }
     int& taill(int icpu, int ilevel) { 
-        return taill_vec.at((ilevel-1)*ncpu + (icpu-1)); 
+        return taill_vec.at((size_t)ilevel * ncpu + (icpu - 1)); 
     }
     int numbl(int icpu, int ilevel) const { 
-        if (ncpu == 0 || nlevelmax == 0) return 0;
-        if (ilevel < 1 || ilevel > nlevelmax || icpu < 1 || icpu > ncpu + nboundary) return 0;
-        return numbl_vec.at((ilevel-1)*ncpu + (icpu-1)); 
+        if (ncpu == 0) return 0;
+        if (ilevel < 0 || ilevel > nlevelmax || icpu < 1 || icpu > ncpu + nboundary) return 0;
+        return numbl_vec.at((size_t)ilevel * ncpu + (icpu - 1)); 
     }
     int& numbl(int icpu, int ilevel) { 
-        return numbl_vec.at((ilevel-1)*ncpu + (icpu-1)); 
+        return numbl_vec.at((size_t)ilevel * ncpu + (icpu - 1)); 
     }
     int headl(int icpu, int ilevel) const { return get_headl(icpu, ilevel); }
     int count_grids_at_level(int ilevel) const;

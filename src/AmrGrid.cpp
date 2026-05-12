@@ -17,9 +17,9 @@ void AmrGrid::allocate(int nx_val, int ny_val, int nz_val, int ngridmax_val, int
     ncell = ncoarse + (long long)constants::twotondim * ngridmax;
     std::cout << "[AmrGrid] Allocating ngridmax=" << ngridmax << " ncell=" << ncell << " nvar=" << nvar << std::endl;
 
-    headl_vec.assign(ncpu * nlevelmax, 0);
-    taill_vec.assign(ncpu * nlevelmax, 0);
-    numbl_vec.assign(ncpu * nlevelmax, 0);
+    headl_vec.assign(ncpu * (nlevelmax + 1), 0);
+    taill_vec.assign(ncpu * (nlevelmax + 1), 0);
+    numbl_vec.assign(ncpu * (nlevelmax + 1), 0);
 
     next.assign(ngridmax, 0);
     prev.assign(ngridmax, 0);
@@ -158,15 +158,15 @@ void AmrGrid::add_to_level_list(int igrid, int ilevel) {
     int myid = MpiManager::instance().rank() + 1;
     int head = get_headl(myid, ilevel);
     if (head == 0) {
-        headl_vec[(ilevel - 1) * ncpu + (myid - 1)] = igrid;
-        taill_vec[(ilevel - 1) * ncpu + (myid - 1)] = igrid;
+        headl_vec[ilevel * ncpu + (myid - 1)] = igrid;
+        taill_vec[ilevel * ncpu + (myid - 1)] = igrid;
         prev[igrid - 1] = 0; next[igrid - 1] = 0;
     } else {
         int tail = taill(myid, ilevel);
         next[tail - 1] = igrid; prev[igrid - 1] = tail; next[igrid - 1] = 0;
-        taill_vec[(ilevel - 1) * ncpu + (myid - 1)] = igrid;
+        taill_vec[ilevel * ncpu + (myid - 1)] = igrid;
     }
-    numbl_vec[(ilevel - 1) * ncpu + (myid - 1)]++;
+    numbl_vec[ilevel * ncpu + (myid - 1)]++;
 }
 
 int AmrGrid::count_grids_at_level(int ilevel) const {
@@ -178,8 +178,8 @@ int AmrGrid::count_grids_at_level(int ilevel) const {
 void AmrGrid::synchronize_level_counts() {
 #ifdef RAMSES_USE_MPI
     if (ncpu > 1) {
-        std::vector<int> global_numbl(ncpu * nlevelmax);
-        MPI_Allreduce(numbl_vec.data(), global_numbl.data(), ncpu * nlevelmax, MPI_INT, MPI_SUM, MPI_COMM_WORLD);
+        std::vector<int> global_numbl(ncpu * (nlevelmax + 1));
+        MPI_Allreduce(numbl_vec.data(), global_numbl.data(), ncpu * (nlevelmax + 1), MPI_INT, MPI_SUM, MPI_COMM_WORLD);
         numbl_vec = std::move(global_numbl);
     }
 #endif

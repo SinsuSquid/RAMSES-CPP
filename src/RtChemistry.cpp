@@ -1,4 +1,5 @@
 #include "ramses/RtChemistry.hpp"
+#include "ramses/Parameters.hpp"
 #include <algorithm>
 
 namespace ramses {
@@ -11,6 +12,9 @@ void RtChemistry::solve_chemistry(real_t& T2, real_t xion[3], real_t Np[], real_
     const real_t smallx = 1e-10;
     real_t xHII = std::max(smallx, std::min(1.0 - smallx, xion[0]));
     real_t T = T2 * (1.0 + xHII); // mu approx 1/(1+xHII) for H-only
+    
+    // Convert dt from code units to physical seconds for CGS rates
+    real_t dt_sec = dt * params::units_time;
 
     // 1. Photo-ionization and heating rates
     real_t photo_ion_rate = 0.0;
@@ -24,17 +28,18 @@ void RtChemistry::solve_chemistry(real_t& T2, real_t xion[3], real_t Np[], real_
     real_t alphaB = get_alphaB_HII(T);
     real_t betaHI = get_beta_HI(T);
 
-    // 3. Semi-implicit update for xHII
-    // dx/dt = (1-x)*nH*beta + (1-x)*photo_ion_rate - x*nH*alphaB
-    real_t C = (1.0 - xHII) * (nH * betaHI + photo_ion_rate);
-    real_t D = nH * alphaB;
-    xHII = (xHII + C * dt) / (1.0 + D * dt);
+    // 3. Fully-implicit update for xHII
+    // dx/dt = C_coeff * (1-x) - D_coeff * x
+    real_t C_coeff = nH * betaHI + photo_ion_rate;
+    real_t D_coeff = nH * alphaB;
+    
+    xHII = (xHII + C_coeff * dt_sec) / (1.0 + (C_coeff + D_coeff) * dt_sec);
     xion[0] = xHII;
 
     // 4. Energy update (simplified)
     // dE/dt = photo_heat_rate - cooling_rate
     // For now just update T2 assuming constant cooling or simple model
-    T2 += (photo_heat_rate / (1.5 * nH * kB)) * dt;
+    T2 += (photo_heat_rate / (1.5 * nH * kB)) * dt_sec;
 }
 
 real_t RtChemistry::get_alphaB_HII(real_t T) const {

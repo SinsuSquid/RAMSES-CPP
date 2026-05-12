@@ -110,14 +110,12 @@ void Simulation::initialize(const std::string& nml_path) {
     p::scale_nH = p::units_number_density;
     p::scale_T2 = p::units_pressure / p::units_density; // Simplified scale for T/mu
 
-    bool do_poisson = config_.get_bool("run_params", "poisson", false);
-
     int ncpu = MpiManager::instance().size();
     grid_.allocate(p::nx, p::ny, p::nz, ngridmax, nvar, ncpu, levelmax);
     if (nparttot > 0) grid_.resize_particles(nparttot);
-    hydro_->set_nener(nener_);
-    hydro_->set_nvar_hydro(NDIM + 2 + nener_ + npassive);
-    
+    hydro_->set_nener(nener_); hydro_->set_nvar_hydro(nvar);
+    grid_.set_interpol_hook([this](const real_t u1[7][64], real_t u2[8][64]){ this->hydro_->interpol_hydro(u1, u2); });
+
     nsubcycle_.assign(33, 1);
     std::string nsub_s = config_.get("run_params", "nsubcycle", "");
     if (!nsub_s.empty()) {
@@ -160,7 +158,7 @@ void Simulation::initialize(const std::string& nml_path) {
     for (int ipass = 1; ipass <= 2; ++ipass) {
         for (int il = 1; il <= levelmax; ++il) {
             initializer_->apply_all(); // Ensure current level is initialized
-            updater_.flag_fine(il, ed, ep, ev, eb2, {}, nexpand_[std::min(il, (int)nexpand_.size()-1)]);
+            updater_.flag_fine(il, ed, ep, ev, eb2, {}, nexpand_[std::min(il, 32)]);
             updater_.make_grid_fine(il);
             updater_.remove_grid_fine(il);
         }
@@ -252,7 +250,7 @@ void Simulation::run() {
         real_t dt = global_min_dt;
         if (iout < (int)tout_.size()) dt = std::min(dt, tout_[iout] - t_);
 
-        amr_step(1, dt); t_ += dt; p::t = t_; nstep_++;
+        amr_step(0, dt); t_ += dt; p::t = t_; nstep_++;
 
         if (config_.get_bool("run_params", "cosmo", false)) {
             real_t texp;
@@ -261,7 +259,7 @@ void Simulation::run() {
 
         particles_->relink();
 
-        if (iout < (int)tout_.size() && t_ >= tout_[iout] - 1e-12 * t_) {
+        if (iout < (int)tout_.size() && t_ >= tout_[iout] - 1e-10 * dt) {
             dump_snapshot(snapshot_count++); iout++;
         }
         if (nstep_ % ncontrol_ == 0) {
@@ -273,7 +271,7 @@ void Simulation::run() {
             }
         }
     }
-    dump_snapshot(snapshot_count);
+    dump_snapshot(snapshot_count++);
 }
 
 void Simulation::amr_step(int ilevel, real_t dt, int icount) {
@@ -408,13 +406,16 @@ void Simulation::amr_step(int ilevel, real_t dt, int icount) {
 #endif
 
     int nsub = (ilevel < (int)nsubcycle_.size()) ? nsubcycle_[ilevel] : 1;
-    for (int i = 1; i <= nsub; ++i) amr_step(ilevel + 1, dt / nsub, i);
+    if (ilevel < grid_.nlevelmax) {
+        for (int i = 1; i <= nsub; ++i) amr_step(ilevel + 1, dt / nsub, i);
+    }
 
     // RESTRICT FIRST: Update parents from children
-    updater_.restrict_fine(ilevel);
+    if (ilevel < grid_.nlevelmax) {
+        updater_.restrict_fine(ilevel);
+    }
 
     // THEN SET UOLD: Finalize the step for this level's cells.
-    // NOTE: My set_uold now only touches leaf cells to avoid erasing restricted data!
 #ifdef MHD
     mhd_->set_uold(ilevel);
 #else
@@ -479,47 +480,31 @@ void Simulation::dump_snapshot(int iout) {
     info.iout = iout; 
     info.gamma = grid_.gamma; 
     info.nener = nener_;
-    info.noutput = config_.get_int("output_params", "noutput", 0);
+    info.noutput = (int)tout_.size();
     info.aexp = aexp_;
     info.hexp = hexp_;
     
-    if (config_.get_bool("run_params", "cosmo", false)) {
-        info.omega_m = config_.get_double("cosmo_params", "omega_m", 0.3);
-        info.omega_l = config_.get_double("cosmo_params", "omega_l", 0.7);
-        info.omega_k = config_.get_double("cosmo_params", "omega_k", 0.0);
-        info.h0 = config_.get_double("cosmo_params", "h0", 70.0);
-    }
-
-    if (config_.get_bool("run_params", "clumpfind", false)) {
-        clump_finder_->find_clumps();
-    }
-
-    auto get_path = [&](const std::string& prefix, const std::string& ext) -> std::string {
-        std::stringstream ss; ss << dir << "/" << prefix << "_" << std::setfill('0') << std::setw(5) << iout << ext << std::setfill('0') << std::setw(5) << 1;
+    auto get_path = [&](const std::string& prefix, const std::string& ext, bool use_rank) -> std::string {
+        std::stringstream ss; 
+        ss << dir << "/" << prefix << "_" << std::setfill('0') << std::setw(5) << iout << ext;
+        if (use_rank) ss << "." << std::setfill('0') << std::setw(5) << MpiManager::instance().rank() + 1;
         return ss.str();
     };
 
-    RamsesWriter(get_path("amr", ".out")).write_amr(grid_, info);
-    RamsesWriter(get_path("hydro", ".out")).write_hydro(grid_, info);
-    RamsesWriter(get_path("grav", ".out")).write_grav(grid_, info);
-    if (grid_.npart > 0) {
-        RamsesWriter(get_path("part", ".out")).write_particles(grid_, info);
-    }
-    // Always write descriptor if we have particle system
+    RamsesWriter(get_path("amr", ".out", true)).write_amr(grid_, info);
+    RamsesWriter(get_path("hydro", ".out", true)).write_hydro(grid_, info);
+    RamsesWriter(get_path("grav", ".out", true)).write_grav(grid_, info);
+    
+    // Header for particles (required by visu_ramses even if npart=0)
+    RamsesWriter(get_path("header", ".txt", false)).write_header_file(grid_, info);
+    
+    // Descriptors (once per rank or just rank 0?)
+    RamsesWriter(dir + "/hydro_file_descriptor.txt").write_hydro_descriptor(grid_, info);
     RamsesWriter(dir + "/part_file_descriptor.txt").write_particles_descriptor(grid_, info);
 
-#ifdef RT
-    int nGroups = rt_->get_nGroups();
-    if (nGroups > 0) {
-        RamsesWriter(get_path("rt", ".out")).write_rt(grid_, info, nGroups, rt_->get_nIons(), rt_->get_c_speed());
-        RamsesWriter(dir + "/rt_file_descriptor.txt").write_rt_descriptor(grid_, info, nGroups);
+    if (MpiManager::instance().rank() == 0) {
+        RamsesWriter(get_path("info", ".txt", false)).write_header(grid_, info);
     }
-#endif
-    std::stringstream ssinfo; ssinfo << dir << "/info_" << std::setfill('0') << std::setw(5) << iout << ".txt";
-    RamsesWriter(ssinfo.str()).write_header(grid_, info);
-    RamsesWriter(dir + "/hydro_file_descriptor.txt").write_hydro_descriptor(grid_, info);
-    std::stringstream ssh; ssh << dir << "/header_" << std::setfill('0') << std::setw(5) << iout << ".txt";
-    RamsesWriter(ssh.str()).write_header_file(grid_, info);
 }
 
 } // namespace ramses

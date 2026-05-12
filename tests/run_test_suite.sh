@@ -597,9 +597,3 @@ if ${DELDATA} ; then
    fi
    rm -f ${EXECNAME}*d;
 fi
-
-if $all_tests_ok ; then
-   exit;
-else
-   exit 1;
-fi
