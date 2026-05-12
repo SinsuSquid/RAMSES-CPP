@@ -59,3 +59,4 @@ build/
 # Python Bytecode
 __pycache__/
 
+tests/tracer/sedov-classical-tracers/tracers.txt
