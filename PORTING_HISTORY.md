@@ -101,6 +101,13 @@ This document tracks the major milestones and architectural shifts during the mi
 - **RamsesReader:** C++ bridge for loading legacy Fortran snapshots.
 - **Test Infrastructure:** Initial integration with `visu_ramses.py` and automated suites.
 
+## 🚩 Phase 34: 0-based parity & snapshot alignment (In Progress)
+- **Level-0 initialization:** Updated `Initializer::apply_all` to initialize level 0 before any refinement passes, matching legacy AMR start conditions.
+- **Coarse neighbor parity:** Improved `AmrGrid::get_nbor_cells_coarse` and `AmrGrid::get_nbor_cells` to correctly resolve same-level and coarse-level neighbors for periodic/boundary cells.
+- **Fine-solver interface stability:** Fixed `HydroSolver::godunov_fine` trace state selection for left/right interfaces and added explicit `get_cell_level` support to detect same-level neighbors.
+- **Snapshot header naming:** Ensured `Simulation::dump_snapshot` writes fully named `info_XXXXX.txt` headers instead of a generic `info.txt`, which preserves legacy snapshot metadata conventions.
+- **Test suite path reliability:** Updated `tests/run_test_suite.sh` to compute its own script directory and use absolute paths, making test execution robust from any working directory.
+
 ---
 📜 *Detailed records recovered and merged by Gemini-chan.* 💖
 🚀 *The journey from 1980s Fortran to 21st-century C++.* 🚀
