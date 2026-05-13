@@ -499,7 +499,7 @@ void Simulation::dump_snapshot(int iout) {
     auto get_path = [&](const std::string& prefix, const std::string& ext, bool use_rank) -> std::string {
         std::stringstream ss; 
         ss << dir << "/" << prefix << "_" << std::setfill('0') << std::setw(5) << iout << ext;
-        if (use_rank) ss << "." << std::setfill('0') << std::setw(5) << MpiManager::instance().rank() + 1;
+        if (use_rank) ss << std::setfill('0') << std::setw(5) << MpiManager::instance().rank() + 1;
         return ss.str();
     };
 
@@ -515,7 +515,9 @@ void Simulation::dump_snapshot(int iout) {
     RamsesWriter(dir + "/part_file_descriptor.txt").write_particles_descriptor(grid_, info);
 
     if (MpiManager::instance().rank() == 0) {
-        RamsesWriter(get_path("info", ".txt", false)).write_header(grid_, info);
+        std::stringstream ss_info;
+        ss_info << dir << "/info_" << std::setfill('0') << std::setw(5) << iout << ".txt";
+        RamsesWriter(ss_info.str()).write_header(grid_, info);
     }
 }
 

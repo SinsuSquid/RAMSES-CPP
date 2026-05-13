@@ -258,23 +258,32 @@ void AmrGrid::get_nbor_grids(int igrid, int ign[7]) const {
 void AmrGrid::get_nbor_cells(const int ign[7], int ic, int icn[6], int igrid) const {
     for (int i = 0; i < 6; ++i) icn[i] = 0;
     if (igrid <= 0) return;
+    int ifather = father[igrid - 1];
+
     for (int idim = 0; idim < NDIM; ++idim) {
         for (int inbor = 0; inbor < 2; ++inbor) {
             int ig_idx = constants::iii[idim][inbor][ic - 1];
             int ic_pos = constants::jjj[idim][inbor][ic - 1];
             int ig = ign[ig_idx];
             if (ig > 0) {
-                if (ig_idx == 0) {
-                    icn[idim * 2 + inbor] = ncoarse + (ic_pos - 1) * ngridmax + ig;
+                // Neighbor grid exists at same level
+                icn[idim * 2 + inbor] = ncoarse + (ic_pos - 1) * ngridmax + ig;
+            } else if (ig < 0) {
+                // Boundary
+                icn[idim * 2 + inbor] = ig;
+            } else {
+                // Coarse neighbor
+                int ifn[6];
+                if (ifather <= ncoarse) {
+                    get_nbor_cells_coarse(ifather, ifn);
                 } else {
-                    if (ig <= ncell && son.at(ig - 1) > 0) {
-                        icn[idim * 2 + inbor] = ncoarse + (ic_pos - 1) * ngridmax + son.at(ig - 1);
-                    } else {
-                        icn[idim * 2 + inbor] = ig;
-                    }
+                    int p_ig = ((ifather - ncoarse - 1) % ngridmax) + 1;
+                    int p_ign[7]; get_nbor_grids(p_ig, p_ign);
+                    int p_ic = ((ifather - ncoarse - 1) / ngridmax) + 1;
+                    get_nbor_cells(p_ign, p_ic, ifn, p_ig);
                 }
+                icn[idim * 2 + inbor] = ifn[idim * 2 + inbor];
             }
-            else icn[idim * 2 + inbor] = - (idim * 2 + inbor + 1);
         }
     }
 }
@@ -309,26 +318,37 @@ void AmrGrid::get_nbor_cells_coarse(int icell, int icn[6]) const {
     if (icell <= 0 || icell > ncoarse) return;
     
     int idx = icell - 1;
-    int iz = idx / (nx * ny); idx %= (nx * ny);
-    int iy = idx / nx; int ix = idx % nx;
+    int iz = idx / (nx * ny); int rem = idx % (nx * ny);
+    int iy = rem / nx; int ix = rem % nx;
+    int ixyz[3] = {ix, iy, iz};
+    int n[3] = {nx, ny, nz};
 
-    // Direct neighbor indexing with periodic boundaries
-    auto get_idx = [&](int x, int y, int z) {
-        int rx = (x + nx) % nx;
-        int ry = (y + ny) % ny;
-        int rz = (z + nz) % nz;
-        return rz * nx * ny + ry * nx + rx + 1;
-    };
-
-    icn[0] = get_idx(ix - 1, iy, iz);
-    icn[1] = get_idx(ix + 1, iy, iz);
-    if (NDIM > 1) {
-        icn[2] = get_idx(ix, iy - 1, iz);
-        icn[3] = get_idx(ix, iy + 1, iz);
-    }
-    if (NDIM > 2) {
-        icn[4] = get_idx(ix, iy, iz - 1);
-        icn[5] = get_idx(ix, iy, iz + 1);
+    for (int idim = 0; idim < 3; ++idim) {
+        for (int side = 0; side < 2; ++side) {
+            int coord[3] = {ix, iy, iz};
+            coord[idim] += (side == 0) ? -1 : 1;
+            
+            if (coord[idim] < 0 || coord[idim] >= n[idim]) {
+                // Check if boundary exists
+                int b_idx = -1;
+                for (int ib = 0; ib < nboundary; ++ib) {
+                    if (idim == 0 && ((side == 0 && ibound_min[ib] == -1) || (side == 1 && ibound_max[ib] == 1))) b_idx = ib;
+                    if (idim == 1 && ((side == 0 && jbound_min[ib] == -1) || (side == 1 && jbound_max[ib] == 1))) b_idx = ib;
+                    if (idim == 2 && ((side == 0 && kbound_min[ib] == -1) || (side == 1 && kbound_max[ib] == 1))) b_idx = ib;
+                }
+                if (b_idx != -1) icn[idim * 2 + side] = -(b_idx + 1);
+                else icn[idim * 2 + side] = ((coord[idim] + n[idim]) % n[idim]) + 1; // Fallback to periodic? Or 0?
+                // Actually, if no boundary is defined, it should probably be periodic or 0. 
+                // Legacy RAMSES defaults coarse level to periodic if no boundary patches are there.
+                if (b_idx == -1) {
+                    int p_ixyz[3] = {ix, iy, iz};
+                    p_ixyz[idim] = (p_ixyz[idim] + (side == 0 ? -1 : 1) + n[idim]) % n[idim];
+                    icn[idim * 2 + side] = p_ixyz[2] * nx * ny + p_ixyz[1] * nx + p_ixyz[0] + 1;
+                }
+            } else {
+                icn[idim * 2 + side] = coord[2] * nx * ny + coord[1] * nx + coord[0] + 1;
+            }
+        }
     }
 }
 

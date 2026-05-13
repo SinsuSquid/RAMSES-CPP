@@ -20,7 +20,7 @@ void Initializer::apply_all() {
     if (filetype == "grafic") {
         load_grafic();
     } else {
-        for (int il = 1; il <= params::nlevelmax; ++il) {
+        for (int il = 0; il <= params::nlevelmax; ++il) {
             region_condinit(il);
         }
     }

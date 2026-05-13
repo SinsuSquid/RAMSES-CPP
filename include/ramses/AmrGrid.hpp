@@ -64,6 +64,18 @@ public:
         if (ilevel < 0 || ilevel > nlevelmax || icpu < 1 || icpu > ncpu + nboundary) return 0;
         return headl_vec.at((size_t)ilevel * ncpu + (icpu - 1)); 
     }
+    int get_cell_level(int icell) const {
+        if (icell <= ncoarse) return 0;
+        int ig = ((icell - ncoarse - 1) % ngridmax) + 1;
+        int level = 1; int curr_ig = ig;
+        while(curr_ig > 0) {
+            int father_cell = father[curr_ig-1];
+            if (father_cell <= ncoarse) break;
+            curr_ig = ((father_cell - ncoarse - 1) % ngridmax) + 1;
+            level++;
+        }
+        return level;
+    }
     int& headl(int icpu, int ilevel) { 
         return headl_vec.at((size_t)ilevel * ncpu + (icpu - 1)); 
     }

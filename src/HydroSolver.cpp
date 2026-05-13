@@ -40,10 +40,10 @@ void HydroSolver::godunov_fine(int ilevel, real_t dt, real_t dx) {
         qp_level_.assign((size_t)grid_.ncell * 3 * grid_.nvar, 0.0);
     }
     
-    auto get_q = [&](int idc_0, int idim, int iv) -> real_t& {
+    auto get_qr = [&](int idc_0, int idim, int iv) -> real_t& {
         return qm_level_[(idc_0 * 3 + idim) * grid_.nvar + (iv - 1)];
     };
-    auto get_qp = [&](int idc_0, int idim, int iv) -> real_t& {
+    auto get_ql = [&](int idc_0, int idim, int iv) -> real_t& {
         return qp_level_[(idc_0 * 3 + idim) * grid_.nvar + (iv - 1)];
     };
 
@@ -56,7 +56,10 @@ void HydroSolver::godunov_fine(int ilevel, real_t dt, real_t dx) {
             for (int idim = 0; idim < NDIM; ++idim) {
                 real_t dq[20] = {0}, qm_tmp[20], qp_tmp[20];
                 trace(q_c, dq, dtdx, qm_tmp, qp_tmp, gamma);
-                for(int iv=1; iv<=grid_.nvar; ++iv) { get_q(idc_0, idim, iv) = qm_tmp[iv-1]; get_qp(idc_0, idim, iv) = qp_tmp[iv-1]; }
+                for(int iv=1; iv<=grid_.nvar; ++iv) { 
+                    get_qr(idc_0, idim, iv) = qm_tmp[iv-1]; 
+                    get_ql(idc_0, idim, iv) = qp_tmp[iv-1]; 
+                }
             }
         }
     }
@@ -77,7 +80,10 @@ void HydroSolver::godunov_fine(int ilevel, real_t dt, real_t dx) {
                 real_t qm_tmp[20], qp_tmp[20];
                 trace(q_rot, dq, dtdx, qm_tmp, qp_tmp, gamma);
                 if (idim > 0) { std::swap(qm_tmp[1], qm_tmp[1+idim]); std::swap(qp_tmp[1], qp_tmp[1+idim]); }
-                for(int iv=1; iv<=grid_.nvar; ++iv) { get_q(idc_0, idim, iv) = qm_tmp[iv-1]; get_qp(idc_0, idim, iv) = qp_tmp[iv-1]; }
+                for(int iv=1; iv<=grid_.nvar; ++iv) { 
+                    get_qr(idc_0, idim, iv) = qm_tmp[iv-1]; 
+                    get_ql(idc_0, idim, iv) = qp_tmp[iv-1]; 
+                }
             }
         }
     }
@@ -100,21 +106,28 @@ void HydroSolver::godunov_fine(int ilevel, real_t dt, real_t dx) {
                     if (idim > 0) std::swap(q_nb[1], q_nb[1+idim]);
                     trace(q_nb, dq_null, dtdx, qm_nb, qp_nb, gamma);
                     if (idim > 0) { std::swap(qm_nb[1], qm_nb[1+idim]); std::swap(qp_nb[1], qp_nb[1+idim]); }
-                    if (side == 0) { for(int iv=1; iv<=grid_.nvar; ++iv) { ql_f[iv-1] = qp_nb[iv-1]; qr_f[iv-1] = get_q(idc_0, idim, iv); } }
-                    else { for(int iv=1; iv<=grid_.nvar; ++iv) { ql_f[iv-1] = get_qp(idc_0, idim, iv); qr_f[iv-1] = qm_nb[iv-1]; } }
+                    
+                    if (side == 0) { // Cell i, interface i-1/2. Neighbor is to the left.
+                        for(int iv=1; iv<=grid_.nvar; ++iv) { ql_f[iv-1] = qm_nb[iv-1]; qr_f[iv-1] = get_ql(idc_0, idim, iv); }
+                    } else { // Cell i, interface i+1/2. Neighbor is to the right.
+                        for(int iv=1; iv<=grid_.nvar; ++iv) { ql_f[iv-1] = get_qr(idc_0, idim, iv); qr_f[iv-1] = qp_nb[iv-1]; }
+                    }
                 } else {
                     int id_n0 = id_n - 1;
-                    if (id_n > grid_.ncoarse && !grid_.son[id_n0] && ((id_n0 - grid_.ncoarse) % grid_.ngridmax + 1) == ig_info) {
-                        // Neighbor is in the same oct; use pre-computed traces
-                        if (side == 0) { for(int iv=1; iv<=grid_.nvar; ++iv) { ql_f[iv-1] = get_qp(id_n0, idim, iv); qr_f[iv-1] = get_q(idc_0, idim, iv); } }
-                        else { for(int iv=1; iv<=grid_.nvar; ++iv) { ql_f[iv-1] = get_qp(idc_0, idim, iv); qr_f[iv-1] = get_q(id_n0, idim, iv); } }
+                    if (id_n > grid_.ncoarse && !grid_.son[id_n0] && grid_.get_cell_level(id_n) == ilevel) {
+                        // Neighbor is at the same level; use pre-computed traces
+                        if (side == 0) { // Cell i, interface i-1/2. Neighbor is i-1.
+                            for(int iv=1; iv<=grid_.nvar; ++iv) { ql_f[iv-1] = get_qr(id_n0, idim, iv); qr_f[iv-1] = get_ql(idc_0, idim, iv); }
+                        } else { // Cell i, interface i+1/2. Neighbor is i+1.
+                            for(int iv=1; iv<=grid_.nvar; ++iv) { ql_f[iv-1] = get_qr(idc_0, idim, iv); qr_f[iv-1] = get_ql(id_n0, idim, iv); }
+                        }
                     } else {
                         // Fallback for interface cells: use raw cell primitives
                         real_t u_nb[20], q_nb[20];
                         for(int iv=1; iv<=grid_.nvar; ++iv) u_nb[iv-1] = grid_.uold(id_n, iv);
                         ctoprim(u_nb, q_nb, gamma);
-                        if (side == 0) { for(int iv=0; iv<grid_.nvar; ++iv) { ql_f[iv] = q_nb[iv]; qr_f[iv] = get_q(idc_0, idim, iv+1); } }
-                        else { for(int iv=0; iv<grid_.nvar; ++iv) { ql_f[iv] = get_qp(idc_0, idim, iv+1); qr_f[iv] = q_nb[iv]; } }
+                        if (side == 0) { for(int iv=0; iv<grid_.nvar; ++iv) { ql_f[iv] = q_nb[iv]; qr_f[iv] = get_ql(idc_0, idim, iv+1); } }
+                        else { for(int iv=0; iv<grid_.nvar; ++iv) { ql_f[iv] = get_qr(idc_0, idim, iv+1); qr_f[iv] = q_nb[iv]; } }
                     }
                 }
                 if (idim > 0) { std::swap(ql_f[1], ql_f[1+idim]); std::swap(qr_f[1], qr_f[1+idim]); }
@@ -359,7 +372,7 @@ real_t HydroSolver::compute_courant_step(int ilevel, real_t dx, real_t gamma, re
         return std::sqrt(gamma * p / d);
     };
 
-    if (ilevel == 1) {
+    if (ilevel == 0) {
         for (int id = 1; id <= grid_.ncoarse; ++id) {
             if (grid_.son.at(id - 1) > 0) continue;
             real_t d = std::max(grid_.uold(id, 1), 1e-10), v2 = 0.0;
