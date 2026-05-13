@@ -2,11 +2,16 @@
 
 This document tracks the major milestones and architectural shifts during the migration from legacy RAMSES (Fortran) to the modern C++17 distributed engine.
 
-## 🚩 Phase 34: Tracer Particle Implementation (Active) 🛰️
+## 🚩 Phase 34: 0-based parity & snapshot alignment (Active) 🛰️
 - **Tracer Physics Engine:** Implemented classical tracer particles that follow gas velocity using trilinear interpolation from the AMR grid.
 - **In-place Initialization:** Ported the `load_tracers_inplace` logic, allowing tracers to be spawned proportionally to gas density at simulation start.
 - **Particle Metadata Parity:** Expanded the `ParticlePacket` and type system to include `family` and `tag` fields, ensuring tracers are correctly identified and preserved across MPI rank boundaries.
-- **I/O Fixes:** Corrected `RamsesWriter` to properly handle sparse particle arrays by only writing active particles (based on `idp > 0`), maintaining binary compatibility with legacy tools.
+- **I/O Fixes & Parity:** 
+  - Corrected `RamsesWriter` to properly handle sparse particle arrays by only writing active particles (based on `idp > 0`).
+  - Standardized snapshot level record indexing to `il + 1` to match legacy RAMSES conventions.
+  - Reverted accidental Level 0 inclusion in `hydro` files which was causing visualization misalignment in OSIRIS-based tools.
+- **Config Parser Hardening:** Upgraded the `Config` parser to support Fortran array keys (e.g., `region_type(1:2)`) and multi-value strings, ensuring reliable initial conditions during automated parameter studies.
+- **Verbose Mode:** Implemented a `verbose` flag in `run_params` to provide detailed initialization diagnostics and solver settings, addressing user feedback regarding the engine's feedback level.
 - **C++17 Optimization:** Utilized `<random>` for deterministic, seed-based tracer spawning, replacing the legacy Fortran RNG while maintaining reproducible spatial distributions.
 
 ## 🚩 Phase 33.1: Stability & I/O Parity (Completed) 🛠️

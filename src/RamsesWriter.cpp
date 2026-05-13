@@ -100,7 +100,7 @@ void RamsesWriter::write_amr(const AmrGrid& grid, const SnapshotInfo& info) {
     for (int il = 1; il <= grid.nlevelmax; ++il) {
         for (int ib = 1; ib <= grid.nboundary + grid.ncpu; ++ib) {
             int ncache = (ib <= grid.ncpu) ? grid.numbl(ib, il) : 0;
-            int32_t il_rec = il, nc_rec = ncache;
+            int32_t il_rec = il + 1, nc_rec = ncache;
             write_rec(&il_rec, 4); write_rec(&nc_rec, 4);
 
             if (ncache > 0) {
@@ -166,7 +166,7 @@ void RamsesWriter::write_hydro(const AmrGrid& grid, const SnapshotInfo& info) {
     for (int il = 1; il <= grid.nlevelmax; ++il) {
         for (int icpu = 1; icpu <= grid.ncpu + grid.nboundary; ++icpu) {
             int ncache = (icpu <= grid.ncpu) ? grid.numbl(icpu, il) : 0;
-            int32_t il_rec = il, nc_rec = ncache;
+            int32_t il_rec = il + 1, nc_rec = ncache;
             write_rec(&il_rec, 4); write_rec(&nc_rec, 4);
             
             if (ncache > 0) {

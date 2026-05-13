@@ -28,9 +28,10 @@ void HydroSolver::godunov_fine(int ilevel, real_t dt, real_t dx) {
     real_t gamma = grid_.gamma;
     real_t dtdx = dt / dx;
     int slope_type = config_.get_int("hydro_params", "slope_type", 1);
+    bool verbose = config_.get_bool("run_params", "verbose", false);
     static bool first_print = true;
-    if (first_print && ilevel == 0 && MpiManager::instance().rank() == 0) {
-        std::cout << "[HydroSolver] Using slope_type=" << slope_type << " at ilevel=" << ilevel << std::endl;
+    if (first_print && ilevel == 0 && MpiManager::instance().rank() == 0 && verbose) {
+        std::cout << "[HydroSolver] Using slope_type=" << slope_type << " Riemann=" << config_.get("hydro_params", "riemann", "hllc") << std::endl;
         first_print = false;
     }
     std::string riemann = config_.get("hydro_params", "riemann", "hllc");

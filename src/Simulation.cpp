@@ -194,6 +194,10 @@ void Simulation::initialize(const std::string& nml_path) {
     nstepmax_ = config_.get_int("run_params", "nstepmax", 1000000);
     ncontrol_ = config_.get_int("run_params", "ncontrol", 1);
     
+    if (MpiManager::instance().rank() == 0 && config_.get_bool("run_params", "verbose", false)) {
+        std::cout << "[Simulation] nstepmax=" << nstepmax_ << " tend=" << tend_ << " ncontrol=" << ncontrol_ << std::endl;
+    }
+
     std::string tout_s = config_.get("output_params", "tout", "");
     if (!tout_s.empty()) {
         tout_.clear(); std::replace(tout_s.begin(), tout_s.end(), ',', ' ');
@@ -229,6 +233,11 @@ void Simulation::run() {
     bool verbose = config_.get_bool("run_params", "verbose", false);
 
     if (MpiManager::instance().rank() == 0) {
+        if (verbose) {
+            std::cout << "[Simulation] Starting simulation with NDIM=" << NDIM << std::endl;
+            std::cout << "[Simulation] Boxlen=" << p::boxlen << " Levelmin=" << p::levelmin << " Levelmax=" << p::nlevelmax << std::endl;
+            std::cout << "[Simulation] Gamma=" << grid_.gamma << " Courant=" << courant << std::endl;
+        }
         std::cout << "Initial mesh structure" << std::endl;
         for (int il = 1; il <= grid_.nlevelmax; ++il) {
             int ngrids = grid_.count_grids_at_level(il);
@@ -284,6 +293,13 @@ void Simulation::run() {
         }
     }
     dump_snapshot(snapshot_count++);
+
+    if (MpiManager::instance().rank() == 0) {
+        auto t_end_loop = std::chrono::high_resolution_clock::now();
+        double total_duration = std::chrono::duration<double>(t_end_loop - t_start_loop).count();
+        std::cout << "Simulation finished in " << std::fixed << std::setprecision(2) << total_duration << " seconds." << std::endl;
+        std::cout << "Total steps: " << nstep_ << " Final time: " << std::scientific << std::setprecision(6) << t_ << std::endl;
+    }
 }
 
 void Simulation::amr_step(int ilevel, real_t dt, int icount) {

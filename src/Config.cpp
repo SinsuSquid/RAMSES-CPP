@@ -50,10 +50,17 @@ bool Config::parse(const std::string& filename) {
         size_t eq_pos = line.find('=');
         if (eq_pos != std::string::npos && !current_block.empty()) {
             std::string key = to_lower(trim(line.substr(0, eq_pos)));
+            // Strip array indices from key: e.g. region_type(1:2) -> region_type
+            size_t paren_pos = key.find('(');
+            if (paren_pos != std::string::npos) key = key.substr(0, paren_pos);
+            
             std::string val = trim(line.substr(eq_pos + 1));
+            // Strip trailing comma
             if (!val.empty() && val.back() == ',') val.pop_back();
-            if (!val.empty() && (val.front() == '\'' || val.front() == '"')) val = val.substr(1);
-            if (!val.empty() && (val.back() == '\'' || val.back() == '"')) val.pop_back();
+            // Strip leading/trailing quotes (repeatedly for multi-value strings)
+            val.erase(std::remove(val.begin(), val.end(), '\''), val.end());
+            val.erase(std::remove(val.begin(), val.end(), '\"'), val.end());
+            
             blocks_[current_block][key] = val;
         }
     }
@@ -66,8 +73,6 @@ std::string Config::get(const std::string& block, const std::string& key, const 
         auto k_it = b_it->second.find(to_lower(key));
         if (k_it != b_it->second.end()) return k_it->second;
     }
-    
-    // Key not found, return default_val
     return default_val;
 }
 
