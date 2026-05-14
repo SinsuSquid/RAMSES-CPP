@@ -76,7 +76,7 @@ void HydroSolver::godunov_fine(int ilevel, real_t dt, real_t dx) {
             for (int idim = 0; idim < NDIM; ++idim) {
                 real_t dq[20], q_rot[20];
                 for(int iv=0; iv<grid_.nvar; ++iv) q_rot[iv] = q_c[iv];
-                compute_slopes(idc_0 + 1, icn, idim, dq, slope_type);
+                compute_slopes(idc_0 + 1, icn, idim, dq, slope_type, dtdx);
                 if (idim > 0) { std::swap(q_rot[1], q_rot[1+idim]); std::swap(dq[1], dq[1+idim]); }
                 real_t qm_tmp[20], qp_tmp[20];
                 trace(q_rot, dq, dtdx, qm_tmp, qp_tmp, gamma);
@@ -248,7 +248,7 @@ void HydroSolver::ctoprim(const real_t u[], real_t q[], real_t gamma) {
     for (int iv = iener + 1; iv < grid_.nvar; ++iv) { if (iv < iener + 1 + nener_) q[iv] = u[iv] * (gamma - 1.0); else q[iv] = u[iv] / d; }
 }
 
-void HydroSolver::compute_slopes(int idc, const int icelln[6], int idim, real_t dq[20], int slope_type) {
+void HydroSolver::compute_slopes(int idc, const int icelln[6], int idim, real_t dq[20], int slope_type, real_t dtdx) {
     real_t ql[20], qc[20], qr[20], u_c[20];
     for(int iv=1; iv<=grid_.nvar; ++iv) u_c[iv-1]=grid_.uold(idc, iv);
     ctoprim(u_c, qc, grid_.gamma);
@@ -257,6 +257,37 @@ void HydroSolver::compute_slopes(int idc, const int icelln[6], int idim, real_t 
         else { for(int iv=0; iv<grid_.nvar; ++iv) q_nb[iv] = qc[iv]; int ib = -id_n; if(ib > 0 && ib <= (int)grid_.bound_type.size() && grid_.bound_type.at(ib-1) == 1) q_nb[1 + idim] *= -1.0; }
     };
     get_nb_q(icelln[idim*2], 0, ql); get_nb_q(icelln[idim*2+1], 1, qr);
+
+    // slope_type 4 (Superbee) and 5 (Ultrabee): velocity-dependent limiters, 1D only
+    // Type 5 applies ultrabee to density only; zero slope for all other vars
+    if (slope_type == 4 || slope_type == 5) {
+        real_t nu = qc[1 + idim] * dtdx;  // Courant number: vel_component * dt/dx
+        for (int iv = 0; iv < grid_.nvar; ++iv) {
+            if (slope_type == 5 && iv != 0) { dq[iv] = 0.0; continue; }
+            real_t dlft_raw = qc[iv] - ql[iv], drgt_raw = qr[iv] - qc[iv];
+            real_t dlft_s, drgt_s;
+            if (slope_type == 4) {
+                // Superbee: symmetric scaling
+                dlft_s = 2.0 / (1.0 + nu) * dlft_raw;
+                drgt_s = 2.0 / (1.0 - nu) * drgt_raw;
+            } else {
+                // Ultrabee: one-sided scaling based on flow direction
+                if (nu >= 0.0) {
+                    dlft_s = 2.0 / (nu + 1e-10) * dlft_raw;
+                    drgt_s = 2.0 / (1.0 - nu) * drgt_raw;
+                } else {
+                    dlft_s = 2.0 / (1.0 + nu) * dlft_raw;
+                    drgt_s = 2.0 / (-nu + 1e-10) * drgt_raw;
+                }
+            }
+            real_t dsgn = (dlft_s >= 0.0) ? 1.0 : -1.0;
+            real_t dlim = std::min(std::abs(dlft_s), std::abs(drgt_s));
+            if (dlft_s * drgt_s <= 0.0) dlim = 0.0;
+            dq[iv] = dsgn * dlim;
+        }
+        return;
+    }
+
     for (int iv = 0; iv < grid_.nvar; ++iv) {
         real_t dlft = qc[iv] - ql[iv], drgt = qr[iv] - qc[iv];
         if (dlft * drgt <= 0.0) {
@@ -265,17 +296,12 @@ void HydroSolver::compute_slopes(int idc, const int icelln[6], int idim, real_t 
             real_t dcen = 0.5 * (dlft + drgt);
             real_t dsgn = (dcen >= 0.0) ? 1.0 : -1.0;
             real_t dlim = 0.0;
-            if (slope_type == 1) { // Minmod
+            if (slope_type == 1) {
                 dlim = std::min(std::abs(dlft), std::abs(drgt));
-            } else if (slope_type == 2) { // MC
+            } else if (slope_type == 2 || slope_type == 3) {
+                // MC (MonCen)
                 dlim = std::min({2.0 * std::abs(dlft), 2.0 * std::abs(drgt), std::abs(dcen)});
-            } else if (slope_type == 5) { // Superbee
-                real_t dmin = std::min(std::abs(dlft), std::abs(drgt));
-                real_t dmax = std::max(std::abs(dlft), std::abs(drgt));
-                dlim = std::min({2.0 * dmin, dmax, std::abs(dcen)}); // Simplified version of Superbee
-                // Wait, legacy RAMSES Superbee is different. I'll use the MC-like one for now.
-                dlim = std::max(std::min(2.0 * std::abs(dlft), std::abs(drgt)), std::min(std::abs(dlft), 2.0 * std::abs(drgt)));
-            } else { // Default to minmod
+            } else {
                 dlim = std::min(std::abs(dlft), std::abs(drgt));
             }
             dq[iv] = dsgn * dlim;

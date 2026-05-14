@@ -32,7 +32,7 @@ void RamsesWriter::write_amr(const AmrGrid& grid, const SnapshotInfo& info) {
     int32_t nboundary = (int32_t)grid.nboundary; write_rec(&nboundary, 4);
     int32_t ngrid_tot = 0; for(int l=1; l<=grid.nlevelmax; ++l) { for(int c=1; c<=grid.ncpu; ++c) ngrid_tot += grid.numbl(c, l); }
     write_rec(&ngrid_tot, 4);
-    double boxlen_val = params::boxlen / (double)grid.nx; write_rec(&boxlen_val, 8);
+    double boxlen_val = params::boxlen; write_rec(&boxlen_val, 8);
     
     // 9-14. Time and Units
     int32_t nout_rec[3] = {(int32_t)info.noutput, (int32_t)info.iout, (int32_t)info.iout};
@@ -100,8 +100,6 @@ void RamsesWriter::write_amr(const AmrGrid& grid, const SnapshotInfo& info) {
     for (int il = 1; il <= grid.nlevelmax; ++il) {
         for (int ib = 1; ib <= grid.nboundary + grid.ncpu; ++ib) {
             int ncache = (ib <= grid.ncpu) ? grid.numbl(ib, il) : 0;
-            int32_t il_rec = il + 1, nc_rec = ncache;
-            write_rec(&il_rec, 4); write_rec(&nc_rec, 4);
 
             if (ncache > 0) {
                 std::vector<int> g_list; 
@@ -166,11 +164,11 @@ void RamsesWriter::write_hydro(const AmrGrid& grid, const SnapshotInfo& info) {
     for (int il = 1; il <= grid.nlevelmax; ++il) {
         for (int icpu = 1; icpu <= grid.ncpu + grid.nboundary; ++icpu) {
             int ncache = (icpu <= grid.ncpu) ? grid.numbl(icpu, il) : 0;
-            int32_t il_rec = il + 1, nc_rec = ncache;
+            int32_t il_rec = il, nc_rec = ncache;
             write_rec(&il_rec, 4); write_rec(&nc_rec, 4);
-            
+
             if (ncache > 0) {
-                std::vector<int> g_list; 
+                std::vector<int> g_list;
                 int ig = (icpu <= grid.ncpu) ? grid.get_headl(icpu, il) : 0; 
                 while(ig > 0) { g_list.push_back(ig); ig = grid.next[ig-1]; }
                 

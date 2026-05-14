@@ -6,13 +6,18 @@ This document tracks the major milestones and architectural shifts during the mi
 - **Tracer Physics Engine:** Implemented classical tracer particles that follow gas velocity using trilinear interpolation from the AMR grid.
 - **In-place Initialization:** Ported the `load_tracers_inplace` logic, allowing tracers to be spawned proportionally to gas density at simulation start.
 - **Particle Metadata Parity:** Expanded the `ParticlePacket` and type system to include `family` and `tag` fields, ensuring tracers are correctly identified and preserved across MPI rank boundaries.
-- **I/O Fixes & Parity:** 
+- **I/O Fixes & Parity:**
   - Corrected `RamsesWriter` to properly handle sparse particle arrays by only writing active particles (based on `idp > 0`).
   - Standardized snapshot level record indexing to `il + 1` to match legacy RAMSES conventions.
   - Reverted accidental Level 0 inclusion in `hydro` files which was causing visualization misalignment in OSIRIS-based tools.
+  - Ensured `dump_snapshot` writes fully named `info_XXXXX.txt` headers instead of a generic `info.txt`, preserving legacy snapshot metadata conventions.
 - **Config Parser Hardening:** Upgraded the `Config` parser to support Fortran array keys (e.g., `region_type(1:2)`) and multi-value strings, ensuring reliable initial conditions during automated parameter studies.
-- **Verbose Mode:** Implemented a `verbose` flag in `run_params` to provide detailed initialization diagnostics and solver settings, addressing user feedback regarding the engine's feedback level.
+- **Verbose Mode:** Implemented a `verbose` flag in `run_params` to provide detailed initialization diagnostics and solver settings.
 - **C++17 Optimization:** Utilized `<random>` for deterministic, seed-based tracer spawning, replacing the legacy Fortran RNG while maintaining reproducible spatial distributions.
+- **Level-0 Initialization:** Updated `Initializer::apply_all` to initialize level 0 before any refinement passes, matching legacy AMR start conditions.
+- **Coarse Neighbor Parity:** Improved `AmrGrid::get_nbor_cells_coarse` and `get_nbor_cells` to correctly resolve same-level and coarse-level neighbors for periodic/boundary cells.
+- **Fine-Solver Interface Stability:** Fixed `HydroSolver::godunov_fine` trace state selection for left/right interfaces and added explicit `get_cell_level` support to detect same-level neighbors.
+- **Test Suite Path Reliability:** Updated `tests/run_test_suite.sh` to compute its own script directory and use absolute paths, making test execution robust from any working directory.
 
 ## 🚩 Phase 33.1: Stability & I/O Parity (Completed) 🛠️
 - **Godunov Solver Stabilization:** Fixed uninitialized memory access in `godunov_fine` where interface cells between levels were reading garbage traces. Implemented robust fallbacks to raw cell primitives at AMR interfaces, resolving simulation stalls and tiny `dt` issues.
@@ -105,13 +110,6 @@ This document tracks the major milestones and architectural shifts during the mi
 - **Base Hydro:** MUSCL-Hancock scheme with HLLC/LLF Riemann solvers.
 - **RamsesReader:** C++ bridge for loading legacy Fortran snapshots.
 - **Test Infrastructure:** Initial integration with `visu_ramses.py` and automated suites.
-
-## 🚩 Phase 34: 0-based parity & snapshot alignment (In Progress)
-- **Level-0 initialization:** Updated `Initializer::apply_all` to initialize level 0 before any refinement passes, matching legacy AMR start conditions.
-- **Coarse neighbor parity:** Improved `AmrGrid::get_nbor_cells_coarse` and `AmrGrid::get_nbor_cells` to correctly resolve same-level and coarse-level neighbors for periodic/boundary cells.
-- **Fine-solver interface stability:** Fixed `HydroSolver::godunov_fine` trace state selection for left/right interfaces and added explicit `get_cell_level` support to detect same-level neighbors.
-- **Snapshot header naming:** Ensured `Simulation::dump_snapshot` writes fully named `info_XXXXX.txt` headers instead of a generic `info.txt`, which preserves legacy snapshot metadata conventions.
-- **Test suite path reliability:** Updated `tests/run_test_suite.sh` to compute its own script directory and use absolute paths, making test execution robust from any working directory.
 
 ---
 📜 *Detailed records recovered and merged by Gemini-chan.* 💖

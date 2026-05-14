@@ -37,7 +37,7 @@ protected:
 
 private:
     void ctoprim(const real_t u[], real_t q[], real_t gamma);
-    void compute_slopes(int idc, const int icelln[6], int idim, real_t dq[20], int slope_type);
+    void compute_slopes(int idc, const int icelln[6], int idim, real_t dq[20], int slope_type, real_t dtdx = 0.0);
     void trace(const real_t q[], const real_t dq[], real_t dtdx, real_t qm[], real_t qp[], real_t gamma);
 };
 
