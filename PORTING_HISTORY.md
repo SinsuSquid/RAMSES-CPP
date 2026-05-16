@@ -34,38 +34,38 @@ This document tracks the major milestones and architectural shifts during the mi
 - **Fine-Solver Interface Stability:** Fixed `HydroSolver::godunov_fine` trace state selection for left/right interfaces and added explicit `get_cell_level` support to detect same-level neighbors.
 - **Test Suite Path Reliability:** Updated `tests/run_test_suite.sh` to compute its own script directory and use absolute paths, making test execution robust from any working directory.
 
-## 🚩 Phase 35: Dynamic AMR Grid Storage Architecture (Active) 🏗️
+## 🚩 Phase 35: nsub=2 Sub-cycling Implementation (In Progress) 🚀
 
-**Objective:** Redesign the AMR grid storage system from flat vector allocation to dynamic tree structure, enabling proper nsub=2 sub-cycling and accurate AMR refinement tracking without overflow.
+**Checkpoint A: Sub-cycling Parameter & Timestep Fix** ✅
 
-**Problem Statement:**
-Current flat vector model: `ncell = ncoarse + 2^NDIM * ngridmax` (e.g., 1 + 2*1000 = 2001 cells for 1D)
-- Grid indices computed as: `ncoarse + (ic-1)*ngridmax + (ig-1)` where ig ∈ [1, ngridmax]
-- Hydro data arrays sized to fit exactly ngridmax grids
-- **Incompatible with dynamic refinement:** nsub=2 sub-cycling creates recursive refinement patterns that either overflow grid allocation or timeout
+Implemented three targeted changes to enable proper nsub=2 sub-cycling:
 
-**Proposed Solution:**
-1. **Dynamic Grid Allocation:** Replace flat vector with std::vector of Grid objects, each owning its own cell data
-2. **Hierarchical Grid Indexing:** Maintain parent-child relationships explicitly (son/father arrays continue to work)
-3. **Per-Grid Hydro Storage:** Each grid stores its own nvar*ncell_per_grid data instead of global uold_vec/unew_vec
-4. **Refinement Guard Implementation:** Proper `if(ilevel==0 || icount>1)` guard to prevent double-refinement during sub-steps
-5. **nsub=2 Sub-cycling:** Enable two sub-steps per level, with global dt from coarsest level only
+1. **nsubcycle Array Initialization** (`Simulation::initialize()` lines 147-150):
+   - Initialize `nsubcycle_[il] = 2` for all `il >= p::levelmin` (physics levels)
+   - Keep `nsubcycle_[il] = 1` for `il < p::levelmin` (background levels)
+   - This matches legacy RAMSES: fine levels sub-cycle independently
 
-**Key Files to Refactor:**
-- `include/ramses/AmrGrid.hpp` — Redesign grid storage and indexing
-- `src/AmrGrid.cpp` — Implement dynamic allocation
-- `src/HydroSolver.cpp` — Update compute_courant_step, godunov_fine to work with per-grid storage
-- `src/TreeUpdater.cpp` — Update flag_fine, make_grid_fine, remove_grid_fine for new indexing
-- `src/Simulation.cpp` — Enable nsub=2 with proper refinement guard
-- `src/RamsesWriter.cpp` / `src/RamsesReader.cpp` — Ensure I/O compatibility
+2. **Global Timestep Bound** (`Simulation::run()` line 262):
+   - Changed dt computation loop from `il <= grid_.nlevelmax` to `il <= p::levelmin`
+   - Global dt is now constrained only by background level CFL, not finest level
+   - With `levelmin=4`, dt ≈ 0.023 (coarse) instead of dt ≈ 3.58e-4 (fine)
+   - Result: simulation completes in ~435 steps (vs 27928 with all-level constraint)
 
-**Success Criteria:**
-- ✅ `hydro/advect1d` produces ~100 cells and density_sum ≈ 12.35 (binary parity with legacy RAMSES)
-- ✅ All 1D/2D/3D solver tests pass with dynamic refinement enabled
-- ✅ Grid allocation respects ngridmax with no overflow
-- ✅ nsub=2 sub-cycling completes without timeout (target <3 min for advect1d)
+3. **Refinement Guard for Sub-cycling** (`Simulation::amr_step()` line 319):
+   - Added condition: `bool should_refine = (ilevel <= p::levelmin) || (icount > 1)`
+   - Refine background levels (0..levelmin) unconditionally (they use nsub=1)
+   - Refine fine levels (> levelmin) only on second sub-step (icount > 1) to prevent double-refinement
+   - Prevents exponential cascade when nsub=1 calls nsub=2 chains
 
-**Timeline Estimate:** 2-3 sessions (complex architectural change affecting core data structures)
+**Test Status:**
+- `hydro/advect1d`: Produces 435 steps to reach t=10 ✅ (vs 27928 before)
+- Grid counts: ~925 total cells (vs expected ~100)
+- Density parity: **PENDING** — timestep fixed but cell distribution still differs from reference
+
+**Remaining Work:**
+- Investigate why refined cell distribution differs from legacy RAMSES (~925 vs ~100 cells)
+- May require additional refinement threshold tuning or comparison with legacy amr_step logic
+- Consider Phase 35b if grid storage redesign becomes necessary for exact parity
 
 ## 🚩 Phase 33.1: Stability & I/O Parity (Completed) 🛠️
 - **Godunov Solver Stabilization:** Fixed uninitialized memory access in `godunov_fine` where interface cells between levels were reading garbage traces. Implemented robust fallbacks to raw cell primitives at AMR interfaces, resolving simulation stalls and tiny `dt` issues.
