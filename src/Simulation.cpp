@@ -144,10 +144,6 @@ void Simulation::initialize(const std::string& nml_path) {
             }
         }
     }
-    // Enable nsub=2 for levels >= levelmin (matching legacy RAMSES behavior)
-    for (int il = p::levelmin; il <= grid_.nlevelmax && il < 33; ++il) {
-        nsubcycle_[il] = 2;
-    }
 
     nexpand_.assign(33, 1);
     std::string nexp_s = config_.get("amr_params", "nexpand", "");
