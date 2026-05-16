@@ -636,7 +636,7 @@ def check_solution(data,test_name,tolerance=None,threshold=2.0e-14,norm_min=1.0e
     for line in content:
         sp = line.split(":")
         if len(sp) > 1:
-            ref[sp[0].strip()] = eval(sp[1].strip())
+            ref[sp[0].strip()] = eval(sp[1].strip(), {"__builtins__": {}, "nan": np.nan, "inf": np.inf})
 
     ok = True
 
