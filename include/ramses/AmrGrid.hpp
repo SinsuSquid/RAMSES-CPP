@@ -52,6 +52,7 @@ public:
     void set_nboundary(int nb) { nboundary = nb; }
     void allocate(int nx, int ny, int nz, int ngridmax, int nvar, int ncpu, int nlevelmax);
     void resize_particles(int new_npartmax);
+    void resize_grids(int new_ngridmax);
     int get_free_grid();
     void free_grid(int igrid);
     int get_free_particle();

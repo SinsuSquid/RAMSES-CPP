@@ -259,7 +259,13 @@ void Simulation::run() {
         real_t dx0 = p::boxlen / (real_t)p::nx;
         min_dt = std::min(min_dt, hydro_->compute_courant_step(0, dx0, grid_.gamma, courant));
 
-        for (int il = 1; il <= p::levelmin; ++il) {
+        // Compute dt from all nsub=1 levels (levels where sub-cycling has not yet started)
+        int nsub1_max_level = 0;
+        for (int il = 1; il <= grid_.nlevelmax; ++il) {
+            if (il < (int)nsubcycle_.size() && nsubcycle_[il] <= 1) nsub1_max_level = il;
+            else break;
+        }
+        for (int il = 1; il <= nsub1_max_level + 1 && il <= grid_.nlevelmax; ++il) {
             if (grid_.count_grids_at_level(il) == 0) continue;
             real_t dx = p::boxlen / (real_t)(p::nx * (1 << il));
             min_dt = std::min(min_dt, hydro_->compute_courant_step(il, dx, grid_.gamma, courant));
@@ -314,8 +320,9 @@ void Simulation::amr_step(int ilevel, real_t dt, int icount) {
     }
 
     // Dynamic Refinement
-    // For nsub=2 at fine levels: only refine on second sub-step (icount > 1) to avoid double-refinement
-    bool should_refine = (ilevel <= p::levelmin) || (icount > 1);
+    // For nsub=2 at fine levels: only refine on last sub-step to avoid double-refinement
+    int nsub_here = (ilevel < (int)nsubcycle_.size()) ? nsubcycle_[ilevel] : 1;
+    bool should_refine = (nsub_here <= 1) || (icount >= nsub_here);
     if (ilevel < grid_.nlevelmax && should_refine) {
         real_t ed = config_.get_double("refine_params", "err_grad_d", -1.0);
         real_t ep = config_.get_double("refine_params", "err_grad_p", -1.0);

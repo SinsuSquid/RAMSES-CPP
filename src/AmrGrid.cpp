@@ -89,17 +89,17 @@ void AmrGrid::resize_particles(int new_npartmax) {
     tag.resize(new_npartmax, 0);
     idp.resize(new_npartmax, 0);
     levelp.resize(new_npartmax, 0);
-    
+
     std::vector<int> new_nextp(new_npartmax, 0);
     std::vector<int> new_prevp(new_npartmax, 0);
     for(int i=0; i<old_npartmax; ++i) { new_nextp[i] = nextp[i]; new_prevp[i] = prevp[i]; }
-    
+
     // Add new space to free list
     for (int i = old_npartmax + 1; i <= new_npartmax; ++i) {
         new_nextp[i - 1] = (i < new_npartmax) ? i + 1 : 0;
         new_prevp[i - 1] = (i > old_npartmax + 1) ? i - 1 : 0;
     }
-    
+
     if (numbp_free == 0) {
         headp_free = old_npartmax + 1;
         tailp_free = new_npartmax;
@@ -109,10 +109,112 @@ void AmrGrid::resize_particles(int new_npartmax) {
         tailp_free = new_npartmax;
     }
     numbp_free += (new_npartmax - old_npartmax);
-    
+
     nextp = std::move(new_nextp);
     prevp = std::move(new_prevp);
     npartmax = new_npartmax;
+}
+
+void AmrGrid::resize_grids(int new_ngridmax) {
+    if (new_ngridmax <= ngridmax) return;
+    int old_ngridmax = ngridmax;
+    int old_ncell = ncell;
+    int new_ncell = ncoarse + constants::twotondim * new_ngridmax;
+    int n2d = constants::twotondim;
+
+    std::cout << "[AmrGrid::resize_grids] Resizing from ngridmax=" << old_ngridmax
+              << " to " << new_ngridmax << " (ncell " << old_ncell << " -> " << new_ncell << ")" << std::endl;
+
+    // Helper: resize per-cell array with ncomp "planes" of size ncell each
+    auto resize_cell_real = [&](std::vector<real_t>& arr, int ncomp) {
+        std::vector<real_t> tmp(ncomp * new_ncell, 0.0);
+        for (int v = 0; v < ncomp; ++v) {
+            for (int i = 0; i < ncoarse; ++i)
+                tmp[v * new_ncell + i] = arr[v * old_ncell + i];
+            for (int ic = 0; ic < n2d; ++ic)
+                for (int ig = 0; ig < old_ngridmax; ++ig)
+                    tmp[v * new_ncell + ncoarse + ic * new_ngridmax + ig] =
+                        arr[v * old_ncell + ncoarse + ic * old_ngridmax + ig];
+        }
+        arr = std::move(tmp);
+    };
+    auto resize_cell_int = [&](std::vector<int>& arr, int ncomp) {
+        std::vector<int> tmp(ncomp * new_ncell, 0);
+        for (int v = 0; v < ncomp; ++v) {
+            for (int i = 0; i < ncoarse; ++i)
+                tmp[v * new_ncell + i] = arr[v * old_ncell + i];
+            for (int ic = 0; ic < n2d; ++ic)
+                for (int ig = 0; ig < old_ngridmax; ++ig)
+                    tmp[v * new_ncell + ncoarse + ic * new_ngridmax + ig] =
+                        arr[v * old_ncell + ncoarse + ic * old_ngridmax + ig];
+        }
+        arr = std::move(tmp);
+    };
+
+    // Helper: resize per-grid array with ncomp "planes" of size ngridmax each
+    auto resize_grid_real = [&](std::vector<real_t>& arr, int ncomp) {
+        arr.resize(ncomp * new_ngridmax, 0.0);
+        for (int v = ncomp - 1; v >= 1; --v)
+            for (int ig = old_ngridmax - 1; ig >= 0; --ig)
+                arr[v * new_ngridmax + ig] = arr[v * old_ngridmax + ig];
+        for (int v = 0; v < ncomp; ++v)
+            for (int ig = old_ngridmax; ig < new_ngridmax; ++ig)
+                arr[v * new_ngridmax + ig] = 0.0;
+    };
+    auto resize_grid_int = [&](std::vector<int>& arr, int ncomp) {
+        arr.resize(ncomp * new_ngridmax, 0);
+        for (int v = ncomp - 1; v >= 1; --v)
+            for (int ig = old_ngridmax - 1; ig >= 0; --ig)
+                arr[v * new_ngridmax + ig] = arr[v * old_ngridmax + ig];
+        for (int v = 0; v < ncomp; ++v)
+            for (int ig = old_ngridmax; ig < new_ngridmax; ++ig)
+                arr[v * new_ngridmax + ig] = 0;
+    };
+
+    // Resize per-cell arrays
+    resize_cell_real(uold_vec, nvar);
+    resize_cell_real(unew_vec, nvar);
+    resize_cell_real(f_vec, 3);
+    resize_cell_real(rho, 1);
+    resize_cell_real(phi, 1);
+    resize_cell_int(son, 1);
+    resize_cell_int(flag1, 1);
+    resize_cell_int(flag2, 1);
+    resize_cell_int(cpu_map, 1);
+
+    // hilbert_keys (qdp_t = double)
+    {
+        std::vector<qdp_t> tmp(new_ncell, 0);
+        for (int i = 0; i < ncoarse; ++i) tmp[i] = hilbert_keys[i];
+        for (int ic = 0; ic < n2d; ++ic)
+            for (int ig = 0; ig < old_ngridmax; ++ig)
+                tmp[ncoarse + ic * new_ngridmax + ig] = hilbert_keys[ncoarse + ic * old_ngridmax + ig];
+        hilbert_keys = std::move(tmp);
+    }
+
+    // Resize per-grid arrays
+    resize_grid_real(xg, 3);
+    resize_grid_int(nbor, 6);
+    next.resize(new_ngridmax, 0);
+    prev.resize(new_ngridmax, 0);
+    father.resize(new_ngridmax, 0);
+    headp.resize(new_ngridmax, 0);
+    tailp.resize(new_ngridmax, 0);
+    numbp.resize(new_ngridmax, 0);
+
+    // Extend the free-grid pool with new grid indices old_ngridmax+1..new_ngridmax
+    for (int ig = old_ngridmax + 1; ig <= new_ngridmax; ++ig) {
+        if (tailf == 0) {
+            headf = ig; tailf = ig; prev[ig-1] = 0; next[ig-1] = 0;
+        } else {
+            next[tailf-1] = ig; prev[ig-1] = tailf; next[ig-1] = 0; tailf = ig;
+        }
+        numbf++;
+    }
+
+    // Update scalars
+    ngridmax = new_ngridmax;
+    ncell = new_ncell;
 }
 
 int AmrGrid::get_free_particle() {
@@ -135,6 +237,7 @@ void AmrGrid::free_particle(int ip) {
 }
 
 int AmrGrid::get_free_grid() {
+    if (headf == 0) resize_grids(2 * ngridmax);
     if (headf == 0) return 0;
     int igrid = headf;
     headf = next[igrid - 1];
