@@ -128,7 +128,7 @@ void Simulation::initialize(const std::string& nml_path) {
     initializer_->apply_all();
     initializer_->init_tracers();
 
-    nsubcycle_.assign(33, 2);
+    nsubcycle_.assign(33, 1);
     std::string nsub_s = config_.get("run_params", "nsubcycle", "");
     if (!nsub_s.empty()) {
         std::stringstream ss(nsub_s); std::string item; int l = 1;
@@ -255,7 +255,7 @@ void Simulation::run() {
         real_t dx0 = p::boxlen / (real_t)p::nx;
         min_dt = std::min(min_dt, hydro_->compute_courant_step(0, dx0, grid_.gamma, courant));
 
-        for (int il = 1; il <= p::levelmin; ++il) {
+        for (int il = 1; il <= grid_.nlevelmax; ++il) {
             if (grid_.count_grids_at_level(il) == 0) continue;
             real_t dx = p::boxlen / (real_t)(p::nx * (1 << il));
             min_dt = std::min(min_dt, hydro_->compute_courant_step(il, dx, grid_.gamma, courant));
@@ -309,9 +309,8 @@ void Simulation::amr_step(int ilevel, real_t dt, int icount) {
         std::cout << " Entering amr_step(" << icount << ") for level " << ilevel << std::endl;
     }
 
-    // Dynamic Refinement: only at coarse level or on second sub-step (icount>1).
-    // Matches legacy RAMSES amr_step.f90: `if(ilevel==levelmin.or.icount>1)`
-    if (ilevel < grid_.nlevelmax && (ilevel == 0 || icount > 1)) {
+    // Dynamic Refinement (Phase 25)
+    if (ilevel < grid_.nlevelmax) {
         real_t ed = config_.get_double("refine_params", "err_grad_d", -1.0);
         real_t ep = config_.get_double("refine_params", "err_grad_p", -1.0);
         real_t ev = config_.get_double("refine_params", "err_grad_v", -1.0);

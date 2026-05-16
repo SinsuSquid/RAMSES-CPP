@@ -11,6 +11,20 @@ This document tracks the major milestones and architectural shifts during the mi
   - Standardized snapshot level record indexing to `il + 1` to match legacy RAMSES conventions.
   - Reverted accidental Level 0 inclusion in `hydro` files which was causing visualization misalignment in OSIRIS-based tools.
   - Ensured `dump_snapshot` writes fully named `info_XXXXX.txt` headers instead of a generic `info.txt`, preserving legacy snapshot metadata conventions.
+  - **CRITICAL AMR Binary Format Fix:** Removed erroneous `ilevel` and `ncache` record writes from `write_amr()` per-level grid loop. Legacy RAMSES AMR format does NOT include these records; only hydro files do. This was causing `visu_ramses.py` byte-offset calculations to misalign, reading garbage son values and marking all cells as refined.
+  - **CRITICAL boxlen Record Fix:** Changed `boxlen_val = params::boxlen / (double)grid.nx` to `boxlen_val = params::boxlen` for AMR record 8. The cell size division was incorrect for the header record.
+  - **Hydro Level Record Fix:** Corrected `il_rec = il + 1` to `il_rec = il` in `write_hydro()` to match legacy indexing (cosmetic fix; value unused by readers).
+  - **Spurious Snapshot Removal:** Removed unconditional `dump_snapshot(snapshot_count++)` after the main time loop in `run()`, which was creating duplicate output_00003.
+- **Slope Limiter Parity (slope_type 4 & 5):**
+  - Implemented proper velocity-dependent Superbee (slope_type=4) and Ultrabee (slope_type=5) slope limiters in `HydroSolver::compute_slopes`.
+  - Added `dtdx` parameter to `compute_slopes` signature to compute the local Courant number `nu = vel_component * dt/dx`.
+  - **Ultrabee (type 5):** Applies velocity-weighted scaling to density only; all other variables receive zero slope (anti-diffusive, 1D only).
+  - **Superbee (type 4):** Applies velocity-weighted scaling to all variables (1D only).
+  - Updated call site in `godunov_fine` to pass `dtdx` parameter.
+- **AMR Sub-cycling (In Progress):**
+  - Legacy RAMSES uses `nsubcycle=2` (fine levels take 2 sub-steps per coarse step) with refinement guard `if(ilevel==levelmin.or.icount>1)` to prevent double-refinement.
+  - Attempted implementation with `nsubcycle_.assign(33, 2)` and refinement guard, but hit grid overflow during initial refinement (vector size 6003 exceeded). Requires more careful implementation of refinement suspension during sub-cycling.
+  - Currently kept at `nsubcycle=1` (all levels step with same dt). This produces ~441 cells vs reference ~100 cells. Full nsub=2 parity deferred to Phase 35.
 - **Config Parser Hardening:** Upgraded the `Config` parser to support Fortran array keys (e.g., `region_type(1:2)`) and multi-value strings, ensuring reliable initial conditions during automated parameter studies.
 - **Verbose Mode:** Implemented a `verbose` flag in `run_params` to provide detailed initialization diagnostics and solver settings.
 - **C++17 Optimization:** Utilized `<random>` for deterministic, seed-based tracer spawning, replacing the legacy Fortran RNG while maintaining reproducible spatial distributions.
