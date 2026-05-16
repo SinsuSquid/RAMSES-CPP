@@ -1,4 +1,5 @@
 <img src="https://github.com/SinsuSquid/RAMSES-CPP/blob/main/logo/Sia-chan.png?raw=true" align="right" width="400">
+
 Sia(_See-ah_)-Chan, our Mascot.
 
 # RAMSES-CPP
