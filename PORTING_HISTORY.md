@@ -2,7 +2,7 @@
 
 This document tracks the major milestones and architectural shifts during the migration from legacy RAMSES (Fortran) to the modern C++17 distributed engine.
 
-## 🚩 Phase 34: 0-based parity & snapshot alignment (Active) 🛰️
+## 🚩 Phase 34: 0-based parity & snapshot alignment (Completed) 🛰️
 - **Tracer Physics Engine:** Implemented classical tracer particles that follow gas velocity using trilinear interpolation from the AMR grid.
 - **In-place Initialization:** Ported the `load_tracers_inplace` logic, allowing tracers to be spawned proportionally to gas density at simulation start.
 - **Particle Metadata Parity:** Expanded the `ParticlePacket` and type system to include `family` and `tag` fields, ensuring tracers are correctly identified and preserved across MPI rank boundaries.
@@ -21,10 +21,11 @@ This document tracks the major milestones and architectural shifts during the mi
   - **Ultrabee (type 5):** Applies velocity-weighted scaling to density only; all other variables receive zero slope (anti-diffusive, 1D only).
   - **Superbee (type 4):** Applies velocity-weighted scaling to all variables (1D only).
   - Updated call site in `godunov_fine` to pass `dtdx` parameter.
-- **AMR Sub-cycling (In Progress):**
+- **AMR Sub-cycling (Architectural Incompatibility Identified):**
   - Legacy RAMSES uses `nsubcycle=2` (fine levels take 2 sub-steps per coarse step) with refinement guard `if(ilevel==levelmin.or.icount>1)` to prevent double-refinement.
-  - Attempted implementation with `nsubcycle_.assign(33, 2)` and refinement guard, but hit grid overflow during initial refinement (vector size 6003 exceeded). Requires more careful implementation of refinement suspension during sub-cycling.
-  - Currently kept at `nsubcycle=1` (all levels step with same dt). This produces ~441 cells vs reference ~100 cells. Full nsub=2 parity deferred to Phase 35.
+  - **Three implementation attempts failed**: (1) Refinement guard + multi-level refinement → grid overflow (accessing index 6289 in vector of size 6003); (2) Refine all levels at coarse step → timeout (5+ min, no completion); (3) Single-level refinement at coarse step → timeout.
+  - **Root Cause Identified:** Flat vector storage model (`ncell = ncoarse + 2^NDIM*ngridmax`) is fundamentally incompatible with dynamic nsub=2 refinement patterns in recursive amr_step. Grid allocation and indexing conflicts cannot be resolved without architectural redesign.
+  - Currently kept at `nsubcycle=1` (all levels step with same dt). This produces ~441 cells vs reference ~100 cells at t=10. Full nsub=2 parity deferred to Phase 35 (requires AmrGrid storage redesign).
 - **Config Parser Hardening:** Upgraded the `Config` parser to support Fortran array keys (e.g., `region_type(1:2)`) and multi-value strings, ensuring reliable initial conditions during automated parameter studies.
 - **Verbose Mode:** Implemented a `verbose` flag in `run_params` to provide detailed initialization diagnostics and solver settings.
 - **C++17 Optimization:** Utilized `<random>` for deterministic, seed-based tracer spawning, replacing the legacy Fortran RNG while maintaining reproducible spatial distributions.
@@ -32,6 +33,39 @@ This document tracks the major milestones and architectural shifts during the mi
 - **Coarse Neighbor Parity:** Improved `AmrGrid::get_nbor_cells_coarse` and `get_nbor_cells` to correctly resolve same-level and coarse-level neighbors for periodic/boundary cells.
 - **Fine-Solver Interface Stability:** Fixed `HydroSolver::godunov_fine` trace state selection for left/right interfaces and added explicit `get_cell_level` support to detect same-level neighbors.
 - **Test Suite Path Reliability:** Updated `tests/run_test_suite.sh` to compute its own script directory and use absolute paths, making test execution robust from any working directory.
+
+## 🚩 Phase 35: Dynamic AMR Grid Storage Architecture (Active) 🏗️
+
+**Objective:** Redesign the AMR grid storage system from flat vector allocation to dynamic tree structure, enabling proper nsub=2 sub-cycling and accurate AMR refinement tracking without overflow.
+
+**Problem Statement:**
+Current flat vector model: `ncell = ncoarse + 2^NDIM * ngridmax` (e.g., 1 + 2*1000 = 2001 cells for 1D)
+- Grid indices computed as: `ncoarse + (ic-1)*ngridmax + (ig-1)` where ig ∈ [1, ngridmax]
+- Hydro data arrays sized to fit exactly ngridmax grids
+- **Incompatible with dynamic refinement:** nsub=2 sub-cycling creates recursive refinement patterns that either overflow grid allocation or timeout
+
+**Proposed Solution:**
+1. **Dynamic Grid Allocation:** Replace flat vector with std::vector of Grid objects, each owning its own cell data
+2. **Hierarchical Grid Indexing:** Maintain parent-child relationships explicitly (son/father arrays continue to work)
+3. **Per-Grid Hydro Storage:** Each grid stores its own nvar*ncell_per_grid data instead of global uold_vec/unew_vec
+4. **Refinement Guard Implementation:** Proper `if(ilevel==0 || icount>1)` guard to prevent double-refinement during sub-steps
+5. **nsub=2 Sub-cycling:** Enable two sub-steps per level, with global dt from coarsest level only
+
+**Key Files to Refactor:**
+- `include/ramses/AmrGrid.hpp` — Redesign grid storage and indexing
+- `src/AmrGrid.cpp` — Implement dynamic allocation
+- `src/HydroSolver.cpp` — Update compute_courant_step, godunov_fine to work with per-grid storage
+- `src/TreeUpdater.cpp` — Update flag_fine, make_grid_fine, remove_grid_fine for new indexing
+- `src/Simulation.cpp` — Enable nsub=2 with proper refinement guard
+- `src/RamsesWriter.cpp` / `src/RamsesReader.cpp` — Ensure I/O compatibility
+
+**Success Criteria:**
+- ✅ `hydro/advect1d` produces ~100 cells and density_sum ≈ 12.35 (binary parity with legacy RAMSES)
+- ✅ All 1D/2D/3D solver tests pass with dynamic refinement enabled
+- ✅ Grid allocation respects ngridmax with no overflow
+- ✅ nsub=2 sub-cycling completes without timeout (target <3 min for advect1d)
+
+**Timeline Estimate:** 2-3 sessions (complex architectural change affecting core data structures)
 
 ## 🚩 Phase 33.1: Stability & I/O Parity (Completed) 🛠️
 - **Godunov Solver Stabilization:** Fixed uninitialized memory access in `godunov_fine` where interface cells between levels were reading garbage traces. Implemented robust fallbacks to raw cell primitives at AMR interfaces, resolving simulation stalls and tiny `dt` issues.
