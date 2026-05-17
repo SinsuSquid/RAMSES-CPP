@@ -123,7 +123,11 @@ void Simulation::initialize(const std::string& nml_path) {
     grid_.allocate(p::nx, p::ny, p::nz, ngridmax, nvar, ncpu, levelmax);
     if (nparttot > 0) grid_.resize_particles(nparttot);
     hydro_->set_nener(nener_); hydro_->set_nvar_hydro(nvar);
+#ifdef MHD
+    grid_.set_interpol_hook([this](const real_t u1[7][64], real_t u2[8][64]){ this->mhd_->interpol_mhd(u1, u2); });
+#else
     grid_.set_interpol_hook([this](const real_t u1[7][64], real_t u2[8][64]){ this->hydro_->interpol_hydro(u1, u2); });
+#endif
 
     initializer_->apply_all();
     initializer_->init_tracers();

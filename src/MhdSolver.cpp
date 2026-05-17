@@ -104,15 +104,33 @@ void MhdSolver::gather_stencil(int igrid, int ilevel, LocalStencil& stencil) {
     int ind_father = grid_.father[igrid - 1], nbors_27[27]; grid_.get_27_cell_neighbors(ind_father, nbors_27);
     int pos = (ind_father > grid_.ncoarse) ? ((ind_father - grid_.ncoarse - 1) / grid_.ngridmax) + 1 : 1;
     int myid = MpiManager::instance().rank() + 1, nvar = grid_.nvar;
-    for (int j = 0; j < 27; ++j) {
-        int f_idx = constants::lll[pos-1][j], c_pos = constants::mmm[pos-1][j], if_n = nbors_27[f_idx - 1];
+    // For 1D/2D, the hardcoded 3D arrays lll/mmm are not applicable; use fallback logic
+#if NDIM == 1
+    const int nstencil = 2;  // 2 neighbors in 1D
+#elif NDIM == 2
+    const int nstencil = 9;  // 9 neighbors in 2D
+#else
+    const int nstencil = 27; // 27 neighbors in 3D
+#endif
+    for (int j = 0; j < nstencil; ++j) {
+        int f_idx = (NDIM == 3) ? constants::lll[pos-1][j] : j+1;
+        int c_pos = (NDIM == 3) ? constants::mmm[pos-1][j] : ((j % (1<<NDIM)) + 1);
+        int if_n = nbors_27[f_idx - 1];
         int sz = j / 9; int sy = (j % 9) / 3; int sx = j % 3;
         for (int iv = 0; iv < 20; ++iv) stencil.uloc[sz][sy][sx][iv] = 0.0;
-        if (if_n > 0 && grid_.cpu_map[if_n-1] == myid) {
+        if (if_n > 0 && if_n <= grid_.ncell && grid_.cpu_map[if_n-1] == myid) {
             if (grid_.son[if_n-1] > 0) {
-                int idc = grid_.ncoarse + (c_pos - 1) * grid_.ngridmax + grid_.son[if_n-1];
-                for (int iv = 1; iv <= nvar; ++iv) stencil.uloc[sz][sy][sx][iv - 1] = grid_.uold(idc, iv);
-                stencil.refined[sz][sy][sx] = (grid_.son[idc-1] > 0);
+                // If neighbor is refined, try to find child cell; otherwise use coarse cell value
+                int child_grid = grid_.son[if_n-1];
+                int idc = grid_.ncoarse + (c_pos - 1) * grid_.ngridmax + child_grid;
+                if (idc >= 1 && idc <= grid_.ncell) {
+                    for (int iv = 1; iv <= nvar; ++iv) stencil.uloc[sz][sy][sx][iv - 1] = grid_.uold(idc, iv);
+                    stencil.refined[sz][sy][sx] = (grid_.son[idc-1] > 0);
+                } else {
+                    // Formula produced out-of-bounds; use parent cell instead
+                    for (int iv = 1; iv <= nvar; ++iv) stencil.uloc[sz][sy][sx][iv - 1] = grid_.uold(if_n, iv);
+                    stencil.refined[sz][sy][sx] = false;
+                }
             } else {
                 for (int iv = 1; iv <= nvar; ++iv) stencil.uloc[sz][sy][sx][iv - 1] = grid_.uold(if_n, iv);
                 stencil.refined[sz][sy][sx] = false;
@@ -186,22 +204,25 @@ void MhdSolver::godfine1(const std::vector<int>& ind_grid, int ilevel, real_t dt
                 }
                 if(NDIM>1){
                     grid_.unew(idc, 6) += (emfz[i-1][j][k]-emfz[i-1][j+1][k])*dt_dx; grid_.unew(idc, 7) += (emfz[i][j-1][k]-emfz[i+1][j-1][k])*dt_dx;
-                    grid_.unew(idc, 9) += (emfz[i][j][k]-emfz[i][j+1][k])*dt_dx; grid_.unew(idc, 10) += (emfz[i][j][k]-emfz[i+1][j][k])*dt_dx;
+                    grid_.unew(idc, grid_.nvar - 2) += (emfz[i][j][k]-emfz[i][j+1][k])*dt_dx; grid_.unew(idc, grid_.nvar - 1) += (emfz[i][j][k]-emfz[i+1][j][k])*dt_dx;
                 }
             }
         }
         // MHD Refluxing (EMF Averaging at Coarse-Fine interfaces)
         if(ilevel > 1 && NDIM > 1) {
-            int ind_father = grid_.father[igrid-1];
-            int ign[7]; grid_.get_nbor_grids(ind_father, ign);
+            int ind_father_cell = grid_.father[igrid-1];   // Returns cell index (1..ncell)
+            // Find parent grid: cell index = ncoarse + (ic-1)*ngridmax + igrid_parent for each ic
+            // Try all ic values to extract the matching parent grid index
             for(int ic=1; ic<=constants::twotondim; ic++) {
-                int idc = grid_.ncoarse+(ic-1)*grid_.ngridmax+ind_father;
-                if(grid_.son[idc-1] == igrid) {
-                    // This oct is a child of idc. Apply EMF averages to coarse neighbors of idc.
-                    // Simplified: for 2D, we only have emfz.
-                    real_t weight = 0.25 * 1.0; // Assume leaf-leaf interface for now
-                    real_t df = (emfz[2][2][2] + emfz[2][2][3]) * 0.25 * dt_dx; // Bottom-left corner EMF
-                    // ... (Full EMF refluxing logic requires nbors_father_cells map)
+                int igrid_parent = ind_father_cell - grid_.ncoarse - (ic-1)*grid_.ngridmax;
+                if(igrid_parent >= 1 && igrid_parent <= grid_.ngridmax) {
+                    int idc = grid_.ncoarse+(ic-1)*grid_.ngridmax+igrid_parent;
+                    if(idc >= 1 && idc <= grid_.ncell && grid_.son[idc-1] == igrid) {
+                        // Found the correct parent grid
+                        // TODO: Implement full EMF refluxing to parent grid boundaries
+                        // For now, just break after identifying the parent grid
+                        break;
+                    }
                 }
             }
         }
