@@ -22,9 +22,11 @@ y      = data["data"]["y"]
 dx     = data["data"]["dx"]
 rho    = data["data"]["density"]
 p      = data["data"]["pressure"]
+# B-field: 2D has only x,y components
 b2     = 0.25*(data["data"]["B_x_left"]+data["data"]["B_x_right"])**2 + \
-         0.25*(data["data"]["B_y_left"]+data["data"]["B_y_right"])**2 + \
-         0.25*(data["data"]["B_z_left"]+data["data"]["B_z_right"])**2
+         0.25*(data["data"]["B_y_left"]+data["data"]["B_y_right"])**2
+if "B_z_left" in data["data"]:
+    b2 += 0.25*(data["data"]["B_z_left"]+data["data"]["B_z_right"])**2
 u2     = data["data"]["velocity_x"]**2 + data["data"]["velocity_y"]**2
 
 xmin = np.amin(x-0.5*dx)

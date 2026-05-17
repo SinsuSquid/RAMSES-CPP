@@ -255,7 +255,8 @@ void RamsesWriter::write_hydro_descriptor(const AmrGrid& grid, const SnapshotInf
     }
     int nvar_hydro_base = NDIM + 2 + info.nener;
 #ifdef MHD
-    nvar_hydro_base = 11 + info.nener;
+    // For MHD: NDIM + 1 (velocity + pressure) + 2*NDIM (face-centered B-fields: left+right for each direction)
+    nvar_hydro_base = (NDIM + 1) + 2*NDIM + info.nener;
 #endif
     int npassive_all = grid.nvar - nvar_hydro_base;
     for (int ip = 1; ip <= npassive_all; ++ip) {
