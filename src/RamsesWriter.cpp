@@ -220,6 +220,8 @@ void RamsesWriter::write_header(const AmrGrid& grid, const SnapshotInfo& info) {
     file << "unit_l      = " << params::units_length << std::endl;
     file << "unit_d      = " << params::units_density << std::endl;
     file << "unit_t      = " << params::units_time << std::endl;
+    file << "nener       = " << info.nener << std::endl;
+    file << "nvar        = " << grid.nvar << std::endl;
     file << "ordering type= hilbert" << std::endl;
 }
 
@@ -239,9 +241,17 @@ void RamsesWriter::write_hydro_descriptor(const AmrGrid& grid, const SnapshotInf
     if (NDIM > 1) file << ivar++ << ", velocity_y, double" << std::endl;
     if (NDIM > 2) file << ivar++ << ", velocity_z, double" << std::endl;
     file << ivar++ << ", pressure, double" << std::endl;
-    for (int ie = 1; ie <= info.nener; ++ie) { 
-        std::stringstream ss; ss << "non_thermal_pressure_" << std::setfill('0') << std::setw(2) << ie; 
-        file << ivar++ << ", " << ss.str() << ", double" << std::endl; 
+#ifdef MHD
+    file << ivar++ << ", B_x_left, double" << std::endl;
+    file << ivar++ << ", B_y_left, double" << std::endl;
+    if (NDIM > 2) file << ivar++ << ", B_z_left, double" << std::endl;
+    file << ivar++ << ", B_x_right, double" << std::endl;
+    file << ivar++ << ", B_y_right, double" << std::endl;
+    if (NDIM > 2) file << ivar++ << ", B_z_right, double" << std::endl;
+#endif
+    for (int ie = 1; ie <= info.nener; ++ie) {
+        std::stringstream ss; ss << "non_thermal_pressure_" << std::setfill('0') << std::setw(2) << ie;
+        file << ivar++ << ", " << ss.str() << ", double" << std::endl;
     }
     int nvar_hydro_base = NDIM + 2 + info.nener;
 #ifdef MHD
