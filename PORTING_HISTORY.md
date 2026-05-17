@@ -185,6 +185,52 @@ When run with **correct compilation flags** (NDIM, NENER, NPSCAL):
 
 ---
 
+## 🚩 Phase 40B: MHD B-field Allocation Bug Fix (Completed) 🧲✨
+
+**Challenge:** After Phase 40A fixed SIGSEGV crashes, tests still couldn't properly load 1D/2D MHD data. 1D tests like `imhd-tube` with transverse magnetic fields (By) failed because the code wasn't allocating storage for all B-field components.
+
+**Root Cause Analysis & Critical Fixes:**
+
+1. **Critical: Hardcoded nvar=11 for All MHD Cases** 🎯
+   - **Issue:** `Simulation.cpp` line initialization used `#ifdef MHD: nvar = 11 + nener + npassive` regardless of NDIM
+   - **Impact:** 
+     - 1D MHD incorrectly allocated nvar=11 (should be 9: 3 hydro + 6 B-field slots)
+     - 2D MHD incorrectly allocated nvar=11 (should be 10: 4 hydro + 6 B-field slots)
+     - Only 3D was correct by coincidence (11: 5 hydro + 6 B-field slots)
+     - Caused variable count mismatches in comparisons, failing all test validations
+   - **Fix:** Changed to `nvar = (NDIM + 2) + 6 + nener + npassive`
+     - Allocates: (hydro variables) + (6 B-field slots) + (non-thermal energy) + (passive scalars)
+     - Matches legacy RAMSES approach of always storing 3 B-components x 2 faces
+     - Result: 1D=9, 2D=10, 3D=11 ✅
+   - **File:** `src/Simulation.cpp` initialization
+
+2. **Descriptor Writing: Conditional B-field Components** 
+   - **Issue:** `write_hydro_descriptor` used `if (NDIM > 1)` guards preventing B_y/B_z from being listed in 1D descriptor
+   - **Impact:** Descriptor didn't list all B-field components, causing visu_ramses comparison to fail with "solutions have different variables"
+   - **Example:** 1D test descriptor listed only 5 variables (rho, u, p, Bx_left, Bx_right) when data actually had 9
+   - **Fix:** Always write all 6 B-field components to descriptor (legacy behavior)
+   - **File:** `src/RamsesWriter.cpp` line descriptor function
+
+3. **nvar_hydro_base Calculation**
+   - **Issue:** Formula used dynamic `n_b_comps = NDIM`, inconsistent with new allocation strategy
+   - **Fix:** Updated to `(NDIM + 2) + 6` to match allocation
+   - **File:** `src/RamsesWriter.cpp` line 256
+
+**Legacy Behavior Understanding:**
+- Legacy RAMSES ALWAYS allocates 6 B-field storage slots (3 components × 2 faces)
+- This allows 1D simulations to have transverse fields (e.g., By, Bz in 1D tube test)
+- Unused components are simply zero (no dynamic allocation)
+
+**Test Results After Phase 40B:**
+- ✅ `mhd/imhd-tube` (1D): Now allocates nvar=9 correctly, can load B_y fields
+- ✅ `mhd/imhd-tube-nener` (1D, NENER=2): Now allocates nvar=11 correctly
+- ✅ `mhd/orszag-tang` (2D): Now allocates nvar=10 correctly
+- ✅ All 3D tests: Remain correct at nvar=11
+
+**Key Achievement:** 1D/2D MHD simulations now properly allocate and output all B-field components. Test infrastructure can now load and compare solutions correctly. 💖✨
+
+---
+
 ## 🚩 Phase 39: Solver Stability Investigation & Verification (Completed) ✨🎯
 
 **Challenge:** Previous conversation reported timestep collapse in mixing-scalar test case (dt→9e-16 at step 234, preventing simulation completion).
