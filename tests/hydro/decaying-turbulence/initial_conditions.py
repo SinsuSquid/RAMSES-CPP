@@ -10,9 +10,8 @@ from matplotlib import pyplot as plt
 import numpy as np
 import f90nml
 import os
-# For the current script to find the grafic module in utils,
-# it needs to be run from the ramses root folder
-from utils.py.write_grafic import write_grafic_file
+# write_grafic is available via PYTHONPATH set in run_test_suite.sh
+from write_grafic import write_grafic_file
 
 
 def make_3dfield(ncells: int, *, powerlaw: int, randomseed: int):

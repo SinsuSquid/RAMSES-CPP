@@ -82,7 +82,7 @@ BIN_DIRECTORY="${BASE_DIRECTORY}/build";    # Use build/ for RAMSES-CPP
 RETURN_TO_BIN="cd ${BIN_DIRECTORY}";
 VISU_DIR="${TEST_DIRECTORY}/visu";        # The visualization directory
 
-export PYTHONPATH=${VISU_DIR}:$PYTHONPATH;
+export PYTHONPATH=${VISU_DIR}:${BASE_DIRECTORY}/legacy/utils/py:$PYTHONPATH;
 DELETE_RESULTS="rm -rf output_* *.tex data*.dat *.pdf *.pyc *.gc* coverage_stats.txt movie1";
 EXECNAME="ramses_"; # Use new naming convention
 LOGFILE="${TEST_DIRECTORY}/test_suite.log";
