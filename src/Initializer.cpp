@@ -59,6 +59,7 @@ void Initializer::region_condinit(int ilevel) {
     std::vector<real_t> dr(nreg, 1.0), pr(nreg, 1.0), ur(nreg, 0.0), vr(nreg, 0.0), wr(nreg, 0.0);
     std::vector<real_t> lx(nreg, 1.0), ly(nreg, 1.0), lz(nreg, 1.0), exp_reg(nreg, 2.0);
     std::vector<std::string> reg_type(nreg, "cube");
+    std::vector<real_t> var_r(nreg, 0.0);
 
     for (int i = 0; i < nreg; ++i) {
         if (i < (int)rt_list.size()) reg_type[i] = rt_list[i];
@@ -74,6 +75,7 @@ void Initializer::region_condinit(int ilevel) {
         if (i < (int)ly_list.size()) ly[i] = std::stod(ly_list[i]);
         if (i < (int)lz_list.size()) lz[i] = std::stod(lz_list[i]);
         if (i < (int)exp_list.size()) exp_reg[i] = std::stod(exp_list[i]);
+        if (i < (int)var_list.size()) var_r[i] = std::stod(var_list[i]);
     }
 
     auto apply_to_cell = [&](int idc, real_t x, real_t y, real_t z) {
@@ -93,17 +95,17 @@ void Initializer::region_condinit(int ilevel) {
                 grid_.uold(idc, 2) = dr[ir] * ur[ir];
                 if (NDIM > 1) grid_.uold(idc, 3) = dr[ir] * vr[ir];
                 if (NDIM > 2) grid_.uold(idc, 4) = dr[ir] * wr[ir];
-                
+
                 real_t v2 = ur[ir]*ur[ir];
                 if (NDIM > 1) v2 += vr[ir]*vr[ir];
                 if (NDIM > 2) v2 += wr[ir]*wr[ir];
                 real_t e_kin = 0.5 * dr[ir] * v2;
                 real_t e_int = pr[ir] / (gam - 1.0);
                 grid_.uold(idc, NDIM + 2) = e_kin + e_int;
-                
+
                 int nener = config_.get_int("hydro_params", "nener", 0);
                 for(int ip=1; ip<=grid_.nvar - (NDIM + 2 + nener); ++ip) {
-                    grid_.uold(idc, NDIM + 2 + nener + ip) = 0.0;
+                    grid_.uold(idc, NDIM + 2 + nener + ip) = dr[ir] * var_r[ir];
                 }
             }
         }
