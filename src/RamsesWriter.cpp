@@ -179,12 +179,16 @@ void RamsesWriter::write_hydro(const AmrGrid& grid, const SnapshotInfo& info) {
                             int idc = grid.ncoarse + ic*grid.ngridmax + g_list[i];
                             real_t d = std::max(grid.uold(idc, 1), smallr);
                             if (iv == 1) tmp[i] = d;
-                            else if (iv >= 2 && iv <= 1 + NDIM) tmp[i] = grid.uold(idc, iv) / d; 
-                            else if (iv == NDIM + 2) { 
+                            // Always write 3 velocity components (legacy behavior - unused dims = 0)
+                            else if (iv == 2) tmp[i] = grid.uold(idc, 2) / d;  // velocity_x
+                            else if (iv == 3) tmp[i] = (NDIM >= 2) ? grid.uold(idc, 3) / d : 0.0;  // velocity_y
+                            else if (iv == 4) tmp[i] = (NDIM >= 3) ? grid.uold(idc, 4) / d : 0.0;  // velocity_z
+                            else if (iv == 5) {  // Pressure (always at position 5 in file)
                                 real_t v2 = 0; for (int j = 1; j <= NDIM; ++j) { real_t v = grid.uold(idc, 1+j)/d; v2 += v*v; }
-                                tmp[i] = std::max((grid.uold(idc, iv) - 0.5 * d * v2) * (grid.gamma - 1.0), 0.0);
+                                tmp[i] = std::max((grid.uold(idc, NDIM + 2) - 0.5 * d * v2) * (grid.gamma - 1.0), 0.0);
                             }
-                            else tmp[i] = grid.uold(idc, iv);
+                            // B-fields and passive scalars (indices 6+ in file correspond to uold indices NDIM+3+)
+                            else tmp[i] = grid.uold(idc, iv - 1);  // File iv=6 -> uold NDIM+3
                         }
                         write_rec(tmp.data(), ncache * 8);
                     }
@@ -237,9 +241,10 @@ void RamsesWriter::write_hydro_descriptor(const AmrGrid& grid, const SnapshotInf
     file << "# version: 1" << std::endl;
     int ivar = 1;
     file << ivar++ << ", density, double" << std::endl;
+    // Always write all 3 velocity components (legacy behavior - unused dims are 0)
     file << ivar++ << ", velocity_x, double" << std::endl;
-    if (NDIM > 1) file << ivar++ << ", velocity_y, double" << std::endl;
-    if (NDIM > 2) file << ivar++ << ", velocity_z, double" << std::endl;
+    file << ivar++ << ", velocity_y, double" << std::endl;
+    file << ivar++ << ", velocity_z, double" << std::endl;
     file << ivar++ << ", pressure, double" << std::endl;
 #ifdef MHD
     // Always write all 3 B-field components (matching legacy behavior) even if some are unused in lower NDIM
@@ -254,10 +259,11 @@ void RamsesWriter::write_hydro_descriptor(const AmrGrid& grid, const SnapshotInf
         std::stringstream ss; ss << "non_thermal_pressure_" << std::setfill('0') << std::setw(2) << ie;
         file << ivar++ << ", " << ss.str() << ", double" << std::endl;
     }
-    int nvar_hydro_base = NDIM + 2 + info.nener;
+    // Always allocate 5 hydro base variables (density + 3 velocities + energy/pressure)
+    int nvar_hydro_base = 5 + info.nener;
 #ifdef MHD
-    // For MHD: always allocate 6 B-field slots (3 components x 2 faces) to match legacy behavior
-    nvar_hydro_base = (NDIM + 2) + 6 + info.nener;
+    // For MHD: 5 hydro + 6 B-field slots (3 x 2 faces)
+    nvar_hydro_base = 11 + info.nener;
 #endif
     int npassive_all = grid.nvar - nvar_hydro_base;
     for (int ip = 1; ip <= npassive_all; ++ip) {
