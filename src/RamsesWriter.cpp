@@ -243,10 +243,10 @@ void RamsesWriter::write_hydro_descriptor(const AmrGrid& grid, const SnapshotInf
     file << ivar++ << ", pressure, double" << std::endl;
 #ifdef MHD
     file << ivar++ << ", B_x_left, double" << std::endl;
-    file << ivar++ << ", B_y_left, double" << std::endl;
+    if (NDIM > 1) file << ivar++ << ", B_y_left, double" << std::endl;
     if (NDIM > 2) file << ivar++ << ", B_z_left, double" << std::endl;
     file << ivar++ << ", B_x_right, double" << std::endl;
-    file << ivar++ << ", B_y_right, double" << std::endl;
+    if (NDIM > 1) file << ivar++ << ", B_y_right, double" << std::endl;
     if (NDIM > 2) file << ivar++ << ", B_z_right, double" << std::endl;
 #endif
     for (int ie = 1; ie <= info.nener; ++ie) {
@@ -256,9 +256,9 @@ void RamsesWriter::write_hydro_descriptor(const AmrGrid& grid, const SnapshotInf
     int nvar_hydro_base = NDIM + 2 + info.nener;
 #ifdef MHD
     // For MHD: (NDIM velocities + density + pressure) + 2*(number of B-field components)
-    // B-components: always Bx, By for all NDIM; plus Bz for NDIM > 2
-    int n_b_comps = (NDIM > 2) ? 3 : 2;  // Bx, By, (Bz if 3D)
-    nvar_hydro_base = (NDIM + 2) + 2*n_b_comps + info.nener;  // +2 for left/right
+    // B-components: Bx for 1D, (Bx, By) for 2D, (Bx, By, Bz) for 3D
+    int n_b_comps = NDIM;  // Number of B-field components matches NDIM
+    nvar_hydro_base = (NDIM + 2) + 2*n_b_comps + info.nener;  // +2 for left/right faces
 #endif
     int npassive_all = grid.nvar - nvar_hydro_base;
     for (int ip = 1; ip <= npassive_all; ++ip) {
