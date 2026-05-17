@@ -67,7 +67,9 @@ void Simulation::initialize(const std::string& nml_path) {
 
     int nvar = NDIM + 2 + nener_ + npassive;
 #ifdef MHD
-    nvar = 11 + nener_ + npassive;
+    // For MHD: always store 6 B-field slots (3 components x 2 faces) to match legacy behavior
+    // (even if some components are unused in lower dimensions)
+    nvar = (NDIM + 2) + 6 + nener_ + npassive;
 #endif
 #ifdef RT
     rt_->initialize();
