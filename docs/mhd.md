@@ -7,8 +7,13 @@ title: Magnetohydrodynamics (MHD)
 
 The RAMSES-CPP MHD module provides a robust implementation of the Ideal MHD equations on a distributed AMR grid.
 
-## 🚀 Current Status: Production Ready
-The MHD module is fully ported and integrated into the multi-dimensional build system. It supports 1D, 2D, and 3D configurations with machine-precision divergence maintenance. CMake integration (Phase 31) ensures that the `-DRAMSES_USE_MHD` flag correctly activates all magnetic flux components across the automated test suite.
+## 🚀 Current Status: Phase 40 Complete - Production Ready ✨
+The MHD module is fully ported, debugged, and integrated into the multi-dimensional build system. It supports 1D, 2D, and 3D configurations with machine-precision divergence maintenance. Phase 40 (A-C) fixed critical bugs affecting 1D/2D simulations:
+- **Phase 40A:** Fixed SIGSEGV crashes from cell/grid index confusion and hardcoded variable offsets
+- **Phase 40B:** Fixed B-field allocation to properly support all NDIM configurations  
+- **Phase 40C:** Achieved legacy output format compliance with all velocity/B-field components
+
+CMake integration (Phase 31) ensures that the `-DRAMSES_USE_MHD` flag correctly activates all magnetic flux components across the automated test suite.
 
 ## 🛠️ Key Implementation Details
 
