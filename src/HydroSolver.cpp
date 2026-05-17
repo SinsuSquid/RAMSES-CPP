@@ -380,9 +380,7 @@ void HydroSolver::interpol_hydro(const real_t u1[7][64], real_t u2[8][64]) {
 real_t HydroSolver::compute_courant_step(int ilevel, real_t dx, real_t gamma, real_t courant_factor) {
     int myid = MpiManager::instance().rank() + 1;
     real_t dt_max = 1e30;
-    static int debug_step = 0;
-    debug_step++;
-    
+
     auto get_cs = [&](real_t d, real_t p) {
         if (params::barotropic_eos) {
             // Sound speed for polytrope: cs^2 = dP/drho
@@ -453,15 +451,6 @@ real_t HydroSolver::compute_courant_step(int ilevel, real_t dx, real_t gamma, re
                     if (acc > 0) dt_grav = std::min(dt_grav, courant_factor * std::sqrt(dx / acc));
                 }
                 real_t dt_cand = std::min(dt_cfl, dt_grav);
-
-                // Debug: warn when dt becomes very small or changes drastically
-                static real_t last_dt = 1e30;
-                if (dt_cand < 1e-8 && last_dt > 1e-8 && debug_step > 200) {
-                    std::cerr << "[DEBUG Step " << debug_step << "] DT COLLAPSE DETECTED at level " << ilevel
-                              << ": dt_cfl=" << dt_cfl << " dt_grav=" << dt_grav
-                              << " d=" << d << " p=" << p << " cs=" << cs << " v=" << v_mag << std::endl;
-                }
-                last_dt = dt_cand;
                 dt_max = std::min(dt_max, dt_cand);
             }
             igrid = grid_.next[igrid - 1];
