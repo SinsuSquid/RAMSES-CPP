@@ -325,6 +325,7 @@ for ((i=0;i<$ntests;i++)); do
         cmake --build . --target clean >> ${LOGFILE} 2>&1;
       fi
       cd ${TEST_DIRECTORY}/${testname[n]};
+      LAST_CMAKE_FLAGS="";
    fi
 
    # Compile source if configuration changed
@@ -334,7 +335,7 @@ for ((i=0;i<$ntests;i++)); do
       echo "Configuration changed, rebuilding..." | tee -a $LOGFILE;
       cd ${BASE_DIRECTORY}/build;
       cmake .. ${CMAKE_FLAGS} >> ${LOGFILE} 2>&1;
-      make -j1 >> ${LOGFILE} 2>&1;
+      make -j$(nproc) ramses_${ndim}d >> ${LOGFILE} 2>&1;
       LAST_CMAKE_FLAGS="${CMAKE_FLAGS}";
    else
       echo "Configuration unchanged, skipping rebuild (using cached build)" | tee -a $LOGFILE;

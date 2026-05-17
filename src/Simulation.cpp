@@ -65,9 +65,8 @@ void Simulation::initialize(const std::string& nml_path) {
     if (RAMSES_NMETALS > 0 && npassive == 0) npassive = (int)RAMSES_NMETALS;
 #endif
 
-    // Always allocate 3 velocity components to match legacy RAMSES (unused dims = 0)
-    // nvar = 3 (velocity components) + 1 (density) + 1 (energy/pressure) + nener + npassive
-    int nvar = 5 + nener_ + npassive;
+    // Non-MHD: NDIM velocity components + density + energy/pressure, matching legacy RAMSES
+    int nvar = NDIM + 2 + nener_ + npassive;
 #ifdef MHD
     // For MHD: 3 velocities + 1 density + 1 energy + 6 B-field slots (3 x 2 faces)
     nvar = 11 + nener_ + npassive;
