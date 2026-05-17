@@ -257,15 +257,9 @@ done
 echo $line | tee -a $LOGFILE;
 
 #######################################################################
-# Initial build: Compile all 3 dimensions ONCE before tests
+# Initialize build cache
 #######################################################################
-echo "Building all 3 dimensions (1D/2D/3D) once for all tests..." | tee -a $LOGFILE;
-cd ${BASE_DIRECTORY}/build;
-cmake .. -DRAMSES_USE_MPI=OFF -DRAMSES_USE_MHD=ON -DRAMSES_USE_RT=ON >> ${LOGFILE} 2>&1;
-make -j1 >> ${LOGFILE} 2>&1;
-cd ${TEST_DIRECTORY};
-echo $line | tee -a $LOGFILE;
-BUILD_COMPLETE=true;
+LAST_CMAKE_FLAGS=""
 
 #######################################################################
 # Loop through all tests
@@ -333,10 +327,19 @@ for ((i=0;i<$ntests;i++)); do
       cd ${TEST_DIRECTORY}/${testname[n]};
    fi
 
-   # Skip compilation - all 3 dimensions already built upfront
-   if [ "${BUILD_COMPLETE}" = "true" ]; then
-      echo "Using pre-built executables (ramses_${ndim}d)" | tee -a $LOGFILE;
+   # Compile source if configuration changed
+   echo "Compiling with: ${CMAKE_FLAGS}" | tee -a $LOGFILE;
+
+   if [ "${CMAKE_FLAGS}" != "${LAST_CMAKE_FLAGS}" ]; then
+      echo "Configuration changed, rebuilding..." | tee -a $LOGFILE;
+      cd ${BASE_DIRECTORY}/build;
+      cmake .. ${CMAKE_FLAGS} >> ${LOGFILE} 2>&1;
+      make -j1 >> ${LOGFILE} 2>&1;
+      LAST_CMAKE_FLAGS="${CMAKE_FLAGS}";
+   else
+      echo "Configuration unchanged, skipping rebuild (using cached build)" | tee -a $LOGFILE;
    fi
+   cd ${TEST_DIRECTORY}/${testname[n]};
 
    # Run test
    $DELETE_RESULTS;
