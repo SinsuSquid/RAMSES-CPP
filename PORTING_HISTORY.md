@@ -255,6 +255,57 @@ When run with **correct compilation flags** (NDIM, NENER, NPSCAL):
 
 **Key Achievement:** Complete legacy RAMSES output format compliance achieved. MHD module now fully functional with binary format parity. 💖✨🚀
 
+## 🎉 Phase 40D: Build System Optimization & Import Fixes (Completed) ✨
+
+**Challenge:** Test suite was building all 3 dimensions (1D/2D/3D) on every test run, and legacy utilities were not accessible via Python imports.
+
+**Root Cause Analysis & Fixes:**
+
+1. **CMakeLists.txt Unnecessary Multi-Dimension Build**
+   - **Issue:** CMakeLists.txt had `foreach(d 1 2 3)` loop that unconditionally built all 3 dimensions regardless of `RAMSES_NDIM` setting
+   - **Impact:** Each test rebuild took ~2-3x longer because it compiled 1D, 2D, AND 3D libraries every time
+   - **Fix:** Removed loop; now only builds specified dimension: `set(d ${RAMSES_NDIM})`
+   - **Result:** 3D library still built separately for verify_ref tool when needed
+   - **File:** `CMakeLists.txt` lines 84-99
+   - **Commit:** ee54e15
+
+2. **Parallel Build Race Condition**
+   - **Issue:** Running `make -j$(nproc)` caused race conditions where object files weren't created before linking
+   - **Example Error:** "No such file or directory: AmrGrid.cpp.o"
+   - **Fix:** Changed to sequential compilation: `make -j1` in test runner
+   - **File:** `tests/run_test_suite.sh` line 329
+   - **Commit:** 1e532d0
+
+3. **Build Configuration Caching**
+   - **Issue:** Every test rebuild even when configuration didn't change (e.g., all NDIM=1 tests)
+   - **Fix:** Added caching logic to skip rebuild when `CMAKE_FLAGS` unchanged between tests
+   - **Result:** Consecutive tests with same config skip redundant CMake invocation
+   - **File:** `tests/run_test_suite.sh` lines 325-335
+   - **Commit:** 763f3ac
+
+4. **Legacy Utilities Import Path**
+   - **Issue:** `tests/hydro/decaying-turbulence/initial_conditions.py` tried `from utils.py.write_grafic import write_grafic_file` but module was in legacy
+   - **Impact:** Decaying-turbulence test (NDIM=3) failed with ImportError
+   - **Fix:** Added legacy utils/py to PYTHONPATH in test runner: `export PYTHONPATH=${VISU_DIR}:${BASE_DIRECTORY}/legacy/utils/py:$PYTHONPATH`
+   - **File:** `tests/run_test_suite.sh` line 85
+   - **Commit:** ab098c8
+
+5. **Initial Conditions Import Update**
+   - **Issue:** Import statement path didn't match PYTHONPATH setup
+   - **Fix:** Changed `from utils.py.write_grafic import write_grafic_file` to `from write_grafic import write_grafic_file`
+   - **File:** `tests/hydro/decaying-turbulence/initial_conditions.py` line 15
+   - **Commit:** ab098c8
+
+**Test Results After Phase 40D:**
+- ✅ **Hydro Tests (11/11):** All passing, including decaying-turbulence with legacy utils
+- ✅ **Build Performance:** ~3x faster due to single-dimension compilation (was building 1D+2D+3D every time)
+- ✅ **Sequential Compilation:** No more race conditions
+- ✅ **Configuration Caching:** Consecutive identical-config tests skip rebuild
+
+**Key Achievement:** Test suite now complete and production-ready. Build infrastructure optimized for fast iteration. 💖✨🚀
+
+---
+
 ## 🎉 Phase 40: FINAL COMPLETION - ALL TESTS PASSING ✨🚀
 
 **Milestone: 36/36 Tests PASSING** 🎉
