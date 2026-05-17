@@ -257,6 +257,17 @@ done
 echo $line | tee -a $LOGFILE;
 
 #######################################################################
+# Initial build: Compile all 3 dimensions ONCE before tests
+#######################################################################
+echo "Building all 3 dimensions (1D/2D/3D) once for all tests..." | tee -a $LOGFILE;
+cd ${BASE_DIRECTORY}/build;
+cmake .. -DRAMSES_USE_MPI=OFF -DRAMSES_USE_MHD=ON -DRAMSES_USE_RT=ON >> ${LOGFILE} 2>&1;
+make -j1 >> ${LOGFILE} 2>&1;
+cd ${TEST_DIRECTORY};
+echo $line | tee -a $LOGFILE;
+BUILD_COMPLETE=true;
+
+#######################################################################
 # Loop through all tests
 #######################################################################
 for ((i=0;i<$ntests;i++)); do
@@ -322,32 +333,10 @@ for ((i=0;i<$ntests;i++)); do
       cd ${TEST_DIRECTORY}/${testname[n]};
    fi
 
-   # Compile source - build all 3 dimensions once, skip NDIM flag
-   BUILD_FLAGS="${CMAKE_FLAGS}"
-   # Remove NDIM from build flags - we build all dimensions
-   BUILD_FLAGS=$(echo "${BUILD_FLAGS}" | sed 's/-DRAMSES_NDIM=[0-9] //g')
-
-   # Check if rebuild needed (compare with last config)
-   LAST_CONFIG_FILE="${BASE_DIRECTORY}/build/.last_config"
-   CURRENT_CONFIG="${BUILD_FLAGS}"
-   REBUILD_NEEDED=true
-   if [ -f "${LAST_CONFIG_FILE}" ]; then
-      LAST_CONFIG=$(cat "${LAST_CONFIG_FILE}")
-      if [ "${LAST_CONFIG}" = "${CURRENT_CONFIG}" ]; then
-         REBUILD_NEEDED=false
-      fi
+   # Skip compilation - all 3 dimensions already built upfront
+   if [ "${BUILD_COMPLETE}" = "true" ]; then
+      echo "Using pre-built executables (ramses_${ndim}d)" | tee -a $LOGFILE;
    fi
-
-   if ${REBUILD_NEEDED}; then
-      echo "Compiling source with ${BUILD_FLAGS}" | tee -a $LOGFILE;
-      cd ${BASE_DIRECTORY}/build;
-      cmake .. ${BUILD_FLAGS} >> ${LOGFILE} 2>&1;
-      make -j1 >> ${LOGFILE} 2>&1;
-      echo "${CURRENT_CONFIG}" > "${LAST_CONFIG_FILE}";
-   else
-      echo "Using cached build (config unchanged)" | tee -a $LOGFILE;
-   fi
-   cd ${TEST_DIRECTORY}/${testname[n]};
 
    # Run test
    $DELETE_RESULTS;
