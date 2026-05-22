@@ -21,7 +21,7 @@ public:
 protected:
     virtual void vcycle(int ilevel, real_t fourpi, real_t rho_tot);
     virtual void smooth(int ilevel, real_t fourpi, real_t rho_tot);
-    virtual void restrict(int ilevel);
+    virtual void restrict_level(int ilevel);
     virtual void prolong(int ilevel);
 
     AmrGrid& grid_;

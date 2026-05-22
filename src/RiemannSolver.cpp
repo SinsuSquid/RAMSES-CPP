@@ -1,6 +1,7 @@
 #include "ramses/RiemannSolver.hpp"
 #include "ramses/Parameters.hpp"
 #include "ramses/Constants.hpp"
+#include <iostream>
 #include <cmath>
 #include <algorithm>
 
@@ -100,6 +101,9 @@ void RiemannSolver::solve_hllc(const real_t ql[], const real_t qr[], real_t flux
         real_t pstar = (rcr * pl + rcl * pr + rcl * rcr * (ul - ur)) / (rcr + rcl);
 
         if (ustar > 0.0) {
+            if (std::abs(sl - ustar) < 1e-5) {
+                std::cout << "[DEBUG] HLLC Warning: sl-ustar small! " << sl - ustar << " idc=" << (int)0 << std::endl;
+            }
             real_t rstarl = rl * (sl - ul) / (std::min(sl - ustar, -1e-10));
             real_t qstarl[20] = {0};
             qstarl[0] = rstarl; qstarl[1] = ustar;
@@ -112,6 +116,9 @@ void RiemannSolver::solve_hllc(const real_t ql[], const real_t qr[], real_t flux
             prim_to_cons(qstarl, ustarl_vec, gamma);
             for (int i = 0; i < NDIM + 2; ++i) flux[i] = fl_arr[i] + sl * (ustarl_vec[i] - ul_vec[i]);
         } else {
+            if (std::abs(sr - ustar) < 1e-5) {
+                std::cout << "[DEBUG] HLLC Warning: sr-ustar small! " << sr - ustar << " idc=" << (int)0 << std::endl;
+            }
             real_t rstarr = rr * (sr - ur) / (std::max(sr - ustar, 1e-10));
             real_t qstarr[20] = {0};
             qstarr[0] = rstarr; qstarr[1] = ustar;

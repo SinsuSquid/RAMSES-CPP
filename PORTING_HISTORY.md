@@ -4,7 +4,23 @@ This document tracks the major milestones and architectural shifts during the mi
 
 ---
 
-## 🚩 Phase 40: Status Summary After 40A–40D
+## 🚩 Phase 41: Hydro Stability & Timestep Collapse Investigation (In Progress) 🛠️
+
+**Challenge:** Several hydro tests exhibit "timestep collapse" where $\Delta t$ drops to $\sim 10^{-40}$, effectively stalling the simulation.
+
+**Root Cause Analysis:** 
+The collapse is driven by numerical instability in low-density regions, where total energy $E$ and sound speed $c_s$ blow up. This is triggered by extreme source terms in the trace step (e.g., terms involving $\partial p / \partial x / \rho$) creating a positive feedback loop: low density $\to$ huge source terms $\to$ huge velocities $\to$ huge fluxes $\to$ huge pressure/energy $\to$ tiny $\Delta t$.
+
+**Fixes Implemented:**
+1. **Trace Step Flooring:** Added density and pressure flooring in `HydroSolver::trace` to prevent division-by-zero and sound speed explosions.
+2. **Slope Limiter Stabilization:** Implemented a central-difference limit on Superbee (slope_type=4) and Ultrabee (slope_type=5) limiters in `HydroSolver::compute_slopes`. This ensures the limited slope does not exceed the absolute value of the central gradient, preventing extreme amplification when the local Courant number $\nu \to 0$.
+
+**Current Status:** 
+Stability is partially improved. However, testing shows that instability can persist even with the most conservative limiter (Minmod), indicating that the blow-up may be fundamentally tied to source term handling in vacuum-like regions rather than just slope amplification.
+
+---
+
+
 
 After completing Phase 40A (SIGSEGV fixes), 40B (descriptor iteration), 40C (output format), and 40D (build system optimization), the MHD module is crash-free and output-format compliant.
 

@@ -6,6 +6,10 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 RAMSES-CPP is a modern C++17 port of the legacy [RAMSES-2025](https://github.com/ramses-organisation/ramses/releases/tag/2025.05) Fortran Adaptive Mesh Refinement (AMR) astrophysics code. The primary goal is **strict binary parity** with the original Fortran snapshots while offering a modular, modern C++ architecture. The legacy Fortran source lives in `./legacy/` and is the reference for porting logic.
 
+## Constraints
+
+- **Do NOT edit any test files** (`*.nml`, `*-ref.dat`, `plot-*.py` inside `tests/`). Only shell scripts (`*.sh`) in `tests/` may be modified.
+
 ## Build System
 
 CMake >= 3.15 is required. The build produces three executables (`ramses_1d`, `ramses_2d`, `ramses_3d`) and a verification tool (`verify_ref`).
@@ -14,6 +18,16 @@ CMake >= 3.15 is required. The build produces three executables (`ramses_1d`, `r
 mkdir -p build && cd build
 cmake .. -DRAMSES_NDIM=3 -DRAMSES_USE_MPI=OFF -DRAMSES_USE_MHD=ON -DRAMSES_USE_RT=ON
 make -j$(nproc)
+
+# For Debug builds (slower, but useful for debugging):
+# cmake .. -DCMAKE_BUILD_TYPE=Debug
+# make -j$(nproc)
+
+Pre-commit hooks are configured to check for trailing whitespace and EOF issues. Run `pre-commit install` to set them up.
+
+# For Debug builds (slower, but useful for debugging):
+# cmake .. -DCMAKE_BUILD_TYPE=Debug
+# make -j$(nproc)
 ```
 
 Key CMake flags:
@@ -63,8 +77,6 @@ cd tests && timeout 10m ./run_test_suite.sh -p 4
 ```
 
 The test runner reads each test's `config.txt`, re-invokes `cmake` with the appropriate flags, runs the simulation, and calls the `plot-*.py` script which prints `PASSED` or `FAILED`. Results are written to `tests/test_suite.log` and a `test_results.pdf`.
-
-**Test file constraints:** Do NOT edit `*.nml`, `*-ref.dat`, or `plot-*.py` files inside `tests/`. Shell scripts (`*.sh`) in `tests/` may be modified.
 
 ### Snapshot Parity Verification
 

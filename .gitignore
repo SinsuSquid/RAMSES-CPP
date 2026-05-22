@@ -60,3 +60,4 @@ build/
 __pycache__/
 
 tests/tracer/sedov-classical-tracers/tracers.txt
+tests/hydro/decaying-turbulence/ic/*

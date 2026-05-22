@@ -142,7 +142,12 @@ void HydroSolver::godunov_fine(int ilevel, real_t dt, real_t dx) {
                 for(int iv=0; iv<grid_.nvar; ++iv) flux_sum[iv] += sign * flux[iv];
             }
         }
-        for (int iv = 1; iv <= grid_.nvar; ++iv) grid_.unew(idc_0 + 1, iv) = grid_.uold(idc_0 + 1, iv) + dtdx * flux_sum[iv-1];
+        for (int iv = 1; iv <= grid_.nvar; ++iv) {
+            grid_.unew(idc_0 + 1, iv) = grid_.uold(idc_0 + 1, iv) + dtdx * flux_sum[iv-1];
+            if (std::abs(grid_.unew(idc_0 + 1, iv)) > 1e10) {
+                std::cout << "[DEBUG] Huge energy! idc=" << idc_0 + 1 << " val=" << grid_.unew(idc_0 + 1, iv) << " flux=" << flux_sum[iv-1] << " dtdx=" << dtdx << std::endl;
+            }
+        }
         real_t d_curr = std::max(grid_.unew(idc_0 + 1, 1), 1e-10); grid_.unew(idc_0 + 1, 1) = d_curr;
         real_t v2_curr = 0.0; for(int i=1; i<=NDIM; ++i) { real_t v = grid_.unew(idc_0 + 1, 1+i)/d_curr; v2_curr += v*v; }
         int iener = NDIM + 2;
@@ -157,7 +162,7 @@ void HydroSolver::godunov_fine(int ilevel, real_t dt, real_t dx) {
     if (do_level_0) {
         for (int idc_0 = 0; idc_0 < grid_.ncoarse; ++idc_0) {
             int icn[6];
-            for (int idim = 0; idim < 3; ++idim) {
+            for (int idim = 0; idim < NDIM; ++idim) {
                 for (int side = 0; side < 2; ++side) {
                     // This is a simplified boundary logic for coarse cells
                     int nx = grid_.nx, ny = grid_.ny, nz = grid_.nz;
@@ -280,10 +285,11 @@ void HydroSolver::compute_slopes(int idc, const int icelln[6], int idim, real_t 
                     drgt_s = 2.0 / (-nu + 1e-10) * drgt_raw;
                 }
             }
-            real_t dsgn = (dlft_s >= 0.0) ? 1.0 : -1.0;
+            real_t dcen = 0.5 * (dlft_raw + drgt_raw);
+            real_t dsgn = (dcen >= 0.0) ? 1.0 : -1.0;
             real_t dlim = std::min(std::abs(dlft_s), std::abs(drgt_s));
             if (dlft_s * drgt_s <= 0.0) dlim = 0.0;
-            dq[iv] = dsgn * dlim;
+            dq[iv] = dsgn * std::min(dlim, std::abs(dcen));
         }
         return;
     }
@@ -310,7 +316,7 @@ void HydroSolver::compute_slopes(int idc, const int icelln[6], int idim, real_t 
 }
 
 void HydroSolver::trace(const real_t q[], const real_t dq[], real_t dtdx, real_t qm[], real_t qp[], real_t gamma) {
-    real_t r = std::max(q[0], 1e-10), u = q[1], p = std::max(q[NDIM+1], 1e-10);
+    real_t r = std::max(q[0], 1e-10), u = q[1], p = std::max(q[NDIM+1], r * 1e-10);
     real_t sr0 = -u * dq[0] - dq[1] * r;
     real_t su0 = -u * dq[1] - dq[NDIM+1] / r;
     int iener = NDIM + 1;
@@ -335,6 +341,10 @@ void HydroSolver::trace(const real_t q[], const real_t dq[], real_t dtdx, real_t
         else if (iv > iener && iv <= iener + nener_) src = -u * dqi - dq[1] * gamma * q[iv];
         qp[iv] = q[iv] - 0.5 * dqi + 0.5 * dtdx * src;
         qm[iv] = q[iv] + 0.5 * dqi + 0.5 * dtdx * src;
+        if (iv == 0) {
+            if (qp[iv] < 1e-10) qp[iv] = r;
+            if (qm[iv] < 1e-10) qm[iv] = r;
+        }
     }
 }
 
@@ -446,11 +456,19 @@ real_t HydroSolver::compute_courant_step(int ilevel, real_t dx, real_t gamma, re
                 real_t v_mag = std::sqrt(v2);
                 real_t dt_cfl = courant_factor * dx / (v_mag + cs);
                 real_t dt_grav = 1e30;
+                real_t max_acc = 0;
                 for(int idim=1; idim<=NDIM; ++idim) {
                     real_t acc = std::abs(grid_.f(id, idim));
+                    if (acc > max_acc) max_acc = acc;
                     if (acc > 0) dt_grav = std::min(dt_grav, courant_factor * std::sqrt(dx / acc));
                 }
                 real_t dt_cand = std::min(dt_cfl, dt_grav);
+                if (dt_cand < 1e-8) {
+                    std::cout << "[DEBUG] Timestep collapse! idc=" << id << " max_acc=" << max_acc << " dt_cfl=" << dt_cfl << " dt_grav=" << dt_grav << " v_mag=" << v_mag << " cs=" << cs << std::endl;
+                }
+                if (id == 1 && ilevel == 0) {
+                    // we can check flux later
+                }
                 dt_max = std::min(dt_max, dt_cand);
             }
             igrid = grid_.next[igrid - 1];
