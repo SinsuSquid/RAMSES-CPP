@@ -14,9 +14,12 @@ The collapse is driven by numerical instability in low-density regions, where to
 **Fixes Implemented:**
 1. **Trace Step Flooring:** Added density and pressure flooring in `HydroSolver::trace` to prevent division-by-zero and sound speed explosions.
 2. **Slope Limiter Stabilization:** Implemented a central-difference limit on Superbee (slope_type=4) and Ultrabee (slope_type=5) limiters in `HydroSolver::compute_slopes`. This ensures the limited slope does not exceed the absolute value of the central gradient, preventing extreme amplification when the local Courant number $\nu \to 0$.
+3. **Dimensionality Correction in Trace:** Fixed a critical dimensional error in `HydroSolver::trace` where the time evolution term was incorrectly scaled by `dtdx` ($dt/dx$) instead of `dt`. This caused an artificial amplification of source terms by $1/dx$, leading to catastrophic numerical explosions in the time-step calculations. Corrected to use $0.5 \cdot dt \cdot src$.
+4. **Global Timestep Logic Correction:** Identified that the global timestep `min_dt` in `Simulation::run` was computed using only a subset of levels (up to `nsub1_max_level + 1`), ignoring finer levels that might have more restrictive CFL limits. This led to an oversized global $\Delta t$ that violated the CFL condition on deep grids, causing huge energy growth and instability in tests like `Sod-tube`. Corrected the logic to compute `min_dt` across all active levels, correctly accounting for their respective sub-cycling factors (`nsubcycle`).
+
 
 **Current Status:** 
-Stability is partially improved. However, testing shows that instability can persist even with the most conservative limiter (Minmod), indicating that the blow-up may be fundamentally tied to source term handling in vacuum-like regions rather than just slope amplification.
+Stability is significantly improved. The energy explosion in `Sod-tube` was traced to an incorrect global timestep calculation that ignored the CFL limits of the finest grids. After correcting the timestep logic to include all levels, the simulation is stable and reaches the final time. Binary parity with legacy snapshots is being verified.
 
 ---
 

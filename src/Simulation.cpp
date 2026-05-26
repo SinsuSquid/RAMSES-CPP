@@ -261,16 +261,12 @@ void Simulation::run() {
         real_t dx0 = p::boxlen / (real_t)p::nx;
         min_dt = std::min(min_dt, hydro_->compute_courant_step(0, dx0, grid_.gamma, courant));
 
-        // Compute dt from all nsub=1 levels (levels where sub-cycling has not yet started)
-        int nsub1_max_level = 0;
         for (int il = 1; il <= grid_.nlevelmax; ++il) {
-            if (il < (int)nsubcycle_.size() && nsubcycle_[il] <= 1) nsub1_max_level = il;
-            else break;
-        }
-        for (int il = 1; il <= nsub1_max_level + 1 && il <= grid_.nlevelmax; ++il) {
             if (grid_.count_grids_at_level(il) == 0) continue;
             real_t dx = p::boxlen / (real_t)(p::nx * (1 << il));
-            min_dt = std::min(min_dt, hydro_->compute_courant_step(il, dx, grid_.gamma, courant));
+            real_t dt_l = hydro_->compute_courant_step(il, dx, grid_.gamma, courant);
+            int nsub = (il < (int)nsubcycle_.size()) ? nsubcycle_[il] : 1;
+            min_dt = std::min(min_dt, dt_l / nsub);
         }
 
         real_t global_min_dt = min_dt;
