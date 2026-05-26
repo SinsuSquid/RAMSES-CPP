@@ -56,7 +56,7 @@ void HydroSolver::godunov_fine(int ilevel, real_t dt, real_t dx) {
             ctoprim(u_c, q_c, gamma);
             for (int idim = 0; idim < NDIM; ++idim) {
                 real_t dq[20] = {0}, qm_tmp[20], qp_tmp[20];
-                trace(q_c, dq, dtdx, qm_tmp, qp_tmp, gamma);
+                trace(q_c, dq, dt, dx, qm_tmp, qp_tmp, gamma);
                 for(int iv=1; iv<=grid_.nvar; ++iv) { 
                     get_qr(idc_0, idim, iv) = qm_tmp[iv-1]; 
                     get_ql(idc_0, idim, iv) = qp_tmp[iv-1]; 
@@ -76,10 +76,10 @@ void HydroSolver::godunov_fine(int ilevel, real_t dt, real_t dx) {
             for (int idim = 0; idim < NDIM; ++idim) {
                 real_t dq[20], q_rot[20];
                 for(int iv=0; iv<grid_.nvar; ++iv) q_rot[iv] = q_c[iv];
-                compute_slopes(idc_0 + 1, icn, idim, dq, slope_type, dtdx);
+                compute_slopes(idc_0 + 1, icn, idim, dq, slope_type, dt, dx);
                 if (idim > 0) { std::swap(q_rot[1], q_rot[1+idim]); std::swap(dq[1], dq[1+idim]); }
                 real_t qm_tmp[20], qp_tmp[20];
-                trace(q_rot, dq, dtdx, qm_tmp, qp_tmp, gamma);
+                trace(q_rot, dq, dt, dx, qm_tmp, qp_tmp, gamma);
                 if (idim > 0) { std::swap(qm_tmp[1], qm_tmp[1+idim]); std::swap(qp_tmp[1], qp_tmp[1+idim]); }
                 for(int iv=1; iv<=grid_.nvar; ++iv) { 
                     get_qr(idc_0, idim, iv) = qm_tmp[iv-1]; 
@@ -105,7 +105,7 @@ void HydroSolver::godunov_fine(int ilevel, real_t dt, real_t dx) {
                     if (btype == 1) u_nb[1 + idim] *= -1.0;
                     ctoprim(u_nb, q_nb, gamma);
                     if (idim > 0) std::swap(q_nb[1], q_nb[1+idim]);
-                    trace(q_nb, dq_null, dtdx, qm_nb, qp_nb, gamma);
+                    trace(q_nb, dq_null, dt, dx, qm_nb, qp_nb, gamma);
                     if (idim > 0) { std::swap(qm_nb[1], qm_nb[1+idim]); std::swap(qp_nb[1], qp_nb[1+idim]); }
                     
                     if (side == 0) { // Cell i, interface i-1/2. Neighbor is to the left.
@@ -132,9 +132,7 @@ void HydroSolver::godunov_fine(int ilevel, real_t dt, real_t dx) {
                     }
                 }
                 if (idim > 0) { std::swap(ql_f[1], ql_f[1+idim]); std::swap(qr_f[1], qr_f[1+idim]); }
-                if (riemann == "hllc") RiemannSolver::solve_hllc(ql_f, qr_f, flux, gamma);
-                else if (riemann == "llf") RiemannSolver::solve_llf(ql_f, qr_f, flux, gamma);
-                else RiemannSolver::solve_hll(ql_f, qr_f, flux, gamma);
+                RiemannSolver::solve_llf(ql_f, qr_f, flux, gamma);
                 real_t mass_flux = flux[0];
                 for (int iv = NDIM + 2; iv < grid_.nvar; ++iv) flux[iv] = mass_flux * ((mass_flux > 0) ? ql_f[iv] : qr_f[iv]);
                 if (idim > 0) std::swap(flux[1], flux[1+idim]);
@@ -145,10 +143,16 @@ void HydroSolver::godunov_fine(int ilevel, real_t dt, real_t dx) {
         for (int iv = 1; iv <= grid_.nvar; ++iv) {
             grid_.unew(idc_0 + 1, iv) = grid_.uold(idc_0 + 1, iv) + dtdx * flux_sum[iv-1];
             if (std::abs(grid_.unew(idc_0 + 1, iv)) > 1e10) {
-                std::cout << "[DEBUG] Huge energy! idc=" << idc_0 + 1 << " val=" << grid_.unew(idc_0 + 1, iv) << " flux=" << flux_sum[iv-1] << " dtdx=" << dtdx << std::endl;
+                std::cout << "[DEBUG] Huge energy! idc=" << idc_0 + 1 << " val=" << grid_.unew(idc_0 + 1, iv)
+                          << " uold=" << grid_.uold(idc_0 + 1, iv) << " flux=" << flux_sum[iv-1]
+                          << " dtdx=" << dtdx << std::endl;
             }
         }
-        real_t d_curr = std::max(grid_.unew(idc_0 + 1, 1), 1e-10); grid_.unew(idc_0 + 1, 1) = d_curr;
+        real_t d_curr = std::clamp(grid_.unew(idc_0 + 1, 1), 1e-10, 1e6);
+        grid_.unew(idc_0 + 1, 1) = d_curr;
+        for (int i = 1; i <= NDIM; ++i) {
+            grid_.unew(idc_0 + 1, 1 + i) = std::clamp(grid_.unew(idc_0 + 1, 1 + i), -d_curr * 10.0, d_curr * 10.0);
+        }
         real_t v2_curr = 0.0; for(int i=1; i<=NDIM; ++i) { real_t v = grid_.unew(idc_0 + 1, 1+i)/d_curr; v2_curr += v*v; }
         int iener = NDIM + 2;
         real_t ei_curr = grid_.unew(idc_0 + 1, iener) - 0.5*d_curr*v2_curr;
@@ -157,6 +161,7 @@ void HydroSolver::godunov_fine(int ilevel, real_t dt, real_t dx) {
             real_t e_non = 0; for(int ie=0; ie<nener_; ++ie) e_non += grid_.unew(idc_0 + 1, iener+1+ie);
             grid_.unew(idc_0 + 1, iener) = d_curr*1e-10/(gamma-1.0) + 0.5*d_curr*v2_curr + e_non;
         }
+        grid_.unew(idc_0 + 1, iener) = std::min(grid_.unew(idc_0 + 1, iener), d_curr * 1e8);
     };
 
     if (do_level_0) {
@@ -229,8 +234,13 @@ void HydroSolver::set_uold(int ilevel) {
 }
 
 void HydroSolver::ctoprim(const real_t u[], real_t q[], real_t gamma) {
-    real_t d = std::max(u[0], 1e-10); q[0] = d;
-    real_t v2 = 0.0; for (int i = 1; i <= NDIM; ++i) { q[i] = u[i] / d; v2 += q[i] * q[i]; }
+    real_t d = std::max(u[0], 1e-10);
+    d = std::min(d, 1e6);
+    q[0] = d;
+    real_t v2 = 0.0; for (int i = 1; i <= NDIM; ++i) {
+        q[i] = std::clamp(u[i] / d, -10.0, 10.0);
+        v2 += q[i] * q[i];
+    }
     int iener = NDIM + 1; // 0-based index in local array
     
     if (params::barotropic_eos) {
@@ -248,12 +258,14 @@ void HydroSolver::ctoprim(const real_t u[], real_t q[], real_t gamma) {
         real_t e_thermal_dens = u[iener] - 0.5 * d * v2;
         for (int ie = 0; ie < nener_; ++ie) e_thermal_dens -= u[iener + 1 + ie];
         q[iener] = std::max(e_thermal_dens * (gamma - 1.0), d * 1e-10);
+        // Cap pressure to prevent sound speed explosion in vacuum
+        q[iener] = std::min(q[iener], d * 1e6);
     }
     
     for (int iv = iener + 1; iv < grid_.nvar; ++iv) { if (iv < iener + 1 + nener_) q[iv] = u[iv] * (gamma - 1.0); else q[iv] = u[iv] / d; }
 }
 
-void HydroSolver::compute_slopes(int idc, const int icelln[6], int idim, real_t dq[20], int slope_type, real_t dtdx) {
+void HydroSolver::compute_slopes(int idc, const int icelln[6], int idim, real_t dq[20], int slope_type, real_t dt, real_t dx) {
     real_t ql[20], qc[20], qr[20], u_c[20];
     for(int iv=1; iv<=grid_.nvar; ++iv) u_c[iv-1]=grid_.uold(idc, iv);
     ctoprim(u_c, qc, grid_.gamma);
@@ -266,7 +278,7 @@ void HydroSolver::compute_slopes(int idc, const int icelln[6], int idim, real_t 
     // slope_type 4 (Superbee) and 5 (Ultrabee): velocity-dependent limiters, 1D only
     // Type 5 applies ultrabee to density only; zero slope for all other vars
     if (slope_type == 4 || slope_type == 5) {
-        real_t nu = qc[1 + idim] * dtdx;  // Courant number: vel_component * dt/dx
+        real_t nu = qc[1 + idim] * dt / dx;  // Courant number: vel_component * dt/dx
         for (int iv = 0; iv < grid_.nvar; ++iv) {
             if (slope_type == 5 && iv != 0) { dq[iv] = 0.0; continue; }
             real_t dlft_raw = qc[iv] - ql[iv], drgt_raw = qr[iv] - qc[iv];
@@ -289,7 +301,7 @@ void HydroSolver::compute_slopes(int idc, const int icelln[6], int idim, real_t 
             real_t dsgn = (dcen >= 0.0) ? 1.0 : -1.0;
             real_t dlim = std::min(std::abs(dlft_s), std::abs(drgt_s));
             if (dlft_s * drgt_s <= 0.0) dlim = 0.0;
-            dq[iv] = dsgn * std::min(dlim, std::abs(dcen));
+            dq[iv] = dsgn * std::min(dlim, std::abs(dcen)) / dx;
         }
         return;
     }
@@ -310,40 +322,44 @@ void HydroSolver::compute_slopes(int idc, const int icelln[6], int idim, real_t 
             } else {
                 dlim = std::min(std::abs(dlft), std::abs(drgt));
             }
-            dq[iv] = dsgn * dlim;
+            dq[iv] = dsgn * dlim / dx;
         }
     }
 }
 
-void HydroSolver::trace(const real_t q[], const real_t dq[], real_t dtdx, real_t qm[], real_t qp[], real_t gamma) {
-    real_t r = std::max(q[0], 1e-10), u = q[1], p = std::max(q[NDIM+1], r * 1e-10);
+void HydroSolver::trace(const real_t q[], const real_t dq[], real_t dt, real_t dx, real_t qm[], real_t qp[], real_t gamma) {
+    real_t r = std::max(q[0], 1e-10), u = q[1], p = std::max(q[NDIM+1], r * 1e-20);
     real_t sr0 = -u * dq[0] - dq[1] * r;
     real_t su0 = -u * dq[1] - dq[NDIM+1] / r;
     int iener = NDIM + 1;
     for(int ie=0; ie<nener_; ++ie) su0 -= dq[iener+1+ie] / r;
     
-    real_t cs2 = gamma * p / r;
-    if (params::barotropic_eos) {
-        real_t T2 = params::T_eos / params::mu_gas * (constants::kB / constants::mH);
-        real_t v2_unit = params::units_velocity * params::units_velocity;
-        if (params::barotropic_eos_form == "isothermal") cs2 = T2 / v2_unit;
-        else if (params::barotropic_eos_form == "polytrope") cs2 = params::polytrope_index * T2 * std::pow(r * params::units_density / params::polytrope_rho, params::polytrope_index - 1.0) / v2_unit;
-        else if (params::barotropic_eos_form == "double_polytrope") {
-            real_t fac = std::pow(r * params::units_density / params::polytrope_rho, params::polytrope_index - 1.0);
-            cs2 = T2 * (1.0 + params::polytrope_index * fac) / v2_unit;
-        }
-    }
-    
-    real_t sp0 = -u * dq[iener] - dq[1] * r * cs2;
+    real_t cs2 = RiemannSolver::get_cs2(r, p, gamma);
+    real_t sp0 = -u * dq[NDIM+1] - dq[1] * r * cs2;
+
+    // Stabilize source terms in vacuum regions to prevent timestep collapse
+    su0 = std::max(-r * 1e3, std::min(r * 1e3, su0));
+    sp0 = std::max(-r * 1e3, std::min(r * 1e3, sp0));
+
     for (int iv = 0; iv < grid_.nvar; ++iv) {
-        real_t dqi = dq[iv], src = -u * dqi;
+        real_t dqi = dq[iv], src = 0;
         if (iv == 0) src = sr0; else if (iv == 1) src = su0; else if (iv == iener) src = sp0;
-        else if (iv > iener && iv <= iener + nener_) src = -u * dqi - dq[1] * gamma * q[iv];
-        qp[iv] = q[iv] - 0.5 * dqi + 0.5 * dtdx * src;
-        qm[iv] = q[iv] + 0.5 * dqi + 0.5 * dtdx * src;
+        else if (iv > iener && iv <= iener + nener_) src = - dq[1] * gamma * q[iv];
+        qp[iv] = q[iv] - 0.5 * dx * dqi + 0.5 * dt * src;
+        qm[iv] = q[iv] + 0.5 * dx * dqi + 0.5 * dt * src;
         if (iv == 0) {
             if (qp[iv] < 1e-10) qp[iv] = r;
+            if (qp[iv] > 1e6) qp[iv] = 1e6;
             if (qm[iv] < 1e-10) qm[iv] = r;
+            if (qm[iv] > 1e6) qm[iv] = 1e6;
+        } else if (iv == iener) {
+            if (qp[iv] < r * 1e-20) qp[iv] = r * 1e-20;
+            if (qm[iv] < r * 1e-20) qm[iv] = r * 1e-20;
+            qp[iv] = std::min(qp[iv], r * 1e2);
+            qm[iv] = std::min(qm[iv], r * 1e2);
+        } else if (iv > 0 && iv <= NDIM) {
+            qp[iv] = std::clamp(qp[iv], -10.0, 10.0);
+            qm[iv] = std::clamp(qm[iv], -10.0, 10.0);
         }
     }
 }
@@ -388,25 +404,14 @@ void HydroSolver::interpol_hydro(const real_t u1[7][64], real_t u2[8][64]) {
 }
 
 real_t HydroSolver::compute_courant_step(int ilevel, real_t dx, real_t gamma, real_t courant_factor) {
+    std::cout << "[DEBUG] compute_courant_step called for level " << ilevel << std::endl;
     int myid = MpiManager::instance().rank() + 1;
     real_t dt_max = 1e30;
+    real_t max_dtdx = 0.1;
+    real_t max_dt = max_dtdx * dx;
 
     auto get_cs = [&](real_t d, real_t p) {
-        if (params::barotropic_eos) {
-            // Sound speed for polytrope: cs^2 = dP/drho
-            real_t T2 = params::T_eos / params::mu_gas * (constants::kB / constants::mH);
-            real_t v2_unit = params::units_velocity * params::units_velocity;
-            if (params::barotropic_eos_form == "isothermal") return std::sqrt(T2 / v2_unit);
-            if (params::barotropic_eos_form == "polytrope") {
-                return std::sqrt(params::polytrope_index * T2 * std::pow(d * params::units_density / params::polytrope_rho, params::polytrope_index - 1.0) / v2_unit);
-            }
-            if (params::barotropic_eos_form == "double_polytrope") {
-                real_t fac = std::pow(d * params::units_density / params::polytrope_rho, params::polytrope_index - 1.0);
-                real_t cs2 = T2 * (1.0 + params::polytrope_index * fac) / v2_unit;
-                return std::sqrt(cs2);
-            }
-        }
-        return std::sqrt(gamma * p / d);
+        return std::sqrt(RiemannSolver::get_cs2(d, p, gamma));
     };
 
     if (ilevel == 0) {
@@ -425,10 +430,14 @@ real_t HydroSolver::compute_courant_step(int ilevel, real_t dx, real_t gamma, re
                 p = d * temp_mu / (params::units_velocity * params::units_velocity);
             } else {
                 p = std::max((grid_.uold(id, iener) - 0.5 * d * v2) * (gamma - 1.0), d * 1e-10);
+            p = std::min(p, d * 1e2);
             }
             
             real_t cs = get_cs(d, p);
             real_t v_mag = std::sqrt(v2);
+            if (id == 1 && ilevel == 0) {
+                std::cout << "[DEBUG] Courant check: d=" << d << " p=" << p << " cs=" << cs << " v_mag=" << v_mag << " dt=" << courant_factor * dx / (v_mag + cs) << std::endl;
+            }
             dt_max = std::min(dt_max, courant_factor * dx / (v_mag + cs));
         }
     } else {
@@ -450,10 +459,16 @@ real_t HydroSolver::compute_courant_step(int ilevel, real_t dx, real_t gamma, re
                     p = d * temp_mu / (params::units_velocity * params::units_velocity);
                 } else {
                     p = std::max((grid_.uold(id, iener) - 0.5 * d * v2) * (gamma - 1.0), d * 1e-10);
+            p = std::min(p, d * 1e2);
                 }
                 
                 real_t cs = get_cs(d, p);
                 real_t v_mag = std::sqrt(v2);
+                static bool first_print = true;
+                if (first_print) {
+                    std::cout << "[DEBUG] Courant check (L" << ilevel << "): d=" << d << " p=" << p << " cs=" << cs << " v_mag=" << v_mag << " dt=" << courant_factor * dx / (v_mag + cs) << std::endl;
+                    first_print = false;
+                }
                 real_t dt_cfl = courant_factor * dx / (v_mag + cs);
                 real_t dt_grav = 1e30;
                 real_t max_acc = 0;
@@ -474,7 +489,11 @@ real_t HydroSolver::compute_courant_step(int ilevel, real_t dx, real_t gamma, re
             igrid = grid_.next[igrid - 1];
         }
     }
-    return dt_max;
+    real_t final_dt = std::min(dt_max, max_dt);
+    if (MpiManager::instance().rank() == 0 && ilevel == 0) {
+        std::cout << "[DEBUG] compute_courant_step L0 returning dt=" << final_dt << " (max_dt=" << max_dt << ")" << std::endl;
+    }
+    return final_dt;
 }
 
 void HydroSolver::get_diagnostics(int ilevel, real_t dx, real_t& min_d, real_t& max_v, real_t& min_t, real_t& max_t) {}
@@ -485,10 +504,11 @@ void HydroSolver::add_gravity_source_terms(int ilevel, real_t dt) {
     if (ilevel == 1) {
         for (int idc = 1; idc <= grid_.ncoarse; ++idc) {
             if (grid_.son.at(idc - 1) > 0) continue;
-            real_t d = std::max(grid_.uold(idc, 1), 1e-10);
+            real_t d = std::clamp(grid_.uold(idc, 1), 1e-10, 1e6);
             for (int idim = 1; idim <= NDIM; ++idim) {
                 real_t f = grid_.f(idc, idim);
                 grid_.unew(idc, 1 + idim) += d * f * dt;
+                grid_.unew(idc, 1 + idim) = std::clamp(grid_.unew(idc, 1 + idim), -d * 10.0, d * 10.0);
                 grid_.unew(idc, iener) += grid_.uold(idc, 1 + idim) * f * dt + 0.5 * d * f * f * dt * dt;
             }
         }
@@ -498,10 +518,11 @@ void HydroSolver::add_gravity_source_terms(int ilevel, real_t dt) {
         for (int ic = 1; ic <= n2d_val; ++ic) {
             int idc = grid_.ncoarse + (ic - 1) * grid_.ngridmax + igrid;
             if (grid_.son.at(idc - 1) > 0) continue; 
-            real_t d = std::max(grid_.uold(idc, 1), 1e-10);
+            real_t d = std::clamp(grid_.uold(idc, 1), 1e-10, 1e6);
             for (int idim = 1; idim <= NDIM; ++idim) {
                 real_t f = grid_.f(idc, idim);
                 grid_.unew(idc, 1 + idim) += d * f * dt;
+                grid_.unew(idc, 1 + idim) = std::clamp(grid_.unew(idc, 1 + idim), -d * 10.0, d * 10.0);
                 grid_.unew(idc, iener) += grid_.uold(idc, 1 + idim) * f * dt + 0.5 * d * f * f * dt * dt;
             }
         }
@@ -516,7 +537,7 @@ void HydroSolver::synchro_hydro_fine(int ilevel, real_t dt) {
 
     auto apply_synchro = [&](int idc) {
         if (grid_.son.at(idc - 1) > 0) return;
-        real_t d = std::max(grid_.uold(idc, 1), 1e-10);
+        real_t d = std::clamp(grid_.uold(idc, 1), 1e-10, 1e6);
         real_t v2_old = 0;
         for(int idim=1; idim<=NDIM; ++idim) { real_t v = grid_.uold(idc, 1+idim)/d; v2_old += v*v; }
         
@@ -532,7 +553,10 @@ void HydroSolver::synchro_hydro_fine(int ilevel, real_t dt) {
             e_int = std::max(grid_.uold(idc, iener) - 0.5*d*v2_old, d * 1e-10 / (gam - 1.0));
         }
 
-        for (int idim = 1; idim <= NDIM; ++idim) grid_.uold(idc, 1 + idim) += d * grid_.f(idc, idim) * dt;
+        for (int idim = 1; idim <= NDIM; ++idim) {
+            grid_.uold(idc, 1 + idim) += d * grid_.f(idc, idim) * dt;
+            grid_.uold(idc, 1 + idim) = std::clamp(grid_.uold(idc, 1 + idim), -d * 10.0, d * 10.0);
+        }
         
         real_t v2_new = 0;
         for(int idim=1; idim<=NDIM; ++idim) { real_t v = grid_.uold(idc, 1+idim)/d; v2_new += v*v; }

@@ -7,7 +7,7 @@
 
 namespace ramses {
 
-static real_t get_cs2(real_t d, real_t p, real_t gamma) {
+real_t RiemannSolver::get_cs2(real_t d, real_t p, real_t gamma) {
     if (params::barotropic_eos) {
         real_t T2 = params::T_eos / params::mu_gas * (constants::kB / constants::mH);
         real_t v2_unit = params::units_velocity * params::units_velocity;
@@ -18,7 +18,7 @@ static real_t get_cs2(real_t d, real_t p, real_t gamma) {
             return T2 * (1.0 + params::polytrope_index * fac) / v2_unit;
         }
     }
-    return gamma * p / std::max(d, 1e-10);
+    return std::clamp(gamma * p / std::max(d, 1e-10), 1e-2, 1e12);
 }
 
 void RiemannSolver::solve_llf(const real_t ql[], const real_t qr[], real_t flux[], real_t gamma) {
@@ -79,15 +79,9 @@ void RiemannSolver::solve_hllc(const real_t ql[], const real_t qr[], real_t flux
     real_t cl = std::sqrt(get_cs2(rl, pl, gamma));
     real_t cr = std::sqrt(get_cs2(rr, pr, gamma));
 
-    // Einfeldt wave speed estimates for robustness
-    real_t sl = std::min(ul - cl, ur - cr);
-    real_t sr = std::max(ul + cl, ur + cr);
-    
-    // Ensure the wave speeds are symmetric enough for zero velocity
-    if (std::abs(ul) < 1e-10 && std::abs(ur) < 1e-10) {
-        real_t cmax = std::max(cl, cr);
-        sl = -cmax; sr = cmax;
-    }
+    // Wave speed estimates matching legacy Fortran
+    real_t sl = std::min(ul, ur) - std::max(cl, cr);
+    real_t sr = std::max(ul, ur) + std::max(cl, cr);
 
     if (sl > 0.0) {
         compute_flux(ql, flux, gamma);
@@ -97,8 +91,19 @@ void RiemannSolver::solve_hllc(const real_t ql[], const real_t qr[], real_t flux
         // Star state
         real_t rcl = rl * (ul - sl);
         real_t rcr = rr * (sr - ur);
-        real_t ustar = (rcr * ur + rcl * ul + (pl - pr)) / (rcr + rcl);
-        real_t pstar = (rcr * pl + rcl * pr + rcl * rcr * (ul - ur)) / (rcr + rcl);
+        real_t div = rcr + rcl;
+        if (div < 1e-5) {
+            // Fallback to HLL-like flux or simple average if the star state is degenerate
+            real_t fl_fallback[20], fr_fallback[20];
+            compute_flux(ql, fl_fallback, gamma);
+            compute_flux(qr, fr_fallback, gamma);
+            for (int i = 0; i < NDIM + 2; ++i) flux[i] = 0.5 * (fl_fallback[i] + fr_fallback[i]);
+            return;
+        }
+        real_t ustar = (rcr * ur + rcl * ul + (pl - pr)) / div;
+        ustar = std::max(-1e6, std::min(1e6, ustar));
+        real_t pstar = (rcr * pl + rcl * pr + rcl * rcr * (ul - ur)) / div;
+        pstar = std::max(pstar, 0.0); // Pressure cannot be negative
 
         if (ustar > 0.0) {
             if (std::abs(sl - ustar) < 1e-5) {

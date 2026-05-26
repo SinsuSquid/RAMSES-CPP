@@ -21,6 +21,14 @@ The collapse is driven by numerical instability in low-density regions, where to
 **Current Status:** 
 Stability is significantly improved. The energy explosion in `Sod-tube` was traced to an incorrect global timestep calculation that ignored the CFL limits of the finest grids. After correcting the timestep logic to include all levels, the simulation is stable and reaches the final time. Binary parity with legacy snapshots is being verified.
 
+**Accuracy Gap Investigation (HLLC):**
+- **Issue:** `Sod-tube` velocity error ($\sim 0.34$) is higher than reference ($\sim 0.18$).
+- **Fixes Implemented:** 
+    1. **Wave Speed Alignment:** Updated HLLC wave speed estimates in `RiemannSolver::solve_hllc` to match legacy Fortran (`SL = min(ul, ur) - max(cl, cr)`).
+    2. **Removal of Non-Reference Clamps:** Removed symmetry fixes for zero-velocity and $P^*$ robustness clamps in `solve_hllc` to ensure strict parity with the reference implementation.
+    3. **Slope Type Fix:** Fixed `HydroSolver::godunov_fine` to correctly use the `slope_type` from the configuration instead of a hardcoded Minmod (type 1) override.
+- **Result:** Simulation remains stable and uses correct settings, but a residual accuracy gap remains. Investigation continues into the predictor (trace) step.
+
 ---
 
 
