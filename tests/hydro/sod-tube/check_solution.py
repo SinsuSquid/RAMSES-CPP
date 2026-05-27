@@ -6,6 +6,7 @@ def check_solution():
     # Load RAMSES output
     data = visu_ramses.load_snapshot(2)
 
+
     order = data["data"]["x"].argsort()
     x_sim = data["data"]["x"][order]
     amrlev = data["data"]["level"][order]
@@ -40,3 +41,6 @@ def check_solution():
         errors[f"{var}_avg_error"] = np.mean(rel_error)
 
     return errors["velocity_avg_error"]
+
+if __name__ == "__main__":
+    print(f"Velocity Avg Error: {check_solution()}")

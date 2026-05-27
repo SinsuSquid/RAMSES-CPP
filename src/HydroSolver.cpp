@@ -57,9 +57,9 @@ void HydroSolver::godunov_fine(int ilevel, real_t dt, real_t dx) {
             for (int idim = 0; idim < NDIM; ++idim) {
                 real_t dq[20] = {0}, qm_tmp[20], qp_tmp[20];
                 trace(q_c, dq, dt, dx, qm_tmp, qp_tmp, gamma);
-                for(int iv=1; iv<=grid_.nvar; ++iv) { 
-                    get_qr(idc_0, idim, iv) = qm_tmp[iv-1]; 
-                    get_ql(idc_0, idim, iv) = qp_tmp[iv-1]; 
+                for(int iv=1; iv<=grid_.nvar; ++iv) {
+                    get_qr(idc_0, idim, iv) = qm_tmp[iv-1];
+                    get_ql(idc_0, idim, iv) = qp_tmp[iv-1];
                 }
             }
         }
@@ -132,7 +132,11 @@ void HydroSolver::godunov_fine(int ilevel, real_t dt, real_t dx) {
                     }
                 }
                 if (idim > 0) { std::swap(ql_f[1], ql_f[1+idim]); std::swap(qr_f[1], qr_f[1+idim]); }
-                RiemannSolver::solve_llf(ql_f, qr_f, flux, gamma);
+                std::string riemann_type = config_.get("hydro_params", "riemann", "llf");
+                if (riemann_type == "hllc") RiemannSolver::solve_godunov_nr(ql_f, qr_f, flux, gamma);
+                else if (riemann_type == "hll") RiemannSolver::solve_hll(ql_f, qr_f, flux, gamma);
+                else RiemannSolver::solve_llf(ql_f, qr_f, flux, gamma);
+
                 real_t mass_flux = flux[0];
                 for (int iv = NDIM + 2; iv < grid_.nvar; ++iv) flux[iv] = mass_flux * ((mass_flux > 0) ? ql_f[iv] : qr_f[iv]);
                 if (idim > 0) std::swap(flux[1], flux[1+idim]);
@@ -176,9 +180,21 @@ void HydroSolver::godunov_fine(int ilevel, real_t dt, real_t dx) {
                     int iy = rem / nx; int ix = rem % nx;
                     int ixyz[3] = {ix, iy, iz};
                     int n[3] = {nx, ny, nz};
-                    if (side == 0) ixyz[idim] = (ixyz[idim] - 1 + n[idim]) % n[idim];
-                    else ixyz[idim] = (ixyz[idim] + 1) % n[idim];
-                    icn[idim * 2 + side] = ixyz[2] * nx * ny + ixyz[1] * nx + ixyz[0] + 1;
+                    if (side == 0) {
+                        if (ixyz[idim] == 0) icn[idim * 2 + side] = -1;
+                        else {
+                            int nxt_ixyz[3] = {ixyz[0], ixyz[1], ixyz[2]};
+                            nxt_ixyz[idim]--;
+                            icn[idim * 2 + side] = nxt_ixyz[2] * nx * ny + nxt_ixyz[1] * nx + nxt_ixyz[0] + 1;
+                        }
+                    } else {
+                        if (ixyz[idim] == n[idim] - 1) icn[idim * 2 + side] = -2;
+                        else {
+                            int nxt_ixyz[3] = {ixyz[0], ixyz[1], ixyz[2]};
+                            nxt_ixyz[idim]++;
+                            icn[idim * 2 + side] = nxt_ixyz[2] * nx * ny + nxt_ixyz[1] * nx + nxt_ixyz[0] + 1;
+                        }
+                    }
                 }
             }
             compute_fluxes(idc_0, icn, 0);
@@ -342,11 +358,9 @@ void HydroSolver::trace(const real_t q[], const real_t dq[], real_t dt, real_t d
     sp0 = std::max(-r * 1e3, std::min(r * 1e3, sp0));
 
     for (int iv = 0; iv < grid_.nvar; ++iv) {
-        real_t dqi = dq[iv], src = 0;
-        if (iv == 0) src = sr0; else if (iv == 1) src = su0; else if (iv == iener) src = sp0;
-        else if (iv > iener && iv <= iener + nener_) src = - dq[1] * gamma * q[iv];
-        qp[iv] = q[iv] - 0.5 * dx * dqi + 0.5 * dt * src;
-        qm[iv] = q[iv] + 0.5 * dx * dqi + 0.5 * dt * src;
+        real_t dqi = dq[iv];
+        qp[iv] = q[iv] - 0.5 * dx * dqi;
+        qm[iv] = q[iv] + 0.5 * dx * dqi;
         if (iv == 0) {
             if (qp[iv] < 1e-10) qp[iv] = r;
             if (qp[iv] > 1e6) qp[iv] = 1e6;

@@ -17,6 +17,7 @@ public:
     static void solve_llf(const real_t ql[], const real_t qr[], real_t flux[], real_t gamma);
     static void solve_hll(const real_t ql[], const real_t qr[], real_t flux[], real_t gamma);
     static void solve_hllc(const real_t ql[], const real_t qr[], real_t flux[], real_t gamma);
+    static void solve_godunov_nr(const real_t ql[], const real_t qr[], real_t flux[], real_t gamma);
 
 private:
     /**
