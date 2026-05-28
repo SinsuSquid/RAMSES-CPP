@@ -190,7 +190,7 @@ void RiemannSolver::solve_godunov_nr(const real_t ql[], const real_t qr[], real_
     real_t rstar_val;
     if (pstar >= po) {
         real_t cl_unperturbed = (sgnm == 1.0) ? cl_sq : cr_sq;
-        rstar_val = ro / (1.0 + ro * (po - pstar) / (cl_unperturbed + 1e-20));
+        rstar_val = ro * ((gamma + 1.0) * pstar + (gamma - 1.0) * po) / ((gamma - 1.0) * pstar + (gamma + 1.0) * po);
     } else {
         rstar_val = ro * std::pow(pstar / (po + 1e-20), 1.0 / gamma);
     }
