@@ -207,17 +207,18 @@ void RiemannSolver::solve_godunov_nr(const real_t ql[], const real_t qr[], real_
         spin = ushock;
     }
 
-    if (spout <= 0.0) {
-        ro = ro; uo = uo; po = po;
-    } else if (spin >= 0.0) {
-        ro = rstar_val; uo = ustar; po = pstar;
+    // Use HLLC-style wave speed estimates for robust sampling
+    real_t cl_hllc = std::sqrt(get_cs2(rl, pl, gamma));
+    real_t cr_hllc = std::sqrt(get_cs2(rr, pr, gamma));
+    real_t sl_hllc = std::min(0.0, std::min(ul - cl_hllc, ur - cr_hllc));
+    real_t sr_hllc = std::max(0.0, std::max(ul + cl_hllc, ur + cr_hllc));
+
+    if (sl_hllc > 0.0) {
+        ro = rl; uo = ul; po = pl;
+    } else if (sr_hllc < 0.0) {
+        ro = rr; uo = ur; po = pr;
     } else {
-        real_t frac = spout / (spout - spin + 1e-20);
-        real_t p_interp = frac * pstar + (1.0 - frac) * po;
-        real_t ro_interp = ro * std::pow(p_interp / (po + 1e-20), 1.0 / gamma);
-        uo = frac * ustar + (1.0 - frac) * uo;
-        po = p_interp;
-        ro = ro_interp;
+        ro = rstar_val; uo = ustar; po = pstar;
     }
 
     if (std::abs(pl - pr) > 1e-3) {
