@@ -134,6 +134,7 @@ void RiemannSolver::solve_godunov_nr(const real_t ql[], const real_t qr[], real_
     const real_t smallc = 1e-10;
     const real_t smallr = smallc;
     const real_t smallp = smallc * smallc / gamma;
+    const real_t smallpp = smallr * smallp;
     const int niter = 10;
     const real_t gamma6 = (gamma + 1.0) / (2.0 * gamma);
 
@@ -170,7 +171,7 @@ void RiemannSolver::solve_godunov_nr(const real_t ql[], const real_t qr[], real_
         real_t delp = (qr_nr * ql_nr / (qr_nr + ql_nr + 1e-20)) * (usl - usr);
         delp = std::max(delp, -pold);
         pold = pold + delp;
-        if (std::abs(delp / (pold + 1e-10)) < 1e-6) break;
+        if (std::abs(delp / (pold + smallpp)) < 1e-6) break;
     }
     pstar = pold;
 
@@ -209,15 +210,17 @@ void RiemannSolver::solve_godunov_nr(const real_t ql[], const real_t qr[], real_
         spin = ushock;
     }
 
-    // Use HLLC-style wave speed estimates for robust sampling
+    // The following lines are removed as they are no longer needed after switching to NR wave speed sampling.
+    /*
     real_t cl_hllc = std::sqrt(get_cs2(rl, pl, gamma));
     real_t cr_hllc = std::sqrt(get_cs2(rr, pr, gamma));
     real_t sl_hllc = std::min(ul, ur) - std::max(cl_hllc, cr_hllc);
     real_t sr_hllc = std::max(ul, ur) + std::max(cl_hllc, cr_hllc);
+    */
 
-    if (sl_hllc > 0.0) {
+    if (spout > 0.0) {
         ro = rl; uo = ul; po = pl;
-    } else if (sr_hllc < 0.0) {
+    } else if (spin < 0.0) {
         ro = rr; uo = ur; po = pr;
     } else {
         ro = rstar_val; uo = ustar; po = pstar;
