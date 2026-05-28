@@ -63,8 +63,9 @@ void RiemannSolver::solve_hll(const real_t ql[], const real_t qr[], real_t flux[
 }
 
 void RiemannSolver::solve_hllc(const real_t ql[], const real_t qr[], real_t flux[], real_t gamma) {
-    const real_t smallr = 1e-10;
-    const real_t smallp = 1e-10;
+    const real_t smallc = 1e-10;
+    const real_t smallr = smallc;
+    const real_t smallp = smallc * smallc / gamma;
 
     int ipress = NDIM + 1;
     real_t rl = std::max(ql[0], smallr);
@@ -130,8 +131,9 @@ void RiemannSolver::solve_hllc(const real_t ql[], const real_t qr[], real_t flux
 }
 
 void RiemannSolver::solve_godunov_nr(const real_t ql[], const real_t qr[], real_t flux[], real_t gamma) {
-    const real_t smallr = 1e-10;
-    const real_t smallp = 1e-10;
+    const real_t smallc = 1e-10;
+    const real_t smallr = smallc;
+    const real_t smallp = smallc * smallc / gamma;
     const int niter = 10;
     const real_t gamma6 = (gamma + 1.0) / (2.0 * gamma);
 
