@@ -210,8 +210,8 @@ void RiemannSolver::solve_godunov_nr(const real_t ql[], const real_t qr[], real_
     // Use HLLC-style wave speed estimates for robust sampling
     real_t cl_hllc = std::sqrt(get_cs2(rl, pl, gamma));
     real_t cr_hllc = std::sqrt(get_cs2(rr, pr, gamma));
-    real_t sl_hllc = std::min(0.0, std::min(ul - cl_hllc, ur - cr_hllc));
-    real_t sr_hllc = std::max(0.0, std::max(ul + cl_hllc, ur + cr_hllc));
+    real_t sl_hllc = std::min(ul, ur) - std::max(cl_hllc, cr_hllc);
+    real_t sr_hllc = std::max(ul, ur) + std::max(cl_hllc, cr_hllc);
 
     if (sl_hllc > 0.0) {
         ro = rl; uo = ul; po = pl;

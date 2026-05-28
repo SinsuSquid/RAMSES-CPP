@@ -133,7 +133,7 @@ void HydroSolver::godunov_fine(int ilevel, real_t dt, real_t dx) {
                 }
                 if (idim > 0) { std::swap(ql_f[1], ql_f[1+idim]); std::swap(qr_f[1], qr_f[1+idim]); }
                 std::string riemann_type = config_.get("hydro_params", "riemann", "llf");
-                if (riemann_type == "hllc") RiemannSolver::solve_godunov_nr(ql_f, qr_f, flux, gamma);
+                if (riemann_type == "hllc") RiemannSolver::solve_hllc(ql_f, qr_f, flux, gamma);
                 else if (riemann_type == "hll") RiemannSolver::solve_hll(ql_f, qr_f, flux, gamma);
                 else RiemannSolver::solve_llf(ql_f, qr_f, flux, gamma);
 
@@ -359,8 +359,13 @@ void HydroSolver::trace(const real_t q[], const real_t dq[], real_t dt, real_t d
 
     for (int iv = 0; iv < grid_.nvar; ++iv) {
         real_t dqi = dq[iv];
-        qp[iv] = q[iv] - 0.5 * dx * dqi;
-        qm[iv] = q[iv] + 0.5 * dx * dqi;
+        real_t dq_dt = 0;
+        if (iv == 0) dq_dt = sr0;
+        else if (iv == 1) dq_dt = su0;
+        else if (iv == NDIM + 1) dq_dt = sp0;
+
+        qp[iv] = q[iv] - 0.5 * dx * dqi + 0.5 * dt * dq_dt;
+        qm[iv] = q[iv] + 0.5 * dx * dqi + 0.5 * dt * dq_dt;
         if (iv == 0) {
             if (qp[iv] < 1e-10) qp[iv] = r;
             if (qp[iv] > 1e6) qp[iv] = 1e6;
