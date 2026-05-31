@@ -47,22 +47,36 @@ The engine uses a sophisticated `MpiManager` and `LoadBalancer` to distribute oc
 - **LightCone:** Cosmological shell identification for deep-field surveys.
 - **Hdf5Writer:** Parallel HDF5 output mirroring the legacy RAMSES hierarchical schema.
 
-## 🎉 Project Status: BINARY PARITY ACHIEVED (Phase 35 Complete)
+## 🔧 Known Gaps & Active Work (Phase 43)
 
-**Phase 35 Milestone:** Dynamic AMR grid storage enables **binary parity with RAMSES-2025**
-- ✅ **advect1d test:** 27,928 steps matches legacy RAMSES exactly
-- ✅ **10/11 hydro tests:** Pass with correct compilation flags
-- ✅ **Zero overflow risk:** Dynamic resizing handles nsub=2 refinement bursts
-- ✅ **Configuration-agnostic:** dt computation and refinement guard work for any nsubcycle pattern
+### AMR Refinement Rule Enforcement
 
-As of Phase 35, the project has achieved:
-- Complete architectural parity with RAMSES-2025 release
-- Full physics parity across all core modules (Hydro, MHD, RHD, RT, Poisson, Particles, Feedback)
-- Binary-compatible snapshot I/O with legacy format
-- Automatic AMR grid allocation eliminating overflow constraints
-- Support for nsub=2 sub-cycling across all test configurations
+The legacy Fortran RAMSES uses a two-gate refinement system that the C++ port has not yet fully replicated:
 
-All code is fully operational in C++17 with zero reliance on Fortran runtime, while maintaining bit-perfect compatibility with the original Fortran engine for research reproducibility.
+1. **`ensure_ref_rules`** (missing): Enforces the strict 1-level-difference rule. For each grid at level `ilevel`, it gathers the 3^NDIM parent-level neighbors and checks that all have `son != 0`. If any neighbor is missing, `flag1` is zeroed to prevent refinement. Without this, cascading unconstrained refinement can occur (observed: 408 vs 20 level-10 cells in advect1d).
+
+2. **`authorize_fine` / `flag2` authorization map** (partial): In legacy RAMSES, `refine_fine` checks both `flag1 == 1` AND `flag2 == 1`. The `flag2` map is computed by `authorize_fine`, which marks cells authorized for refinement based on domain decomposition and ordering. In single-CPU mode this is benign (all active cells are authorized), but MPI runs will need this gate.
+
+### Coarse-Fine Refluxing
+
+Flux correction at coarse-fine interfaces has been implemented in both `HydroSolver.cpp` and `RhdSolver.cpp`. Fine-level cells at refined interfaces zero out their local flux, and the fine-level flux is accumulated back to the coarser neighbor's `unew` with a `1/2^NDIM` volume fraction factor.
+
+### `headl_vec` Stride Defect
+
+The level linked-list arrays (`headl_vec`, `taill_vec`, `numbl_vec`) are allocated with stride `ncpu`, but accessors allow `icpu` up to `ncpu + nboundary`. When `nboundary > 0`, this would produce incorrect lookups. Currently benign for all serial tests (`nboundary = 0`), but must be fixed for boundary-configured runs.
 
 ---
-🚀 *Binary parity achieved. RAMSES-CPP is production-ready.* 🚀✨
+
+## 🎉 Project Status (Phase 43 In Progress)
+
+**Phase 35 Milestone:** Dynamic AMR grid storage enables **binary parity with RAMSES-2025**
+- ✅ **10/11 hydro tests:** Pass with correct compilation flags
+- ✅ **Zero overflow risk:** Dynamic resizing handles nsub=2 refinement bursts
+- ⚠️ **advect1d test:** Initial grid matches perfectly; post-step divergence due to missing `ensure_ref_rules`
+- ✅ **Configuration-agnostic:** dt computation and refinement guard work for any nsubcycle pattern
+
+All code is fully operational in C++17 with zero reliance on Fortran runtime, while maintaining bit-perfect compatibility with the original Fortran engine for research reproducibility (pending AMR rule enforcement fix).
+
+---
+🚀 *Binary parity in progress. Closing the refinement rule gap.* 🚀✨
+

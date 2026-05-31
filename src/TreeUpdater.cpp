@@ -118,25 +118,14 @@ void TreeUpdater::make_grid_fine(int ilevel) {
         int icn_p[6] = {0};
         if (ig_p > 0) {
             grid_.get_nbor_grids(ig_p, ign_p);
+            grid_.get_nbor_cells(ign_p, ic_p, icn_p, ig_p);
         } else {
             grid_.get_nbor_cells_coarse(id_p, icn_p);
         }
 
         for (int idim = 0; idim < NDIM; ++idim) {
             for (int inbor = 0; inbor < 2; ++inbor) {
-                int idc_nb_p;
-                if (ig_p > 0) {
-                    int ic_nb_p = constants::jjj[idim][inbor][ic_p - 1];
-                    int ig_nb_p = ign_p[constants::iii[idim][inbor][ic_p - 1]];
-                    if (ig_nb_p == 0) { // Same parent grid
-                        idc_nb_p = grid_.ncoarse + (ic_nb_p - 1) * grid_.ngridmax + ig_p;
-                    } else { // Neighbor parent grid
-                        idc_nb_p = grid_.ncoarse + (ic_nb_p - 1) * grid_.ngridmax + ig_nb_p;
-                    }
-                } else {
-                    idc_nb_p = icn_p[idim * 2 + inbor];
-                }
-                
+                int idc_nb_p = icn_p[idim * 2 + inbor];
                 if (idc_nb_p > 0 && idc_nb_p <= grid_.ncell) {
                     grid_.nbor[(idim * 2 + inbor) * grid_.ngridmax + ig_child - 1] = grid_.son[idc_nb_p - 1];
                 }
@@ -234,6 +223,7 @@ void TreeUpdater::smooth_fine(int ilevel) {
     }
 }
 void TreeUpdater::flag_fine(int ilevel, real_t ed, real_t ep, real_t ev, real_t eb2, const std::vector<real_t>& evar, int nexp) {
+    if (ilevel > grid_.nlevelmax) return;
     int myid = MpiManager::instance().rank() + 1, n2d = (1 << NDIM), lmin = config_.get_int("amr_params", "levelmin", 1);
 
     struct CellState {
@@ -308,6 +298,7 @@ void TreeUpdater::flag_fine(int ilevel, real_t ed, real_t ep, real_t ev, real_t 
         );
     };
 
+    // --- Step 1: Initialize flags (minimal refinement/test_flag) ---
     if (ilevel == 1) {
         for (int i = 0; i < grid_.ncoarse; ++i) grid_.flag1[i] = 0;
         for (int i = 1; i <= grid_.ncoarse; ++i) {
@@ -316,7 +307,6 @@ void TreeUpdater::flag_fine(int ilevel, real_t ed, real_t ep, real_t ev, real_t 
                 grid_.flag1[i-1] = 1;
             } else {
                 bool ok = false;
-                // test_flag: check if any child is refined or flagged
                 int child_ig = grid_.son[i - 1];
                 if (child_ig > 0) {
                     for (int ic_son = 1; ic_son <= n2d; ++ic_son) {
@@ -327,9 +317,47 @@ void TreeUpdater::flag_fine(int ilevel, real_t ed, real_t ep, real_t ev, real_t 
                         }
                     }
                 }
-                
-                // userflag: check physical criteria
-                if (!ok && (ed > 0.0 || ep > 0.0 || ev > 0.0 || eb2 > 0.0)) {
+                if (ok) grid_.flag1[i-1] = 1;
+            }
+        }
+    } else {
+        int ig = grid_.get_headl(myid, ilevel - 1);
+        while (ig > 0) {
+            for (int ic = 1; ic <= n2d; ++ic) {
+                int idc = grid_.ncoarse + (ic - 1) * grid_.ngridmax + ig - 1;
+                grid_.flag1[idc] = 0;
+                if (ilevel <= lmin) {
+                    grid_.flag1[idc] = 1;
+                } else {
+                    bool ok = false;
+                    int child_ig = grid_.son[idc];
+                    if (child_ig > 0) {
+                        for (int ic_son = 1; ic_son <= n2d; ++ic_son) {
+                            int idc_son = grid_.ncoarse + (ic_son - 1) * grid_.ngridmax + child_ig - 1;
+                            if (grid_.son[idc_son] > 0 || grid_.flag1[idc_son] == 1) {
+                                ok = true;
+                                break;
+                            }
+                        }
+                    }
+                    if (ok) grid_.flag1[idc] = 1;
+                }
+            }
+            ig = grid_.next[ig - 1];
+        }
+    }
+
+    // --- Step 2: Smooth once before userflag (only if ilevel >= levelmin) ---
+    if (ilevel >= lmin) {
+        smooth_fine(ilevel);
+    }
+
+    // --- Step 3: Check user-defined physical criteria (userflag) ---
+    if (ilevel >= lmin && (ed > 0.0 || ep > 0.0 || ev > 0.0 || eb2 > 0.0)) {
+        if (ilevel == 1) {
+            for (int i = 1; i <= grid_.ncoarse; ++i) {
+                if (grid_.flag1[i-1] == 0) {
+                    bool ok = false;
                     CellState state_c = get_cell_state(i);
                     for (int idim = 0; idim < NDIM; ++idim) {
                         int nx_dim = (idim == 0) ? grid_.nx : ((idim == 1) ? grid_.ny : grid_.nz);
@@ -359,36 +387,17 @@ void TreeUpdater::flag_fine(int ilevel, real_t ed, real_t ep, real_t ev, real_t 
                             if (error > eb2) { ok = true; break; }
                         }
                     }
+                    if (ok) grid_.flag1[i-1] = 1;
                 }
-                if (ok) grid_.flag1[i-1] = 1;
             }
-        }
-    } else {
-        int ig = grid_.get_headl(myid, ilevel - 1);
-        while (ig > 0) {
-            int ign[7]; grid_.get_nbor_grids(ig, ign);
-            for (int ic = 1; ic <= n2d; ++ic) {
-                int idc = grid_.ncoarse + (ic - 1) * grid_.ngridmax + ig - 1;
-                grid_.flag1[idc] = 0;
-
-                if (ilevel <= lmin) {
-                    grid_.flag1[idc] = 1;
-                } else {
-                    bool ok = false;
-                    // test_flag: check if any child is refined or flagged
-                    int child_ig = grid_.son[idc];
-                    if (child_ig > 0) {
-                        for (int ic_son = 1; ic_son <= n2d; ++ic_son) {
-                            int idc_son = grid_.ncoarse + (ic_son - 1) * grid_.ngridmax + child_ig - 1;
-                            if (grid_.son[idc_son] > 0 || grid_.flag1[idc_son] == 1) {
-                                ok = true;
-                                break;
-                            }
-                        }
-                    }
-
-                    // userflag: check physical criteria
-                    if (!ok && (ed > 0.0 || ep > 0.0 || ev > 0.0 || eb2 > 0.0)) {
+        } else {
+            int ig = grid_.get_headl(myid, ilevel - 1);
+            while (ig > 0) {
+                int ign[7]; grid_.get_nbor_grids(ig, ign);
+                for (int ic = 1; ic <= n2d; ++ic) {
+                    int idc = grid_.ncoarse + (ic - 1) * grid_.ngridmax + ig - 1;
+                    if (grid_.flag1[idc] == 0) {
+                        bool ok = false;
                         CellState state_c = get_cell_state(idc + 1);
                         int icn_nb[6]; grid_.get_nbor_cells(ign, ic, icn_nb, ig);
                         for (int idim = 0; idim < NDIM; ++idim) {
@@ -416,15 +425,15 @@ void TreeUpdater::flag_fine(int ilevel, real_t ed, real_t ep, real_t ev, real_t 
                                 if (error > eb2) { ok = true; break; }
                             }
                         }
+                        if (ok) grid_.flag1[idc] = 1;
                     }
-                    if (ok) grid_.flag1[idc] = 1;
                 }
+                ig = grid_.next[ig - 1];
             }
-            ig = grid_.next[ig - 1];
         }
     }
 
-    // Buffer expansion
+    // --- Step 4: Buffer expansion ---
     for (int i = 0; i < nexp; ++i) {
         smooth_fine(ilevel);
     }

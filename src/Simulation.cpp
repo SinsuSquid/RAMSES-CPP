@@ -311,12 +311,20 @@ void Simulation::run() {
         if (iout < (int)tout_.size() && t_ >= tout_[iout] - 1e-10 * dt) {
             dump_snapshot(snapshot_count++); iout++;
         }
-        if (nstep_ % ncontrol_ == 0) {
+        if (true) {
             auto t_step_end = std::chrono::high_resolution_clock::now();
             double duration = std::chrono::duration<double>(t_step_end - t_step_start).count();
             double total_time = std::chrono::duration<double>(t_step_end - t_start_loop).count();
+            real_t min_rho = 1e30, max_rho = -1e30;
+            for (int i = 1; i <= grid_.ncell; ++i) {
+                if (grid_.son[i - 1] == 0) {
+                    real_t rho_val = grid_.uold(i, 1);
+                    min_rho = std::min(min_rho, rho_val);
+                    max_rho = std::max(max_rho, rho_val);
+                }
+            }
             if (MpiManager::instance().rank() == 0) {
-                printf(" Step=%d t=%12.5e dt=%10.3e time_elapsed=%8.2fs total_time=%8.2fs\n", nstep_, t_, dt, duration, total_time);
+                printf(" Step=%d t=%12.5e dt=%10.3e min_rho=%10.3e max_rho=%10.3e time_elapsed=%8.2fs total_time=%8.2fs\n", nstep_, t_, dt, min_rho, max_rho, duration, total_time);
             }
         }
     }
@@ -417,6 +425,12 @@ void Simulation::amr_step(int ilevel, real_t dt, int icount) {
         particles_->move_fine(ilevel, 0.5 * dt);
     }
 
+    // Recursive call to finer levels (post-order traversal like Fortran)
+    int nsub = (ilevel < (int)nsubcycle_.size()) ? nsubcycle_[ilevel] : 1;
+    if (ilevel < grid_.nlevelmax) {
+        for (int i = 1; i <= nsub; ++i) amr_step(ilevel + 1, dt / nsub, i);
+    }
+
 #ifdef MHD
     mhd_->godunov_fine(ilevel, dt, dx);
 #else
@@ -456,17 +470,6 @@ void Simulation::amr_step(int ilevel, real_t dt, int icount) {
     rt_->apply_source_terms(ilevel, dt);
 #endif
 
-    int nsub = (ilevel < (int)nsubcycle_.size()) ? nsubcycle_[ilevel] : 1;
-    if (ilevel < grid_.nlevelmax) {
-        for (int i = 1; i <= nsub; ++i) amr_step(ilevel + 1, dt / nsub, i);
-    }
-
-    // RESTRICT FIRST: Update parents from children
-    if (ilevel < grid_.nlevelmax) {
-        updater_.restrict_fine(ilevel);
-    }
-
-    // THEN SET UOLD: Finalize the step for this level's cells.
 #ifdef MHD
     mhd_->set_uold(ilevel);
 #else
@@ -478,6 +481,11 @@ void Simulation::amr_step(int ilevel, real_t dt, int icount) {
 #ifdef RT
     rt_->set_uold(ilevel);
 #endif
+
+    // Restrict parent level from finer child levels (called after set_uold like upload_fine in Fortran)
+    if (ilevel < grid_.nlevelmax) {
+        updater_.restrict_fine(ilevel);
+    }
 
     // Dynamic Refinement: compute refinement flags for the next step (finer-to-coarser order)
     if (ilevel < grid_.nlevelmax) {
@@ -538,6 +546,7 @@ void Simulation::dump_snapshot(int iout) {
     SnapshotInfo info; 
     info.t = t_; 
     info.nstep = nstep_; 
+    info.nstep_coarse = nstep_;
     info.iout = iout; 
     info.gamma = grid_.gamma; 
     info.nener = nener_;
