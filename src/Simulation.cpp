@@ -87,6 +87,12 @@ void Simulation::initialize(const std::string& nml_path) {
     real_t gamma = config_.get_double("hydro_params", "gamma", 1.4);
     grid_.gamma = gamma;
     
+    std::vector<double> gamma_rad_config = config_.get_double_array("hydro_params", "gamma_rad");
+    grid_.gamma_rad.resize(nener_, 1.33333333334);
+    for (size_t i = 0; i < gamma_rad_config.size() && i < (size_t)nener_; ++i) {
+        grid_.gamma_rad[i] = gamma_rad_config[i];
+    }
+    
     // Barotropic EOS parameters
     p::barotropic_eos = config_.get_bool("cooling_params", "barotropic_eos", false);
     p::barotropic_eos_form = config_.get("cooling_params", "barotropic_eos_form", "isothermal");
@@ -135,9 +141,12 @@ void Simulation::initialize(const std::string& nml_path) {
     initializer_->init_tracers();
 
     nsubcycle_.assign(33, 1);
+    for (int i = levelmin; i < 33; ++i) {
+        nsubcycle_[i] = 2;
+    }
     std::string nsub_s = config_.get("run_params", "nsubcycle", "");
     if (!nsub_s.empty()) {
-        std::stringstream ss(nsub_s); std::string item; int l = 1;
+        std::stringstream ss(nsub_s); std::string item; int l = levelmin;
         while (std::getline(ss, item, ',')) {
             size_t star = item.find('*');
             if (star != std::string::npos) {
@@ -154,7 +163,7 @@ void Simulation::initialize(const std::string& nml_path) {
     nexpand_.assign(33, 1);
     std::string nexp_s = config_.get("amr_params", "nexpand", "");
     if (!nexp_s.empty()) {
-        std::stringstream ss(nexp_s); std::string item; int l = 1;
+        std::stringstream ss(nexp_s); std::string item; int l = levelmin;
         while (std::getline(ss, item, ',')) {
             size_t star = item.find('*');
             if (star != std::string::npos) {
@@ -173,10 +182,17 @@ void Simulation::initialize(const std::string& nml_path) {
     real_t ev = config_.get_double("refine_params", "err_grad_v", -1.0);
     real_t eb2 = config_.get_double("refine_params", "err_grad_b2", -1.0);
 
-    for (int ipass = 1; ipass <= 2; ++ipass) {
-        for (int il = 1; il <= levelmax; ++il) {
-            initializer_->apply_all(); // Ensure current level is initialized
+    for (int ipass = 1; ipass <= levelmax; ++ipass) {
+        initializer_->apply_all(); // Ensure all existing grids are analytically initialized before flagging
+        for (int il = levelmax - 1; il >= 1; --il) {
+            updater_.restrict_fine(il);
+        }
+        // Flag all levels in descending order
+        for (int il = levelmax; il >= 1; --il) {
             updater_.flag_fine(il, ed, ep, ev, eb2, {}, nexpand_[std::min(il, 32)]);
+        }
+        // Refine and initialize all levels in ascending order
+        for (int il = 1; il <= levelmax; ++il) {
             updater_.make_grid_fine(il);
             updater_.remove_grid_fine(il);
         }
@@ -261,12 +277,14 @@ void Simulation::run() {
         real_t dx0 = p::boxlen / (real_t)p::nx;
         min_dt = std::min(min_dt, hydro_->compute_courant_step(0, dx0, grid_.gamma, courant));
 
+        int cumulative_nsub = 1;
         for (int il = 1; il <= grid_.nlevelmax; ++il) {
             if (grid_.count_grids_at_level(il) == 0) continue;
             real_t dx = p::boxlen / (real_t)(p::nx * (1 << il));
             real_t dt_l = hydro_->compute_courant_step(il, dx, grid_.gamma, courant);
+            min_dt = std::min(min_dt, dt_l * cumulative_nsub);
             int nsub = (il < (int)nsubcycle_.size()) ? nsubcycle_[il] : 1;
-            min_dt = std::min(min_dt, dt_l / nsub);
+            cumulative_nsub *= nsub;
         }
 
         real_t global_min_dt = min_dt;
@@ -276,7 +294,10 @@ void Simulation::run() {
         }
 #endif
         real_t dt = global_min_dt;
-        if (iout < (int)tout_.size()) dt = std::min(dt, tout_[iout] - t_);
+        bool exact_output_time = config_.get_bool("output_params", "exact_output_time", false);
+        if (exact_output_time && iout < (int)tout_.size()) {
+            dt = std::min(dt, tout_[iout] - t_);
+        }
 
         amr_step(0, dt); t_ += dt; p::t = t_; nstep_++;
 
@@ -322,13 +343,6 @@ void Simulation::amr_step(int ilevel, real_t dt, int icount) {
     int nsub_here = (ilevel < (int)nsubcycle_.size()) ? nsubcycle_[ilevel] : 1;
     bool should_refine = (nsub_here <= 1) || (icount >= nsub_here);
     if (ilevel < grid_.nlevelmax && should_refine) {
-        real_t ed = config_.get_double("refine_params", "err_grad_d", -1.0);
-        real_t ep = config_.get_double("refine_params", "err_grad_p", -1.0);
-        real_t ev = config_.get_double("refine_params", "err_grad_v", -1.0);
-        real_t eb2 = config_.get_double("refine_params", "err_grad_b2", -1.0);
-        int nexp = config_.get_int("amr_params", "nexpand", 1);
-
-        updater_.flag_fine(ilevel + 1, ed, ep, ev, eb2, {}, nexp);
         updater_.make_grid_fine(ilevel + 1);
         updater_.remove_grid_fine(ilevel + 1);
         grid_.synchronize_level_counts();
@@ -464,6 +478,16 @@ void Simulation::amr_step(int ilevel, real_t dt, int icount) {
 #ifdef RT
     rt_->set_uold(ilevel);
 #endif
+
+    // Dynamic Refinement: compute refinement flags for the next step (finer-to-coarser order)
+    if (ilevel < grid_.nlevelmax) {
+        real_t ed = config_.get_double("refine_params", "err_grad_d", -1.0);
+        real_t ep = config_.get_double("refine_params", "err_grad_p", -1.0);
+        real_t ev = config_.get_double("refine_params", "err_grad_v", -1.0);
+        real_t eb2 = config_.get_double("refine_params", "err_grad_b2", -1.0);
+        int nexp = config_.get_int("amr_params", "nexpand", 1);
+        updater_.flag_fine(ilevel + 1, ed, ep, ev, eb2, {}, nexp);
+    }
 }
 
 void Simulation::rho_fine(int ilevel) {

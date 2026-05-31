@@ -75,8 +75,23 @@ real_t MhdSolver::compute_courant_step(int ilevel, real_t dx, real_t gamma, real
                 real_t d = std::max(grid_.uold(idc, 1), smallr), u = grid_.uold(idc, 2)/d, v = grid_.uold(idc, 3)/d, w = grid_.uold(idc, 4)/d;
                 real_t A = grid_.uold(idc, 6), B = grid_.uold(idc, 7), C = grid_.uold(idc, 8), etot = grid_.uold(idc, 5);
                 real_t ekin = 0.5*d*(u*u+v*v+w*w), emag = 0.125*std::pow(A+grid_.uold(idc,grid_.nvar-2),2) + 0.125*std::pow(B+grid_.uold(idc,grid_.nvar-1),2) + 0.125*std::pow(C+grid_.uold(idc,grid_.nvar),2);
-                real_t p = std::max((etot-ekin-emag)*(gamma-1.0), d*1e-10);
-                real_t q_mhd[8] = {d, p, u, 0.5*(A+grid_.uold(idc,grid_.nvar-2)), v, 0.5*(B+grid_.uold(idc,grid_.nvar-1)), w, 0.5*(C+grid_.uold(idc,grid_.nvar))}, vel_fast;
+                real_t e_nonthermal = 0.0;
+                int iener = 5;
+                for (int ie = 0; ie < nener_; ++ie) {
+                    e_nonthermal += grid_.uold(idc, iener + 1 + ie);
+                }
+                real_t p = std::max((etot-ekin-emag-e_nonthermal)*(gamma-1.0), d*1e-10);
+                real_t q_mhd[64] = {0};
+                q_mhd[0] = d; q_mhd[1] = p; q_mhd[2] = u;
+                q_mhd[3] = 0.5*(A+grid_.uold(idc,grid_.nvar-2));
+                q_mhd[4] = v;
+                q_mhd[5] = 0.5*(B+grid_.uold(idc,grid_.nvar-1));
+                q_mhd[6] = w;
+                q_mhd[7] = 0.5*(C+grid_.uold(idc,grid_.nvar));
+                for (int ie = 0; ie < nener_; ++ie) {
+                    q_mhd[8 + ie] = grid_.uold(idc, iener + 1 + ie) * (grid_.gamma_rad[ie] - 1.0);
+                }
+                real_t vel_fast;
                 find_speed_fast(q_mhd, vel_fast, gamma);
                 dt_max = std::min(dt_max, courant_factor * dx / (std::sqrt(u*u+v*v+w*w) + vel_fast));
                 for(int idim=1; idim<=NDIM; ++idim) {
@@ -148,9 +163,15 @@ void MhdSolver::ctoprim(const real_t u[64], real_t q[64], real_t bf[3][2], real_
     bf[0][0]=u[5]; bf[1][0]=u[6]; bf[2][0]=u[7];
     int nvp = grid_.nvar - 3; bf[0][1]=u[nvp+0]; bf[1][1]=u[nvp+1]; bf[2][1]=u[nvp+2];
     real_t ek = 0.5*d*(q[1]*q[1]+q[2]*q[2]+q[3]*q[3]), em = 0.125*(std::pow(bf[0][0]+bf[0][1],2)+std::pow(bf[1][0]+bf[1][1],2)+std::pow(bf[2][0]+bf[2][1],2));
-    q[4] = std::max((u[4] - ek - em) * (gamma - 1.0), d * 1e-10);
+    real_t e_nonthermal = 0.0;
+    for (int ie = 0; ie < nener_; ++ie) {
+        int iv = 8 + ie;
+        q[iv] = u[iv] * (grid_.gamma_rad[ie] - 1.0);
+        e_nonthermal += u[iv];
+    }
+    q[4] = std::max((u[4] - ek - em - e_nonthermal) * (gamma - 1.0), d * 1e-10);
     q[5]=0.5*(bf[0][0]+bf[0][1]); q[6]=0.5*(bf[1][0]+bf[1][1]); q[7]=0.5*(bf[2][0]+bf[2][1]);
-    for (int iv=8; iv<nvp; ++iv) q[iv]=u[iv]/d;
+    for (int iv = 8 + nener_; iv < nvp; ++iv) q[iv] = u[iv] / d;
 }
 
 void MhdSolver::trace(const real_t qloc[6][6][6][64], const real_t bfloc[6][6][6][3][2], const real_t dq[6][6][6][3][64], const real_t dbf[6][6][6][3][2], real_t dt, real_t dx, real_t qm[6][6][6][3][64], real_t qp[6][6][6][3][64]) {
@@ -171,11 +192,29 @@ void MhdSolver::trace(const real_t qloc[6][6][6][64], const real_t bfloc[6][6][6
 
 void MhdSolver::cmpflxm(const real_t qm[6][6][6][3][64], const real_t qp[6][6][6][3][64], const real_t bfloc[6][6][6][3][2], int idim, real_t gamma, real_t flux[6][6][6][64]) {
     for (int k=1; k<5; ++k) for (int j=1; j<5; ++j) for (int i=1; i<5; ++i) {
-        int ni=i+(idim==0), nj=j+(idim==1), nk=k+(idim==2); real_t qL[8], qR[8], f[9];
+        int ni=i+(idim==0), nj=j+(idim==1), nk=k+(idim==2);
+        real_t qL[64] = {0}, qR[64] = {0}, f[9];
         auto fl = [&](real_t* q, const real_t s[64], real_t bn) { q[0]=s[0]; q[1]=s[4]; q[2]=s[1+idim]; q[3]=bn; q[4]=s[1+(idim+1)%3]; q[5]=s[5+(idim+1)%3]; q[6]=s[1+(idim+2)%3]; q[7]=s[5+(idim+2)%3]; };
         fl(qL, qm[i][j][k][idim], bfloc[i][j][k][idim][1]); fl(qR, qp[ni][nj][nk][idim], bfloc[ni][nj][nk][idim][0]);
+        for (int ie = 0; ie < nener_; ++ie) {
+            qL[8 + ie] = qm[i][j][k][idim][8 + ie];
+            qR[8 + ie] = qp[ni][nj][nk][idim][8 + ie];
+        }
         if (config_.get("hydro_params", "riemann", "hlld") == "llf") llf(qL, qR, f, gamma); else hlld(qL, qR, f, gamma);
         flux[i][j][k][0]=f[0]; flux[i][j][k][1]=f[1]; flux[i][j][k][2]=f[2]; flux[i][j][k][4]=f[4]; flux[i][j][k][6]=f[6]; flux[i][j][k][5]=f[5]; flux[i][j][k][7]=f[7];
+        
+        real_t mass_flux = f[0];
+        real_t u_interface = mass_flux / std::max((mass_flux > 0) ? qL[0] : qR[0], (real_t)1e-10);
+        for (int ie = 0; ie < nener_; ++ie) {
+            int iv = 8 + ie;
+            real_t p_rad = (mass_flux > 0) ? qm[i][j][k][idim][iv] : qp[ni][nj][nk][idim][iv];
+            flux[i][j][k][iv] = u_interface * (p_rad / (grid_.gamma_rad[ie] - 1.0));
+        }
+        int nvp = grid_.nvar - 3;
+        for (int iv = 8 + nener_; iv < nvp; ++iv) {
+            real_t concentration = (mass_flux > 0) ? qm[i][j][k][idim][iv] : qp[ni][nj][nk][idim][iv];
+            flux[i][j][k][iv] = mass_flux * concentration;
+        }
     }
 }
 
@@ -198,9 +237,59 @@ void MhdSolver::godfine1(const std::vector<int>& ind_grid, int ilevel, real_t dt
             if(icp<=(1<<NDIM)) {
                 for(int d=0; d<NDIM; ++d) {
                     int il=i-(d==0), jl=j-(d==1), kl=k-(d==2);
-                    real_t fL[64], fR[64]; for(int iv=0; iv<20; ++iv) { fL[iv]=fluxes[d][il][jl][kl][iv]; fR[iv]=fluxes[d][i][j][k][iv]; }
+                    real_t fL[64], fR[64]; for(int iv=0; iv<grid_.nvar; ++iv) { fL[iv]=fluxes[d][il][jl][kl][iv]; fR[iv]=fluxes[d][i][j][k][iv]; }
                     grid_.unew(idc, 1) += (fL[0]-fR[0])*dt_dx; grid_.unew(idc, 5) += (fL[1]-fR[1])*dt_dx;
                     grid_.unew(idc, 1+d+1) += (fL[2]-fR[2])*dt_dx; grid_.unew(idc, 1+(d+1)%3+1) += (fL[4]-fR[4])*dt_dx; grid_.unew(idc, 1+(d+2)%3+1) += (fL[6]-fR[6])*dt_dx;
+                    for (int ie = 0; ie < nener_; ++ie) {
+                        grid_.unew(idc, 9 + ie) += (fL[8 + ie] - fR[8 + ie]) * dt_dx;
+                    }
+                    int nvp = grid_.nvar - 3;
+                    for (int iv = 8 + nener_; iv < nvp; ++iv) {
+                        grid_.unew(idc, 1 + iv) += (fL[iv] - fR[iv]) * dt_dx;
+                    }
+                }
+                if (nener_ > 0) {
+                    int ign[7]; grid_.get_nbor_grids(igrid, ign);
+                    int icn[6]; grid_.get_nbor_cells(ign, icp, icn, igrid);
+                    real_t divu = 0.0;
+                    real_t d_c = std::max(grid_.uold(idc, 1), (real_t)1e-10);
+                    for (int idim = 0; idim < NDIM; ++idim) {
+                        int id_l = icn[idim * 2];
+                        int id_r = icn[idim * 2 + 1];
+                        
+                        real_t v_l = 0.0;
+                        real_t dx_l = dx;
+                        if (id_l > 0) {
+                            real_t d_l = std::max(grid_.uold(id_l, 1), (real_t)1e-10);
+                            v_l = grid_.uold(id_l, 2 + idim) / d_l;
+                        } else {
+                            v_l = grid_.uold(idc, 2 + idim) / d_c;
+                            int ib = -id_l;
+                            if (ib > 0 && ib <= (int)grid_.bound_type.size() && grid_.bound_type[ib - 1] == 1) {
+                                v_l *= -1.0;
+                            }
+                            dx_l = dx * 1.5;
+                        }
+                        
+                        real_t v_r = 0.0;
+                        real_t dx_r = dx;
+                        if (id_r > 0) {
+                            real_t d_r = std::max(grid_.uold(id_r, 1), (real_t)1e-10);
+                            v_r = grid_.uold(id_r, 2 + idim) / d_r;
+                        } else {
+                            v_r = grid_.uold(idc, 2 + idim) / d_c;
+                            int ib = -id_r;
+                            if (ib > 0 && ib <= (int)grid_.bound_type.size() && grid_.bound_type[ib - 1] == 1) {
+                                v_r *= -1.0;
+                            }
+                            dx_r = dx * 1.5;
+                        }
+                        
+                        divu += (v_r - v_l) / (dx_l + dx_r);
+                    }
+                    for (int ie = 0; ie < nener_; ++ie) {
+                        grid_.unew(idc, 9 + ie) -= (grid_.gamma_rad[ie] - 1.0) * grid_.uold(idc, 9 + ie) * divu * dt;
+                    }
                 }
                 if(NDIM>1){
                     grid_.unew(idc, 6) += (emfz[i-1][j][k]-emfz[i-1][j+1][k])*dt_dx; grid_.unew(idc, 7) += (emfz[i][j-1][k]-emfz[i+1][j-1][k])*dt_dx;
@@ -244,7 +333,7 @@ void MhdSolver::hlld(const real_t* ql_in, const real_t* qr_in, real_t* fgdnv, re
     real_t rr=qr[0],Pr=qr[1],ur=qr[2],vr=qr[4],Br=qr[5],wr=qr[6],Cr=qr[7];
     real_t el=half*rl*(ul*ul+vl*vl+wl*wl), emagl=half*(A*A+Bl*Bl+Cl*Cl), etl=Pl*entho+el+emagl, Ptl=Pl+emagl, vBl=ul*A+vl*Bl+wl*Cl;
     real_t er=half*rr*(ur*ur+vr*vr+wr*wr), emagr=half*(A*A+Br*Br+Cr*Cr), etr=Pr*entho+er+emagr, Ptr=Pr+emagr, vBr=ur*A+vr*Br+wr*Cr;
-    real_t cl, cr; find_speed_fast(ql, cl, gamma); find_speed_fast(qr, cr, gamma);
+    real_t cl, cr; find_speed_fast(ql_in, cl, gamma); find_speed_fast(qr_in, cr, gamma);
     real_t SL=std::min(ul,ur)-std::max(cl,cr), SR=std::max(ul,ur)+std::max(cl,cr);
     real_t rcl=rl*(ul-SL), rcr=rr*(SR-ur), ust=(rcr*ur+rcl*ul+(Ptl-Ptr))/(rcr+rcl), Ptst=(rcr*Ptl+rcl*Ptr+rcl*rcr*(ul-ur))/(rcr+rcl);
     real_t rstl=rl*(SL-ul)/(SL-ust), estl=rl*(SL-ul)*(SL-ust)-A*A, ell=rl*(SL-ul)*(SL-ul)-A*A, vstl, Bstl, wstl, Cstl;
@@ -272,7 +361,11 @@ void MhdSolver::find_mhd_flux(const real_t* q, real_t* c, real_t* f, real_t gamm
 }
 
 void MhdSolver::find_speed_fast(const real_t* q, real_t& v, real_t gamma) {
-    real_t d=q[0], p=q[1], A=q[3], B=q[5], C=q[7], b2=A*A+B*B+C*C, c2=gamma*p/d, d2=0.5*(b2/d+c2);
+    real_t d=q[0], p=q[1], A=q[3], B=q[5], C=q[7], b2=A*A+B*B+C*C, c2=gamma*p/d;
+    for (int ie = 0; ie < nener_; ++ie) {
+        c2 += grid_.gamma_rad[ie] * q[8 + ie] / d;
+    }
+    real_t d2=0.5*(b2/d+c2);
     v = std::sqrt(d2 + std::sqrt(std::max(0.0, d2*d2-c2*A*A/d)));
 }
 

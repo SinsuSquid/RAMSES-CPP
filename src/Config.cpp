@@ -49,7 +49,9 @@ bool Config::parse(const std::string& filename) {
 
         size_t eq_pos = line.find('=');
         if (eq_pos != std::string::npos && !current_block.empty()) {
-            std::string key = to_lower(trim(line.substr(0, eq_pos)));
+            std::string raw_key = trim(line.substr(0, eq_pos));
+            bool has_paren = (raw_key.find('(') != std::string::npos);
+            std::string key = to_lower(raw_key);
             // Strip array indices from key: e.g. region_type(1:2) -> region_type
             size_t paren_pos = key.find('(');
             if (paren_pos != std::string::npos) key = key.substr(0, paren_pos);
@@ -61,7 +63,11 @@ bool Config::parse(const std::string& filename) {
             val.erase(std::remove(val.begin(), val.end(), '\''), val.end());
             val.erase(std::remove(val.begin(), val.end(), '\"'), val.end());
             
-            blocks_[current_block][key] = val;
+            if (has_paren && blocks_[current_block].count(key) > 0) {
+                blocks_[current_block][key] += "," + val;
+            } else {
+                blocks_[current_block][key] = val;
+            }
         }
     }
     return true;
