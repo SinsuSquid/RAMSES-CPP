@@ -24,10 +24,6 @@ make -j$(nproc)
 # make -j$(nproc)
 
 Pre-commit hooks are configured to check for trailing whitespace and EOF issues. Run `pre-commit install` to set them up.
-
-# For Debug builds (slower, but useful for debugging):
-# cmake .. -DCMAKE_BUILD_TYPE=Debug
-# make -j$(nproc)
 ```
 
 Key CMake flags:
@@ -96,7 +92,7 @@ cd build && ./verify_ref <reference_snapshot> <local_snapshot>
 - Coarse cells (level 0) occupy indices `1..ncoarse`; refined cells start at `ncoarse+1`
 - `headl(icpu, ilevel)` / `taill` / `numbl` — linked lists of grids per (rank, level)
 - `son[igrid]` — index of the first child cell; `father[igrid]` — parent cell index
-- `nbor[igrid * 2*NDIM + iface]` — neighbor grid indices for ghost zone exchange
+- `nbor[iface * ngridmax + igrid - 1]` — neighbor grid indices (0..5) for ghost zone exchange
 - `xg[igrid * 3]` — oct center coordinates (3D storage even for 1D/2D; unused dims default to `0.5 * boxlen`)
 - `uold_vec` / `unew_vec` — conservative hydro variables, layout: `[nvar][ncell]`
 - Particles: `xp`, `vp`, `mp`, `tp`, `zp`, `idp`, `family`, `tag` — families are `FAM_DM=1`, `FAM_STAR=2`, `FAM_SINK=3`, `FAM_TRACER=6` (see `Types.hpp`)
