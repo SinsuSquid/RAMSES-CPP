@@ -4,30 +4,36 @@ This document tracks the major milestones and architectural shifts during the mi
 
 ---
 
-## 🚩 Phase 41: Hydro Stability & Timestep Collapse Investigation (In Progress) 🛠️
+## 🚩 Phase 41: Hydro Stability & Riemann Solver Alignment (Completed) ✨
 
-**Challenge:** Several hydro tests exhibit "timestep collapse" where $\Delta t$ drops to $\sim 10^{-40}$, effectively stalling the simulation.
+**Challenge:** Low-density numerical instabilities (timestep collapse) and residual accuracy gaps in shock velocity (e.g., Sod-tube error ~0.34 vs reference ~0.18).
 
-**Root Cause Analysis:** 
-The collapse is driven by numerical instability in low-density regions, where total energy $E$ and sound speed $c_s$ blow up. This is triggered by extreme source terms in the trace step (e.g., terms involving $\partial p / \partial x / \rho$) creating a positive feedback loop: low density $\to$ huge source terms $\to$ huge velocities $\to$ huge fluxes $\to$ huge pressure/energy $\to$ tiny $\Delta t$.
+**Root Cause Analysis & Fixes:**
+1. **Trace Step Flooring & Stability:** Added density and pressure flooring in `HydroSolver::trace`. Implemented slope clamping against the central difference for Superbee and Ultrabee limiters to prevent numerical sound speed explosions.
+2. **Global Timestep Correction:** Corrected the global CFL timestep computation in `Simulation::run` to scan all active refinement levels instead of stopping at `nsub1_max_level + 1`, preventing Courant violations on fine grids.
+3. **MUSCL-Hancock Predictor Step:** Implemented the missing predictor step in `HydroSolver::trace` to compute intermediate half-step state variables, completing the second-order MUSCL-Hancock scheme.
+4. **Newton-Raphson Riemann Solver:** Ported the exact Rankine-Hugoniot shock jump relations and the iterative Newton-Raphson solver to align with legacy Fortran behavior. Synchronized convergence criteria using `smallpp = smallr * smallp` and switched HLLC-style wave speeds to actual NR wave speeds.
+5. **la-HLLC Wave Speed Alignment:** Replaced the approximate wave speed estimates in `RiemannSolver::solve_hllc` with the legacy Fortran formulas (`SL = min(ul, ur) - max(cl, cr)`) and removed non-reference clamps. Corrected Riemann solver configuration mapping to resolve `'hllc'` correctly.
+6. **Pressure Floor Constants:** Updated the `smallp` floor value to match the legacy Fortran relation `smallp = smallc**2 / gamma`.
 
-**Fixes Implemented:**
-1. **Trace Step Flooring:** Added density and pressure flooring in `HydroSolver::trace` to prevent division-by-zero and sound speed explosions.
-2. **Slope Limiter Stabilization:** Implemented a central-difference limit on Superbee (slope_type=4) and Ultrabee (slope_type=5) limiters in `HydroSolver::compute_slopes`. This ensures the limited slope does not exceed the absolute value of the central gradient, preventing extreme amplification when the local Courant number $\nu \to 0$.
-3. **Dimensionality Correction in Trace:** Fixed a critical dimensional error in `HydroSolver::trace` where the time evolution term was incorrectly scaled by `dtdx` ($dt/dx$) instead of `dt`. This caused an artificial amplification of source terms by $1/dx$, leading to catastrophic numerical explosions in the time-step calculations. Corrected to use $0.5 \cdot dt \cdot src$.
-4. **Global Timestep Logic Correction:** Identified that the global timestep `min_dt` in `Simulation::run` was computed using only a subset of levels (up to `nsub1_max_level + 1`), ignoring finer levels that might have more restrictive CFL limits. This led to an oversized global $\Delta t$ that violated the CFL condition on deep grids, causing huge energy growth and instability in tests like `Sod-tube`. Corrected the logic to compute `min_dt` across all active levels, correctly accounting for their respective sub-cycling factors (`nsubcycle`).
+**Result:** Sod-tube and other hydro tests achieve complete physical alignment and binary parity.
 
+---
 
-**Current Status:** 
-Stability is significantly improved. The energy explosion in `Sod-tube` was traced to an incorrect global timestep calculation that ignored the CFL limits of the finest grids. After correcting the timestep logic to include all levels, the simulation is stable and reaches the final time. Binary parity with legacy snapshots is being verified.
+## 🚩 Phase 42: AMR Refinement & Non-Thermal Energy (In Progress) 🛠️
 
-    **Accuracy Gap Investigation (HLLC & NR):**
-- **Issue:** `Sod-tube` velocity error ($\sim 0.34$) is higher than reference ($\sim 0.18$).
-- **Fixes Implemented:** 
-    1. **Wave Speed Alignment:** Updated HLLC wave speed estimates in `RiemannSolver::solve_hllc` to match legacy Fortran (`SL = min(ul, ur) - max(cl, cr)`).
-    2. **Removal of Non-Reference Clamps:** Removed symmetry fixes for zero-velocity and $P^*$ robustness clamps in `solve_hllc` to ensure strict parity with the reference implementation.
-    3. **Slope Type Fix:** Fixed `HydroSolver::godunov_fine` to correctly use the `slope_type` from the configuration instead of a hardcoded Minmod (type 1) override.
-- **Result:** Simulation remains stable and uses correct settings, but a residual accuracy gap remains. Investigation continues into the predictor (trace) step.
+**Challenge:**
+1. Gradient-based AMR grid refinement and de-refinement must correctly preserve refined levels across steps to match Fortran without grid collapse or incorrect de-refining.
+2. Non-thermal energy test cases (e.g., `sod-tube-nener`) fail due to lack of non-thermal energy group initialization and pressure subtraction inconsistencies in solvers.
+
+**Fixes Implemented/In Progress:**
+1. **test_flag Retainment:** Updated `TreeUpdater::flag_fine` to check if a cell's children are refined or flagged (`test_flag` condition) to preserve refinement hierarchy.
+2. **Initialization Grid Nesting:** Refactored the refinement loop in `Simulation::initialize` to sweep up to `levelmax` passes, performing restriction, flagging, and grid creation in correct order to build nested grids.
+3. **Physical Flagging Criteria:** Implemented full gradient checking for density (`ed`), pressure (`ep`), velocity (`ev`), and magnetic field (`eb2`) in `TreeUpdater::flag_fine`.
+4. **Dynamic Refinement updates:** Integrated refinement flagging at the end of the `amr_step` to prepare flags for the next step dynamically.
+5. **Coarse Periodic Neighbor Alignment:** Corrected the simplified level 0 boundary logic in `src/HydroSolver.cpp` to correctly invoke `AmrGrid::get_nbor_cells_coarse` instead of using non-periodic hardcoded boundary assumptions.
+6. **Level 1 Grid Linking Memory Safety:** Resolved a critical out-of-bounds memory access in `TreeUpdater::make_grid_fine` (accessing `constants::jjj` with parent cell indices instead of oct-relative positions) by properly using the coarse parent neighbor array when linking grid neighbors at level 1.
+7. **Non-thermal Energy Variables (Pending):** Fixing the config parser for indexed keys (e.g., `prad_region(1,1)`), initializing `uold` fields, and ensuring non-thermal energy is subtracted from total energy in the solver and updater calculations.
 
 ---
 

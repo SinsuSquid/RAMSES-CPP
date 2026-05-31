@@ -54,6 +54,7 @@ void Initializer::region_condinit(int ilevel) {
     std::vector<std::string> zc_list = split("z_center");
     std::vector<std::string> exp_list = split("exp_region");
     std::vector<std::string> var_list = split("var_region");
+    std::vector<double> prad_list = config_.get_double_array("init_params", "prad_region");
 
     std::vector<real_t> x_c(nreg, 0.5), y_c(nreg, 0.5), z_c(nreg, 0.5);
     std::vector<real_t> dr(nreg, 1.0), pr(nreg, 1.0), ur(nreg, 0.0), vr(nreg, 0.0), wr(nreg, 0.0);
@@ -101,11 +102,34 @@ void Initializer::region_condinit(int ilevel) {
                 if (NDIM > 2) v2 += wr[ir]*wr[ir];
                 real_t e_kin = 0.5 * dr[ir] * v2;
                 real_t e_int = pr[ir] / (gam - 1.0);
-                grid_.uold(idc, NDIM + 2) = e_kin + e_int;
+
+                bool is_mhd = (grid_.nvar >= 11);
+                int start_idx = is_mhd ? 9 : (NDIM + 3);
+                int iener = is_mhd ? 5 : (NDIM + 2);
 
                 int nener = config_.get_int("hydro_params", "nener", 0);
-                for(int ip=1; ip<=grid_.nvar - (NDIM + 2 + nener); ++ip) {
-                    grid_.uold(idc, NDIM + 2 + nener + ip) = dr[ir] * var_r[ir];
+#ifdef RAMSES_NENER
+                if (RAMSES_NENER > 0) nener = RAMSES_NENER;
+#endif
+                real_t e_nonthermal = 0.0;
+                for (int ie = 0; ie < nener; ++ie) {
+                    real_t p_non = 0.0;
+                    int idx = ie * nreg + ir;
+                    if (idx < (int)prad_list.size()) {
+                        p_non = prad_list[idx];
+                    }
+                    real_t e_non = p_non / (grid_.gamma_rad[ie] - 1.0);
+                    grid_.uold(idc, start_idx + ie) = e_non;
+                    e_nonthermal += e_non;
+                }
+
+                grid_.uold(idc, iener) = e_kin + e_int + e_nonthermal;
+
+                int nvar_base = is_mhd ? 11 : (NDIM + 2);
+                int npassive = grid_.nvar - (nvar_base + nener);
+                int npassive_start_idx = start_idx + nener;
+                for (int ip = 1; ip <= npassive; ++ip) {
+                    grid_.uold(idc, npassive_start_idx + ip - 1) = dr[ir] * var_r[ir];
                 }
             }
         }

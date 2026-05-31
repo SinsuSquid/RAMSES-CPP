@@ -186,17 +186,43 @@ void RamsesWriter::write_hydro(const AmrGrid& grid, const SnapshotInfo& info) {
                             else if (iv == 4) tmp[i] = (NDIM >= 3) ? grid.uold(idc, 4) / d : 0.0;
                             else if (iv == 5) {
                                 real_t v2 = 0; for (int j = 1; j <= NDIM; ++j) { real_t v = grid.uold(idc, 1+j)/d; v2 += v*v; }
-                                tmp[i] = std::max((grid.uold(idc, NDIM + 2) - 0.5 * d * v2) * (grid.gamma - 1.0), 0.0);
+                                real_t A = grid.uold(idc, 6), B = grid.uold(idc, 7), C = grid.uold(idc, 8);
+                                real_t emag = 0.125*std::pow(A+grid.uold(idc,grid.nvar-2),2) + 0.125*std::pow(B+grid.uold(idc,grid.nvar-1),2) + 0.125*std::pow(C+grid.uold(idc,grid.nvar),2);
+                                real_t e_nonthermal = 0.0;
+                                for (int ie = 0; ie < info.nener; ++ie) {
+                                    e_nonthermal += grid.uold(idc, 9 + ie);
+                                }
+                                tmp[i] = std::max((grid.uold(idc, 5) - 0.5 * d * v2 - emag - e_nonthermal) * (grid.gamma - 1.0), 0.0);
                             }
-                            else tmp[i] = grid.uold(idc, iv - 1);
+                            else if (iv >= 6 && iv <= 8) {
+                                tmp[i] = grid.uold(idc, iv);
+                            }
+                            else if (iv >= 9 && iv <= 11) {
+                                tmp[i] = grid.uold(idc, grid.nvar - 2 + (iv - 9));
+                            }
+                            else if (iv >= 12 && iv <= 11 + info.nener) {
+                                tmp[i] = grid.uold(idc, 9 + (iv - 12)) * (grid.gamma - 1.0);
+                            }
+                            else {
+                                tmp[i] = grid.uold(idc, 9 + info.nener + (iv - 11 - info.nener) - 1);
+                            }
 #else
                             // Non-MHD: NDIM velocity components (pressure at position NDIM+2)
                             else if (iv >= 2 && iv <= NDIM + 1) tmp[i] = grid.uold(idc, iv) / d;
                             else if (iv == NDIM + 2) {
                                 real_t v2 = 0; for (int j = 1; j <= NDIM; ++j) { real_t v = grid.uold(idc, 1+j)/d; v2 += v*v; }
-                                tmp[i] = std::max((grid.uold(idc, NDIM + 2) - 0.5 * d * v2) * (grid.gamma - 1.0), 0.0);
+                                real_t e_nonthermal = 0.0;
+                                for (int ie = 0; ie < info.nener; ++ie) {
+                                    e_nonthermal += grid.uold(idc, NDIM + 2 + 1 + ie);
+                                }
+                                tmp[i] = std::max((grid.uold(idc, NDIM + 2) - 0.5 * d * v2 - e_nonthermal) * (grid.gamma - 1.0), 0.0);
                             }
-                            else tmp[i] = grid.uold(idc, iv);
+                            else if (iv >= NDIM + 3 && iv <= NDIM + 2 + info.nener) {
+                                tmp[i] = grid.uold(idc, iv) * (grid.gamma - 1.0);
+                            }
+                            else {
+                                tmp[i] = grid.uold(idc, iv);
+                            }
 #endif
                         }
                         write_rec(tmp.data(), ncache * 8);

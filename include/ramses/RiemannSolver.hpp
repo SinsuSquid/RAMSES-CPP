@@ -13,22 +13,22 @@ namespace ramses {
  */
 class RiemannSolver {
 public:
-    static real_t get_cs2(real_t d, real_t p, real_t gamma);
-    static void solve_llf(const real_t ql[], const real_t qr[], real_t flux[], real_t gamma);
-    static void solve_hll(const real_t ql[], const real_t qr[], real_t flux[], real_t gamma);
-    static void solve_hllc(const real_t ql[], const real_t qr[], real_t flux[], real_t gamma);
+    static real_t get_cs2(real_t d, real_t p, real_t gamma, const real_t q[] = nullptr, int nener = 0, const std::vector<real_t>& gamma_rad = {});
+    static void solve_llf(const real_t ql[], const real_t qr[], real_t flux[], real_t gamma, int nener = 0, const std::vector<real_t>& gamma_rad = {});
+    static void solve_hll(const real_t ql[], const real_t qr[], real_t flux[], real_t gamma, int nener = 0, const std::vector<real_t>& gamma_rad = {});
+    static void solve_hllc(const real_t ql[], const real_t qr[], real_t flux[], real_t gamma, int nener = 0, const std::vector<real_t>& gamma_rad = {});
     static void solve_godunov_nr(const real_t ql[], const real_t qr[], real_t flux[], real_t gamma);
 
 private:
     /**
      * @brief Helper to compute conservative variables from primitive ones.
      */
-    static void prim_to_cons(const real_t q[], real_t u[], real_t gamma);
+    static void prim_to_cons(const real_t q[], real_t u[], real_t gamma, int nener = 0, const std::vector<real_t>& gamma_rad = {});
 
     /**
      * @brief Helper to compute flux from primitive state directly.
      */
-    static void compute_flux(const real_t q[], real_t f[], real_t gamma);
+    static void compute_flux(const real_t q[], real_t f[], real_t gamma, int nener = 0, const std::vector<real_t>& gamma_rad = {});
 };
 
 } // namespace ramses
