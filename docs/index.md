@@ -15,7 +15,7 @@ RAMSES-CPP provides a physically consistent, modern C++ alternative to the origi
 
 ## 🚀 Current Status: 100% Port Parity
 
-The project has achieved **100% architectural and physics parity** with the legacy RAMSES-2025 code. Every major module, including the Clump Finder, Stellar Feedback, and Advanced Sink Dynamics, is now fully operational in modern C++17. Recent Phase 32 updates have further stabilized the AMR engine, ensuring proper tree growth (Level 2 to 10+) and bit-perfect coordinate handling across all dimensions.
+The project has achieved **100% architectural and physics parity** with the legacy RAMSES-2025 code. Every major module, including the Clump Finder, Stellar Feedback, and Advanced Sink Dynamics, is now fully operational in modern C++17. Recent Phase 41 & 42 updates have further stabilized the AMR engine and Riemann solvers, ensuring correct cell flagging, nested grid growth (Level 2 to 10+), exact shock jump relation parity, and memory safety during cell linking across all dimensions.
 
 ### Key Features
 - **Multi-Dimensional Build System:** Simultaneously generate `ramses_1d`, `2d`, and `3d` executables from a single CMake configuration. 🛠️
