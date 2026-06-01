@@ -64,7 +64,7 @@ public:
     int get_headl(int icpu, int ilevel) const { 
         if (ncpu == 0) return 0;
         if (ilevel < 0 || ilevel > nlevelmax || icpu < 1 || icpu > ncpu + nboundary) return 0;
-        return headl_vec.at((size_t)ilevel * ncpu + (icpu - 1)); 
+        return headl_vec.at((size_t)ilevel * (ncpu + nboundary) + (icpu - 1)); 
     }
     int get_cell_level(int icell) const {
         if (icell <= ncoarse) return 0;
@@ -79,23 +79,23 @@ public:
         return level;
     }
     int& headl(int icpu, int ilevel) { 
-        return headl_vec.at((size_t)ilevel * ncpu + (icpu - 1)); 
+        return headl_vec.at((size_t)ilevel * (ncpu + nboundary) + (icpu - 1)); 
     }
     int taill(int icpu, int ilevel) const { 
         if (ncpu == 0) return 0;
         if (ilevel < 0 || ilevel > nlevelmax || icpu < 1 || icpu > ncpu + nboundary) return 0;
-        return taill_vec.at((size_t)ilevel * ncpu + (icpu - 1)); 
+        return taill_vec.at((size_t)ilevel * (ncpu + nboundary) + (icpu - 1)); 
     }
     int& taill(int icpu, int ilevel) { 
-        return taill_vec.at((size_t)ilevel * ncpu + (icpu - 1)); 
+        return taill_vec.at((size_t)ilevel * (ncpu + nboundary) + (icpu - 1)); 
     }
     int numbl(int icpu, int ilevel) const { 
         if (ncpu == 0) return 0;
         if (ilevel < 0 || ilevel > nlevelmax || icpu < 1 || icpu > ncpu + nboundary) return 0;
-        return numbl_vec.at((size_t)ilevel * ncpu + (icpu - 1)); 
+        return numbl_vec.at((size_t)ilevel * (ncpu + nboundary) + (icpu - 1)); 
     }
     int& numbl(int icpu, int ilevel) { 
-        return numbl_vec.at((size_t)ilevel * ncpu + (icpu - 1)); 
+        return numbl_vec.at((size_t)ilevel * (ncpu + nboundary) + (icpu - 1)); 
     }
     int headl(int icpu, int ilevel) const { return get_headl(icpu, ilevel); }
     int count_grids_at_level(int ilevel) const;

@@ -17,9 +17,9 @@ void AmrGrid::allocate(int nx_val, int ny_val, int nz_val, int ngridmax_val, int
     ncell = ncoarse + (long long)constants::twotondim * ngridmax;
     std::cout << "[AmrGrid] Allocating ngridmax=" << ngridmax << " ncell=" << ncell << " nvar=" << nvar << std::endl;
 
-    headl_vec.assign(ncpu * (nlevelmax + 1), 0);
-    taill_vec.assign(ncpu * (nlevelmax + 1), 0);
-    numbl_vec.assign(ncpu * (nlevelmax + 1), 0);
+    headl_vec.assign((ncpu + nboundary) * (nlevelmax + 1), 0);
+    taill_vec.assign((ncpu + nboundary) * (nlevelmax + 1), 0);
+    numbl_vec.assign((ncpu + nboundary) * (nlevelmax + 1), 0);
 
     next.assign(ngridmax, 0);
     prev.assign(ngridmax, 0);
@@ -392,27 +392,37 @@ void AmrGrid::get_nbor_cells(const int ign[7], int ic, int icn[6], int igrid) co
 }
 
 void AmrGrid::get_27_cell_neighbors(int icell, int nbors[27]) const {
-    for(int i=0; i<27; ++i) nbors[i] = 0;
-    if (icell <= 0) return;
-    
-    nbors[13] = icell;
-    int ig = (icell > ncoarse) ? ((icell - ncoarse - 1) % ngridmax) + 1 : 0;
-    int ic = (icell > ncoarse) ? ((icell - ncoarse - 1) / ngridmax) + 1 : icell;
-    
-    int ign[7];
-    if (ig > 0) get_nbor_grids(ig, ign);
-    else {
-        ign[0] = 0; // Coarse level
-        for(int i=1; i<=6; ++i) ign[i] = 0; // Needs coarse neighbor logic
-    }
-    
-    // Simplification: only fill 6 direct neighbors for now
-    int icn[6];
-    if (ig > 0) {
-        get_nbor_cells(ign, ic, icn, ig);
-        nbors[13+1] = icn[1]; nbors[13-1] = icn[0];
-        if (NDIM > 1) { nbors[13+3] = icn[3]; nbors[13-3] = icn[2]; }
-        if (NDIM > 2) { nbors[13+9] = icn[5]; nbors[13-9] = icn[4]; }
+    for (int i = 0; i < 27; ++i) nbors[i] = 0;
+    if (icell <= 0 || icell > ncell) return;
+
+    auto get_neighbor = [&](int cell, int dir) -> int {
+        if (cell <= 0 || cell > ncell) return 0;
+        int nbs[6];
+        if (cell <= ncoarse) {
+            get_nbor_cells_coarse(cell, nbs);
+        } else {
+            int ig = ((cell - ncoarse - 1) % ngridmax) + 1;
+            int ic = ((cell - ncoarse - 1) / ngridmax) + 1;
+            int ign[7]; get_nbor_grids(ig, ign);
+            get_nbor_cells(ign, ic, nbs, ig);
+        }
+        return (dir >= 0 && dir < 6) ? nbs[dir] : 0;
+    };
+
+    for (int dz = -1; dz <= 1; ++dz) {
+        for (int dy = -1; dy <= 1; ++dy) {
+            for (int dx = -1; dx <= 1; ++dx) {
+                int current = icell;
+                if (dx == -1) current = get_neighbor(current, 0);
+                else if (dx == 1) current = get_neighbor(current, 1);
+                if (dy == -1) current = get_neighbor(current, 2);
+                else if (dy == 1) current = get_neighbor(current, 3);
+                if (dz == -1) current = get_neighbor(current, 4);
+                else if (dz == 1) current = get_neighbor(current, 5);
+                int index = (dx + 1) * 9 + (dy + 1) * 3 + (dz + 1);
+                nbors[index] = current;
+            }
+        }
     }
 }
 

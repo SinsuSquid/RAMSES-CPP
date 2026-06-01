@@ -29,14 +29,14 @@ void TreeUpdater::make_grid_fine(int ilevel) {
     
     if (ilevel == 1) {
         for (int ic = 1; ic <= grid_.ncoarse; ++ic) {
-            if (grid_.flag1[ic - 1] == 1 && grid_.son[ic - 1] == 0) cells_to_refine.push_back(ic);
+            if (grid_.flag1[ic - 1] == 1 && grid_.flag2[ic - 1] == 1 && grid_.son[ic - 1] == 0) cells_to_refine.push_back(ic);
         }
     } else {
         int ig = grid_.get_headl(myid, ilevel - 1);
         while (ig > 0) {
             for (int ic = 1; ic <= n2d; ++ic) {
                 int idc = grid_.ncoarse + (ic - 1) * grid_.ngridmax + ig - 1;
-                if (grid_.flag1[idc] == 1 && grid_.son[idc] == 0) cells_to_refine.push_back(idc + 1);
+                if (grid_.flag1[idc] == 1 && grid_.flag2[idc] == 1 && grid_.son[idc] == 0) cells_to_refine.push_back(idc + 1);
             }
             ig = grid_.next[ig - 1];
         }
@@ -106,122 +106,89 @@ void TreeUpdater::make_grid_fine(int ilevel) {
         }
         grid_.add_to_level_list(new_ig, ilevel);
     }
-
-    // Link neighbors for all grids at the new level (Phase 31.6)
-    int ig_child = grid_.get_headl(myid, ilevel);
-    while (ig_child > 0) {
-        int id_p = grid_.father[ig_child - 1];
-        int ig_p = (id_p > grid_.ncoarse) ? ((id_p - 1 - grid_.ncoarse) % grid_.ngridmax) + 1 : 0;
-        int ic_p = (id_p > grid_.ncoarse) ? ((id_p - 1 - grid_.ncoarse) / grid_.ngridmax) + 1 : id_p;
-
-        int ign_p[7] = {0};
-        int icn_p[6] = {0};
-        if (ig_p > 0) {
-            grid_.get_nbor_grids(ig_p, ign_p);
-            grid_.get_nbor_cells(ign_p, ic_p, icn_p, ig_p);
-        } else {
-            grid_.get_nbor_cells_coarse(id_p, icn_p);
-        }
-
-        for (int idim = 0; idim < NDIM; ++idim) {
-            for (int inbor = 0; inbor < 2; ++inbor) {
-                int idc_nb_p = icn_p[idim * 2 + inbor];
-                if (idc_nb_p > 0 && idc_nb_p <= grid_.ncell) {
-                    grid_.nbor[(idim * 2 + inbor) * grid_.ngridmax + ig_child - 1] = grid_.son[idc_nb_p - 1];
-                }
-            }
-        }
-        ig_child = grid_.next[ig_child - 1];
-    }
 }
 
 void TreeUpdater::remove_grid_fine(int ilevel) {
-    int myid = MpiManager::instance().rank() + 1, n2d = (1 << NDIM);
-    if (ilevel >= grid_.nlevelmax) return;
-    int ig = grid_.get_headl(myid, ilevel + 1);
+    int myid = MpiManager::instance().rank() + 1;
+    int ig = grid_.get_headl(myid, ilevel);
     while (ig > 0) {
-        int next_ig = grid_.next[ig - 1], id_p = grid_.father[ig - 1];
-        if (id_p > 0) {
-            bool has_c = false;
-            for (int ic = 1; ic <= n2d; ++ic) if (grid_.son[grid_.ncoarse + (ic - 1) * grid_.ngridmax + ig - 1] != 0) { has_c = true; break; }
-            if (!has_c && grid_.flag1[id_p - 1] == 0 && ilevel + 1 > config_.get_int("amr_params", "levelmin", 1)) {
-                grid_.son[id_p - 1] = 0;
-                int p = grid_.prev[ig - 1], n = grid_.next[ig - 1];
-                if (p > 0) grid_.next[p - 1] = n; else grid_.headl(myid, ilevel + 1) = n;
-                if (n > 0) grid_.prev[n - 1] = p; else grid_.taill(myid, ilevel + 1) = p;
-                grid_.numbl(myid, ilevel + 1)--;
-                grid_.free_grid(ig);
+        int next_ig = grid_.next[ig - 1];
+        int n2d = (1 << NDIM);
+        bool should_remove = true;
+        for (int ic = 1; ic <= n2d; ++ic) {
+            int idc = grid_.ncoarse + (ic - 1) * grid_.ngridmax + ig - 1;
+            if (grid_.flag1[idc] == 1 || grid_.son[idc] > 0) {
+                should_remove = false;
+                break;
             }
+        }
+        if (should_remove) {
+            for (int ic = 1; ic <= n2d; ++ic) {
+                int idc = grid_.ncoarse + (ic - 1) * grid_.ngridmax + ig - 1;
+                grid_.flag1[idc] = 0;
+            }
+            grid_.free_grid(ig);
         }
         ig = next_ig;
     }
 }
 
 void TreeUpdater::restrict_fine(int ilevel) {
-    int myid = MpiManager::instance().rank() + 1, n2d = (1 << NDIM);
+    int myid = MpiManager::instance().rank() + 1;
     int ig = grid_.get_headl(myid, ilevel + 1);
-    real_t twotondim = std::pow(2.0, NDIM);
     while (ig > 0) {
-        int id_p = grid_.father[ig - 1];
-        if (id_p > 0) {
-            for (int iv = 1; iv <= grid_.nvar; ++iv) {
-                real_t sum = 0;
-                for (int ic = 1; ic <= n2d; ++ic) sum += grid_.uold(grid_.ncoarse + (ic - 1) * grid_.ngridmax + ig - 1 + 1, iv);
-                grid_.uold(id_p, iv) = sum / twotondim;
+        int next_ig = grid_.next[ig - 1];
+        int n2d = (1 << NDIM);
+        int father_cell = grid_.father[ig - 1];
+        
+        for (int iv = 1; iv <= grid_.nvar; ++iv) {
+            real_t sum = 0;
+            for (int ic = 1; ic <= n2d; ++ic) {
+                int idc = grid_.ncoarse + (ic - 1) * grid_.ngridmax + ig - 1;
+                sum += grid_.uold(idc + 1, iv);
             }
+            grid_.uold(father_cell, iv) = sum / n2d;
         }
-        ig = grid_.next[ig - 1];
+        ig = next_ig;
     }
 }
 
 void TreeUpdater::smooth_fine(int ilevel) {
-    int myid = MpiManager::instance().rank() + 1, n2d = (1 << NDIM);
-    int ngridmax = grid_.ngridmax;
-
-    // flag2 is used as workspace
-    for (int i = 0; i < (int)grid_.ncell; ++i) grid_.flag2[i] = 0;
-
-    if (ilevel == 1) {
-        for (int ic = 1; ic <= grid_.ncoarse; ++ic) {
-            if (grid_.flag1[ic - 1] == 0) {
-                int icn_nb[6]; grid_.get_nbor_cells_coarse(ic, icn_nb);
-                int num_flagged_nbors = 0;
-                for (int inbor = 0; inbor < 2 * NDIM; ++inbor) {
-                    int neighbor_cell = icn_nb[inbor];
-                    if (neighbor_cell > 0 && neighbor_cell <= grid_.ncoarse) {
-                        if (grid_.flag1[neighbor_cell - 1] == 1) num_flagged_nbors++;
-                    }
-                }
-                if (num_flagged_nbors > 0) grid_.flag2[ic - 1] = 1;
-            }
-        }
-    } else {
-        int ig = grid_.get_headl(myid, ilevel - 1);
-        while (ig > 0) {
-            int ign[7]; grid_.get_nbor_grids(ig, ign);
-            for (int ic = 1; ic <= n2d; ++ic) {
-                int idc = grid_.ncoarse + (ic - 1) * ngridmax + ig - 1;
-                if (grid_.flag1[idc] == 0) {
-                    int icn_nb[6]; grid_.get_nbor_cells(ign, ic, icn_nb, ig);
-                    int num_flagged_nbors = 0;
-                    for (int inbor = 0; inbor < 2 * NDIM; ++inbor) {
-                        int neighbor_cell = icn_nb[inbor];
-                        if (neighbor_cell > 0 && neighbor_cell <= grid_.ncell) {
-                            if (grid_.flag1[neighbor_cell - 1] == 1) num_flagged_nbors++;
+    int myid = MpiManager::instance().rank() + 1;
+    int ig = grid_.get_headl(myid, ilevel);
+    while (ig > 0) {
+        int next_ig = grid_.next[ig - 1];
+        int n2d = (1 << NDIM);
+        for (int ic = 1; ic <= n2d; ++ic) {
+            int idc = grid_.ncoarse + (ic - 1) * grid_.ngridmax + ig - 1;
+            if (grid_.flag1[idc] == 0) {
+                int icn_nb[6];
+                int ign[7]; grid_.get_nbor_grids(ig, ign);
+                grid_.get_nbor_cells(ign, ic, icn_nb, ig);
+                for (int i = 0; i < 6; ++i) {
+                    int nbor_cell = icn_nb[i];
+                    if (nbor_cell > 0) {
+                        int nbor_ig = (nbor_cell > grid_.ncoarse) ? ((nbor_cell - grid_.ncoarse - 1) % grid_.ngridmax) + 1 : 0;
+                        int nbor_ic = (nbor_cell > grid_.ncoarse) ? ((nbor_cell - grid_.ncoarse - 1) / grid_.ngridmax) + 1 : nbor_cell;
+                        if (nbor_ig > 0) {
+                            int nbor_ign[7]; grid_.get_nbor_grids(nbor_ig, nbor_ign);
+                            int nbor_icn[6]; grid_.get_nbor_cells(nbor_ign, nbor_ic, nbor_icn, nbor_ig);
+                            for (int j = 0; j < 6; ++j) {
+                                if (nbor_icn[j] > 0 && grid_.flag1[nbor_icn[j] - 1] == 1) {
+                                    grid_.flag1[idc] = 1;
+                                    break;
+                                }
+                            }
                         }
                     }
-                    if (num_flagged_nbors > 0) grid_.flag2[idc] = 1;
+                    if (grid_.flag1[idc] == 1) break;
                 }
             }
-            ig = grid_.next[ig - 1];
         }
-    }
-
-    // Apply flag2 to flag1
-    for (int i = 0; i < (int)grid_.ncell; ++i) {
-        if (grid_.flag2[i] == 1) grid_.flag1[i] = 1;
+        ig = next_ig;
     }
 }
+
 void TreeUpdater::flag_fine(int ilevel, real_t ed, real_t ep, real_t ev, real_t eb2, const std::vector<real_t>& evar, int nexp) {
     if (ilevel > grid_.nlevelmax) return;
     int myid = MpiManager::instance().rank() + 1, n2d = (1 << NDIM), lmin = config_.get_int("amr_params", "levelmin", 1);
@@ -298,7 +265,6 @@ void TreeUpdater::flag_fine(int ilevel, real_t ed, real_t ep, real_t ev, real_t 
         );
     };
 
-    // --- Step 1: Initialize flags (minimal refinement/test_flag) ---
     if (ilevel == 1) {
         for (int i = 0; i < grid_.ncoarse; ++i) grid_.flag1[i] = 0;
         for (int i = 1; i <= grid_.ncoarse; ++i) {
@@ -347,12 +313,10 @@ void TreeUpdater::flag_fine(int ilevel, real_t ed, real_t ep, real_t ev, real_t 
         }
     }
 
-    // --- Step 2: Smooth once before userflag (only if ilevel >= levelmin) ---
     if (ilevel >= lmin) {
         smooth_fine(ilevel);
     }
 
-    // --- Step 3: Check user-defined physical criteria (userflag) ---
     if (ilevel >= lmin && (ed > 0.0 || ep > 0.0 || ev > 0.0 || eb2 > 0.0)) {
         if (ilevel == 1) {
             for (int i = 1; i <= grid_.ncoarse; ++i) {
@@ -433,9 +397,43 @@ void TreeUpdater::flag_fine(int ilevel, real_t ed, real_t ep, real_t ev, real_t 
         }
     }
 
-    // --- Step 4: Buffer expansion ---
     for (int i = 0; i < nexp; ++i) {
         smooth_fine(ilevel);
     }
+
+    authorize_fine(ilevel);
+    ensure_ref_rules(ilevel + 1);
 }
+
+
+void TreeUpdater::authorize_fine(int ilevel) {
+    if (ilevel >= grid_.nlevelmax) return;
+    int myid = MpiManager::instance().rank() + 1;
+    for (int ic = 0; ic < grid_.ncell; ++ic) {
+        grid_.flag2[ic] = (grid_.cpu_map[ic] == myid) ? 1 : 0;
+    }
+}
+
+void TreeUpdater::ensure_ref_rules(int ilevel) {
+    int myid = MpiManager::instance().rank() + 1;
+    int ig = grid_.get_headl(myid, ilevel - 1);
+    while (ig > 0) {
+        int n2d = (1 << NDIM);
+        for (int ic = 1; ic <= n2d; ++ic) {
+            int idc = grid_.ncoarse + (ic - 1) * grid_.ngridmax + ig - 1;
+            int nbors[27];
+            grid_.get_27_cell_neighbors(idc + 1, nbors);
+            bool ok = true;
+            for (int i = 0; i < 27; ++i) {
+                if (nbors[i] <= 0 || grid_.son[nbors[i] - 1] == 0) {
+                    ok = false;
+                    break;
+                }
+            }
+            if (!ok) grid_.flag1[idc] = 0;
+        }
+        ig = grid_.next[ig - 1];
+    }
+}
+
 } // namespace ramses
