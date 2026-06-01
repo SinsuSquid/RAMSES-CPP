@@ -4,19 +4,36 @@ This document tracks the major milestones and architectural shifts during the mi
 
 ---
 
-## 🚩 Phase 41: Hydro Stability & Riemann Solver Alignment (Completed) ✨
+## 🚩 Phase 43: Advect1d AMR Parity — Refluxing & Refinement Rules (In Progress) 🛠️
 
-**Challenge:** Low-density numerical instabilities (timestep collapse) and residual accuracy gaps in shock velocity (e.g., Sod-tube error ~0.34 vs reference ~0.18).
+**Challenge:**
+The 1D advection test (`hydro/advect1d`) shows severe AMR divergence from legacy Fortran after exactly 1 timestep. C++ produces 439 cells (408 at level 10) vs. Fortran's 101 cells (20 at level 10). Initial snapshot (t=0) matches perfectly (100 cells, identical level distribution), confirming the bug is in the time-stepping / refinement cycle, not initialization.
 
-**Root Cause Analysis & Fixes:**
-1. **Trace Step Flooring & Stability:** Added density and pressure flooring in `HydroSolver::trace`. Implemented slope clamping against the central difference for Superbee and Ultrabee limiters to prevent numerical sound speed explosions.
-2. **Global Timestep Correction:** Corrected the global CFL timestep computation in `Simulation::run` to scan all active refinement levels instead of stopping at `nsub1_max_level + 1`, preventing Courant violations on fine grids.
-3. **MUSCL-Hancock Predictor Step:** Implemented the missing predictor step in `HydroSolver::trace` to compute intermediate half-step state variables, completing the second-order MUSCL-Hancock scheme.
-4. **Newton-Raphson Riemann Solver:** Ported the exact Rankine-Hugoniot shock jump relations and the iterative Newton-Raphson solver to align with legacy Fortran behavior. Synchronized convergence criteria using `smallpp = smallr * smallp` and switched HLLC-style wave speeds to actual NR wave speeds.
-5. **la-HLLC Wave Speed Alignment:** Replaced the approximate wave speed estimates in `RiemannSolver::solve_hllc` with the legacy Fortran formulas (`SL = min(ul, ur) - max(cl, cr)`) and removed non-reference clamps. Corrected Riemann solver configuration mapping to resolve `'hllc'` correctly.
-6. **Pressure Floor Constants:** Updated the `smallp` floor value to match the legacy Fortran relation `smallp = smallc**2 / gamma`.
+**Root Cause Analysis:**
 
-**Result:** Sod-tube and other hydro tests achieve complete physical alignment and binary parity.
+1. **Missing `ensure_ref_rules` (Critical — Not Yet Fixed):**
+   - Legacy Fortran (`flag_utils.f90:110-113`) calls `ensure_ref_rules(ilevel)` at the end of `flag_fine` when `icount < nsubcycle(ilevel-1)` (adaptive time-stepping). This subroutine (`virtual_boundaries.f90`) checks that every grid at `ilevel` is surrounded by 3^ndim parent-level neighbors — if not, it zeroes `flag1` to prevent refinement that would violate the strict 1-level-difference rule.
+   - The C++ `TreeUpdater::flag_fine` has **no equivalent enforcement**. Without it, cells can refine without their neighbors being refined first, causing cascading unconstrained refinement (408 vs 20 level-10 cells).
+   - **Additionally**, the legacy `refine_fine` routine checks both `flag1 == 1` AND `flag2 == 1` (authorization map from `authorize_fine`). The C++ `make_grid_fine` only checks `flag1`. In single-CPU runs `flag2` is set to 1 for all active cells, so this is benign for serial, but the enforcement of `ensure_ref_rules` remains critical.
+
+2. **`cell_levels` Cache Defect (Diagnosed):**
+   - The `cell_levels` cache in `HydroSolver::godunov_fine` iterates over `grid_.get_headl(icpu, il)` for `icpu = 1..ncpu+nboundary`. The `headl_vec` is allocated with stride `ncpu` (not `ncpu+nboundary`), so when `nboundary > 0`, queries for `icpu > ncpu` would access incorrect elements. For the advect1d test, `nboundary = 0` so this is benign, but it is a latent bug for boundary-configured runs.
+
+3. **Refluxing Implementation (Completed Earlier):**
+   - Coarse-fine flux correction (refluxing) was implemented in both `HydroSolver.cpp` and `RhdSolver.cpp`. Fine-level cells at refined interfaces zero out their flux, and the fine-level flux is accumulated back to the coarser neighbor's `unew` with a `1/2^NDIM` factor.
+
+4. **Level 0 Trace Fix (Completed Earlier):**
+   - Fixed `id_n > grid_.ncoarse` to `id_n > 0` at line 138 of `HydroSolver.cpp` to prevent level 0 cells from incorrectly skipping pre-computed trace states.
+
+5. **Debug Print Cleanup (Completed):**
+   - Commented out the `[Reflux L10]` verbose print in `HydroSolver::godunov_fine` that was flooding stdout with millions of lines per step, making test runs extremely slow.
+
+**Next Steps:**
+1. Port `ensure_ref_rules` from `legacy/amr/flag_utils.f90:240-301` — requires gathering the 3^NDIM parent-level neighbors for each grid, checking all have `son != 0`, and zeroing `flag1` for violating cells.
+2. Port `authorize_fine` from `legacy/amr/virtual_boundaries.f90:34-311` — the authorization map that gates refinement. For single-CPU this is straightforward (set `flag2=1` for all active cells and dilate).
+3. After fixing the refinement rules, re-run the advect1d 1-step comparison to verify level-count parity.
+4. Fix the `headl_vec` stride to use `ncpu + nboundary` instead of `ncpu` for correctness with boundary domains.
+
 
 ---
 
@@ -35,14 +52,32 @@ This document tracks the major milestones and architectural shifts during the mi
 6. **Level 1 Grid Linking Memory Safety:** Resolved a critical out-of-bounds memory access in `TreeUpdater::make_grid_fine` (accessing `constants::jjj` with parent cell indices instead of oct-relative positions) by properly using the coarse parent neighbor array when linking grid neighbors at level 1.
 7. **Non-thermal Energy Variables (Pending):** Fixing the config parser for indexed keys (e.g., `prad_region(1,1)`), initializing `uold` fields, and ensuring non-thermal energy is subtracted from total energy in the solver and updater calculations.
 
+
 ---
 
+## 🚩 Phase 41: Hydro Stability & Riemann Solver Alignment (Completed) ✨
 
+**Challenge:** Low-density numerical instabilities (timestep collapse) and residual accuracy gaps in shock velocity (e.g., Sod-tube error ~0.34 vs reference ~0.18).
+
+**Root Cause Analysis & Fixes:**
+1. **Trace Step Flooring & Stability:** Added density and pressure flooring in `HydroSolver::trace`. Implemented slope clamping against the central difference for Superbee and Ultrabee limiters to prevent numerical sound speed explosions.
+2. **Global Timestep Correction:** Corrected the global CFL timestep computation in `Simulation::run` to scan all active refinement levels instead of stopping at `nsub1_max_level + 1`, preventing Courant violations on fine grids.
+3. **MUSCL-Hancock Predictor Step:** Implemented the missing predictor step in `HydroSolver::trace` to compute intermediate half-step state variables, completing the second-order MUSCL-Hancock scheme.
+4. **Newton-Raphson Riemann Solver:** Ported the exact Rankine-Hugoniot shock jump relations and the iterative Newton-Raphson solver to align with legacy Fortran behavior. Synchronized convergence criteria using `smallpp = smallr * smallp` and switched HLLC-style wave speeds to actual NR wave speeds.
+5. **la-HLLC Wave Speed Alignment:** Replaced the approximate wave speed estimates in `RiemannSolver::solve_hllc` with the legacy Fortran formulas (`SL = min(ul, ur) - max(cl, cr)`) and removed non-reference clamps. Corrected Riemann solver configuration mapping to resolve `'hllc'` correctly.
+6. **Pressure Floor Constants:** Updated the `smallp` floor value to match the legacy Fortran relation `smallp = smallc**2 / gamma`.
+
+**Result:** Sod-tube and other hydro tests achieve complete physical alignment and binary parity.
+
+
+---
+
+## 🚩 Phase 40: MHD Module Stabilization (Completed) ✨
 
 After completing Phase 40A (SIGSEGV fixes), 40B (descriptor iteration), 40C (output format), and 40D (build system optimization), the MHD module is crash-free and output-format compliant.
 
 **Verified Status:**
-- ✅ **Hydro Tests (11/11):** advect1d, barotrop, cooling-eq, cooling-frig, decaying-turbulence, implosion, isothermal, mixing-scalar, sedov3d, sod-tube, sod-tube-nener — confirmed against original reference data
+- ⚠️ **Hydro Tests (10+1/11):** barotrop, cooling-eq, cooling-frig, decaying-turbulence, implosion, isothermal, mixing-scalar, sedov3d, sod-tube, sod-tube-nener — confirmed against original reference data. advect1d step count matches but AMR level distributions diverge post-step (see Phase 43)
 - ✅ **MHD Tests (6/6):** abc-flow, collapse-baro, imhd-tube, imhd-tube-nener, orszag-tang, ponomarenko-dynamo — all run to completion without crashes; output format matches legacy RAMSES descriptor layout
 - ⚠️ **Poisson, RT, Sink, Star, Tracer, Turb Tests:** Run to completion; reference data partially regenerated during Phase 40 and then restored — binary parity vs. legacy RAMSES unverified
 
@@ -55,6 +90,7 @@ After completing Phase 40A (SIGSEGV fixes), 40B (descriptor iteration), 40C (out
 **Outstanding Work:**
 - MHD solution parity vs. legacy RAMSES snapshots is unverified — reference data was regenerated then partially restored during Phase 40; a clean validation run is needed
 - Non-hydro test categories (Poisson, RT, Sink, Star, Tracer, Turb) need re-validation against original legacy RAMSES output
+
 
 ---
 
@@ -316,7 +352,7 @@ Implemented a comprehensive redesign to enable nsub=2 sub-cycling to work correc
 **Test Status: ✅ COMPLETE - 10/11 Hydro Tests PASSING**
 
 When run with **correct compilation flags** (NDIM, NENER, NPSCAL):
-- ✅ `hydro/advect1d` (NDIM=1): 27,928 steps — **Binary parity with legacy RAMSES!**
+- ⚠️ `hydro/advect1d` (NDIM=1): 27,928 steps — step count matches legacy RAMSES, but per-step AMR level distributions diverge (see Phase 43)
 - ✅ `hydro/barotrop` (NDIM=1): 1 step
 - ✅ `hydro/cooling-eq` (NDIM=2): Runs correctly (would overflow without correct NDIM!)
 - ✅ `hydro/cooling-frig` (NDIM=3 + TURB): 32,768 cells processed

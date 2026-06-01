@@ -11,6 +11,21 @@ RhdSolver::~RhdSolver() {}
 
 void RhdSolver::godunov_fine(int ilevel, real_t dt, real_t dx) {
     int myid = MpiManager::instance().rank() + 1;
+    
+    std::vector<int> cell_levels(grid_.ncell + 1, 0);
+    for (int il = 1; il <= grid_.nlevelmax; ++il) {
+        for (int icpu = 1; icpu <= grid_.ncpu + grid_.nboundary; ++icpu) {
+            int ig = grid_.get_headl(icpu, il);
+            while (ig > 0) {
+                for (int ic = 1; ic <= constants::twotondim; ++ic) {
+                    int idc = grid_.ncoarse + (ic - 1) * grid_.ngridmax + ig;
+                    cell_levels[idc] = il;
+                }
+                ig = grid_.next[ig - 1];
+            }
+        }
+    }
+
     std::vector<int> octs;
     if (ilevel > 0) {
         int igrid = grid_.get_headl(myid, ilevel);
@@ -80,31 +95,45 @@ void RhdSolver::godunov_fine(int ilevel, real_t dt, real_t dx) {
             for (int side = 0; side < 2; ++side) {
                 int id_n = icn[idim * 2 + side];
                 real_t ql_f[20], qr_f[20], flux[20];
-                if (id_n <= 0) {
-                    int ibound = -id_n; int btype = 1;
-                    if (ibound > 0 && ibound <= (int)grid_.bound_type.size()) btype = grid_.bound_type.at(ibound - 1);
-                    real_t u_nb[20], q_nb[20], qm_nb[20], qp_nb[20], dq_null[20] = {0};
-                    for(int iv=1; iv<=grid_.nvar; ++iv) u_nb[iv-1] = grid_.uold(idc_0 + 1, iv);
-                    if (btype == 1) u_nb[1 + idim] *= -1.0;
-                    ctoprim(u_nb, q_nb, gamma);
-                    if (idim > 0) std::swap(q_nb[1], q_nb[1+idim]);
-                    trace(q_nb, dq_null, dtdx, qm_nb, qp_nb, gamma);
-                    if (idim > 0) { std::swap(qm_nb[1], qm_nb[1+idim]); std::swap(qp_nb[1], qp_nb[1+idim]); }
-                    if (side == 0) { for(int iv=1; iv<=grid_.nvar; ++iv) { ql_f[iv-1] = qp_nb[iv-1]; qr_f[iv-1] = get_q(idc_0, idim, iv); } }
-                    else { for(int iv=1; iv<=grid_.nvar; ++iv) { ql_f[iv-1] = get_qp(idc_0, idim, iv); qr_f[iv-1] = qm_nb[iv-1]; } }
+                bool is_refined = (id_n > 0 && grid_.son.at(id_n - 1) > 0);
+                if (is_refined) {
+                    std::fill(flux, flux + grid_.nvar, 0.0);
                 } else {
-                    int id_n0 = id_n - 1;
-                    if (side == 0) { for(int iv=1; iv<=grid_.nvar; ++iv) { ql_f[iv-1] = get_qp(id_n0, idim, iv); qr_f[iv-1] = get_q(idc_0, idim, iv); } }
-                    else { for(int iv=1; iv<=grid_.nvar; ++iv) { ql_f[iv-1] = get_qp(idc_0, idim, iv); qr_f[iv-1] = get_q(id_n0, idim, iv); } }
+                    if (id_n <= 0) {
+                        int ibound = -id_n; int btype = 1;
+                        if (ibound > 0 && ibound <= (int)grid_.bound_type.size()) btype = grid_.bound_type.at(ibound - 1);
+                        real_t u_nb[20], q_nb[20], qm_nb[20], qp_nb[20], dq_null[20] = {0};
+                        for(int iv=1; iv<=grid_.nvar; ++iv) u_nb[iv-1] = grid_.uold(idc_0 + 1, iv);
+                        if (btype == 1) u_nb[1 + idim] *= -1.0;
+                        ctoprim(u_nb, q_nb, gamma);
+                        if (idim > 0) std::swap(q_nb[1], q_nb[1+idim]);
+                        trace(q_nb, dq_null, dtdx, qm_nb, qp_nb, gamma);
+                        if (idim > 0) { std::swap(qm_nb[1], qm_nb[1+idim]); std::swap(qp_nb[1], qp_nb[1+idim]); }
+                        if (side == 0) { for(int iv=1; iv<=grid_.nvar; ++iv) { ql_f[iv-1] = qp_nb[iv-1]; qr_f[iv-1] = get_q(idc_0, idim, iv); } }
+                        else { for(int iv=1; iv<=grid_.nvar; ++iv) { ql_f[iv-1] = get_qp(idc_0, idim, iv); qr_f[iv-1] = qm_nb[iv-1]; } }
+                    } else {
+                        int id_n0 = id_n - 1;
+                        if (side == 0) { for(int iv=1; iv<=grid_.nvar; ++iv) { ql_f[iv-1] = get_qp(id_n0, idim, iv); qr_f[iv-1] = get_q(idc_0, idim, iv); } }
+                        else { for(int iv=1; iv<=grid_.nvar; ++iv) { ql_f[iv-1] = get_qp(idc_0, idim, iv); qr_f[iv-1] = get_q(id_n0, idim, iv); } }
+                    }
+                    if (riemann == "hllc") RelativisticRiemannSolver::solve_hllc(ql_f, qr_f, flux, gamma, eos);
+                    else if (riemann == "hll") RelativisticRiemannSolver::solve_hll(ql_f, qr_f, flux, gamma, eos);
+                    else RelativisticRiemannSolver::solve_llf(ql_f, qr_f, flux, gamma, eos);
+
+                    // Refluxing: update coarser neighbor cell's conservative variables
+                    if (id_n > 0 && cell_levels[id_n] < ilevel) {
+                        real_t factor = 1.0 / (1 << NDIM);
+                        real_t sgn = (side == 0) ? 1.0 : -1.0;
+                        for (int iv = 1; iv <= grid_.nvar; ++iv) {
+                            grid_.unew(id_n, iv) -= sgn * flux[iv - 1] * dtdx * factor;
+                        }
+                    }
                 }
-                if (riemann == "hllc") RelativisticRiemannSolver::solve_hllc(ql_f, qr_f, flux, gamma, eos);
-                else if (riemann == "hll") RelativisticRiemannSolver::solve_hll(ql_f, qr_f, flux, gamma, eos);
-                else RelativisticRiemannSolver::solve_llf(ql_f, qr_f, flux, gamma, eos);
                 real_t sgn = (side == 0) ? 1.0 : -1.0;
                 for(int iv=1; iv<=grid_.nvar; ++iv) flux_sum[iv-1] += sgn * flux[iv-1] * dtdx;
             }
         }
-        for(int iv=1; iv<=grid_.nvar; ++iv) grid_.unew(idc_0 + 1, iv) = grid_.uold(idc_0 + 1, iv) + flux_sum[iv-1];
+        for(int iv=1; iv<=grid_.nvar; ++iv) grid_.unew(idc_0 + 1, iv) = grid_.unew(idc_0 + 1, iv) + flux_sum[iv-1];
     };
 
     if (do_level_0) {
