@@ -132,6 +132,7 @@ void RiemannSolver::solve_hllc(const real_t ql[], const real_t qr[], real_t flux
             compute_flux(ql, fl_arr, gamma, nener, gamma_rad);
             prim_to_cons(ql, ul_vec, gamma, nener, gamma_rad);
             prim_to_cons(qstarl, ustarl_vec, gamma, nener, gamma_rad);
+            ustarl_vec[ipress] = ((sl - ul) * ul_vec[ipress] - pl * ul + pstar * ustar) / (std::min(sl - ustar, -1e-10));
             for (int i = 0; i < NDIM + 2; ++i) flux[i] = fl_arr[i] + sl * (ustarl_vec[i] - ul_vec[i]);
         } else {
             real_t rstarr = rr * (sr - ur) / (std::max(sr - ustar, 1e-10));
@@ -151,6 +152,7 @@ void RiemannSolver::solve_hllc(const real_t ql[], const real_t qr[], real_t flux
             compute_flux(qr, fr_arr, gamma, nener, gamma_rad);
             prim_to_cons(qr, ur_vec, gamma, nener, gamma_rad);
             prim_to_cons(qstarr, ustarr_vec, gamma, nener, gamma_rad);
+            ustarr_vec[ipress] = ((sr - ur) * ur_vec[ipress] - pr * ur + pstar * ustar) / (std::max(sr - ustar, 1e-10));
             for (int i = 0; i < NDIM + 2; ++i) flux[i] = fr_arr[i] + sr * (ustarr_vec[i] - ur_vec[i]);
         }
     }

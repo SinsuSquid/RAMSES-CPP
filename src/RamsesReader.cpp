@@ -51,12 +51,31 @@ bool RamsesReader::load_amr(AmrGrid& grid) {
     read_record(file, hl_buf); 
     read_record(file, tl_buf);
     read_record(file, nl_buf);
-    for(int i=0; i<std::min((int)hl_buf.size(), (int)grid.headl_vec.size()); ++i) grid.headl_vec[i] = hl_buf[i];
-    for(int i=0; i<std::min((int)tl_buf.size(), (int)grid.taill_vec.size()); ++i) grid.taill_vec[i] = tl_buf[i];
-    for(int i=0; i<std::min((int)nl_buf.size(), (int)grid.numbl_vec.size()); ++i) grid.numbl_vec[i] = nl_buf[i];
+    for (int ilevel = 0; ilevel <= grid.nlevelmax; ++ilevel) {
+        for (int icpu = 1; icpu <= grid.ncpu; ++icpu) {
+            int src_idx = ilevel * grid.ncpu + (icpu - 1);
+            if (src_idx < (int)hl_buf.size()) grid.headl(icpu, ilevel) = hl_buf[src_idx];
+            if (src_idx < (int)tl_buf.size()) grid.taill(icpu, ilevel) = tl_buf[src_idx];
+            if (src_idx < (int)nl_buf.size()) grid.numbl(icpu, ilevel) = nl_buf[src_idx];
+        }
+    }
     
     std::vector<int> nt; read_record(file, nt); 
-    if (nboundary > 0) { std::vector<int> hb, tb, nb; read_record(file, hb); read_record(file, tb); read_record(file, nb); }
+    if (nboundary > 0) {
+        std::vector<int> hb, tb, nb;
+        read_record(file, hb);
+        read_record(file, tb);
+        read_record(file, nb);
+        for (int ilevel = 0; ilevel <= grid.nlevelmax; ++ilevel) {
+            for (int ibound = 1; ibound <= nboundary; ++ibound) {
+                int src_idx = ilevel * nboundary + (ibound - 1);
+                int icpu = grid.ncpu + ibound;
+                if (src_idx < (int)hb.size()) grid.headl(icpu, ilevel) = hb[src_idx];
+                if (src_idx < (int)tb.size()) grid.taill(icpu, ilevel) = tb[src_idx];
+                if (src_idx < (int)nb.size()) grid.numbl(icpu, ilevel) = nb[src_idx];
+            }
+        }
+    }
     
     std::vector<int> mem; read_record(file, mem);
     char ord[128]; read_record_raw(file, ord, 128);

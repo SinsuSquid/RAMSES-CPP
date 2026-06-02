@@ -317,7 +317,16 @@ void Simulation::run() {
             double total_time = std::chrono::duration<double>(t_step_end - t_start_loop).count();
             real_t min_rho = 1e30, max_rho = -1e30;
             for (int i = 1; i <= grid_.ncell; ++i) {
-                if (grid_.son[i - 1] == 0) {
+                bool active = false;
+                if (i <= grid_.ncoarse) {
+                    active = true;
+                } else {
+                    int igrid = ((i - grid_.ncoarse - 1) % grid_.ngridmax) + 1;
+                    if (grid_.father[igrid - 1] > 0) {
+                        active = true;
+                    }
+                }
+                if (active && grid_.son[i - 1] == 0) {
                     real_t rho_val = grid_.uold(i, 1);
                     min_rho = std::min(min_rho, rho_val);
                     max_rho = std::max(max_rho, rho_val);
@@ -494,7 +503,8 @@ void Simulation::amr_step(int ilevel, real_t dt, int icount) {
         real_t ev = config_.get_double("refine_params", "err_grad_v", -1.0);
         real_t eb2 = config_.get_double("refine_params", "err_grad_b2", -1.0);
         int nexp = config_.get_int("amr_params", "nexpand", 1);
-        updater_.flag_fine(ilevel + 1, ed, ep, ev, eb2, {}, nexp);
+        int nsub_here = (ilevel < (int)nsubcycle_.size()) ? nsubcycle_[ilevel] : 1;
+        updater_.flag_fine(ilevel + 1, ed, ep, ev, eb2, {}, nexp, icount, nsub_here);
     }
 }
 

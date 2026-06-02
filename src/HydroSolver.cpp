@@ -382,6 +382,18 @@ void HydroSolver::compute_slopes(int idc, const int icelln[6], int idim, real_t 
         return;
     }
 
+    if (slope_type == 6) {
+        for (int iv = 0; iv < grid_.nvar; ++iv) {
+            if (iv == 0) {
+                real_t dlft = qc[iv] - ql[iv], drgt = qr[iv] - qc[iv];
+                dq[iv] = 0.5 * (dlft + drgt) / dx;
+            } else {
+                dq[iv] = 0.0;
+            }
+        }
+        return;
+    }
+
     for (int iv = 0; iv < grid_.nvar; ++iv) {
         real_t dlft = qc[iv] - ql[iv], drgt = qr[iv] - qc[iv];
         if (dlft * drgt <= 0.0) {
@@ -395,6 +407,12 @@ void HydroSolver::compute_slopes(int idc, const int icelln[6], int idim, real_t 
             } else if (slope_type == 2 || slope_type == 3) {
                 // MC (MonCen)
                 dlim = std::min({2.0 * std::abs(dlft), 2.0 * std::abs(drgt), std::abs(dcen)});
+            } else if (slope_type == 7) {
+                // van Leer
+                dlim = 2.0 * std::abs(dlft) * std::abs(drgt) / (std::abs(dlft) + std::abs(drgt));
+            } else if (slope_type == 8) {
+                // generalized MonCen (van Leer bis)
+                dlim = std::min({1.5 * std::abs(dlft), 1.5 * std::abs(drgt), std::abs(dcen)});
             } else {
                 dlim = std::min(std::abs(dlft), std::abs(drgt));
             }

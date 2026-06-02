@@ -195,9 +195,30 @@ void AmrGrid::resize_grids(int new_ngridmax) {
     // Resize per-grid arrays
     resize_grid_real(xg, 3);
     resize_grid_int(nbor, 6);
+    
+    // Update neighbor cell indices in nbor
+    for (int i = 0; i < 6 * new_ngridmax; ++i) {
+        int nbor_cell = nbor[i];
+        if (nbor_cell > ncoarse) {
+            int nbor_ig = (nbor_cell - 1 - ncoarse) % old_ngridmax + 1;
+            int ic = (nbor_cell - 1 - ncoarse) / old_ngridmax + 1;
+            nbor[i] = ncoarse + (ic - 1) * new_ngridmax + nbor_ig;
+        }
+    }
+
     next.resize(new_ngridmax, 0);
     prev.resize(new_ngridmax, 0);
     father.resize(new_ngridmax, 0);
+
+    // Update father cell indices for all grids
+    for (int ig = 0; ig < old_ngridmax; ++ig) {
+        int parent_cell = father[ig];
+        if (parent_cell > ncoarse) {
+            int parent_ig = (parent_cell - 1 - ncoarse) % old_ngridmax + 1;
+            int ic = (parent_cell - 1 - ncoarse) / old_ngridmax + 1;
+            father[ig] = ncoarse + (ic - 1) * new_ngridmax + parent_ig;
+        }
+    }
     headp.resize(new_ngridmax, 0);
     tailp.resize(new_ngridmax, 0);
     numbp.resize(new_ngridmax, 0);
@@ -250,6 +271,10 @@ int AmrGrid::get_free_grid() {
 void AmrGrid::free_grid(int igrid) {
     if (igrid <= 0) return;
     for (int i = 0; i < 6; ++i) nbor[i * ngridmax + igrid - 1] = 0;
+    int father_cell = father[igrid - 1];
+    if (father_cell > 0) {
+        son[father_cell - 1] = 0;
+    }
     father[igrid - 1] = 0;
     for (int ic = 1; ic <= constants::twotondim; ++ic) son[ncoarse + (ic - 1) * ngridmax + igrid - 1] = 0;
     if (tailf == 0) { headf = igrid; tailf = igrid; prev[igrid - 1] = 0; next[igrid - 1] = 0; }
@@ -261,15 +286,15 @@ void AmrGrid::add_to_level_list(int igrid, int ilevel) {
     int myid = MpiManager::instance().rank() + 1;
     int head = get_headl(myid, ilevel);
     if (head == 0) {
-        headl_vec[ilevel * ncpu + (myid - 1)] = igrid;
-        taill_vec[ilevel * ncpu + (myid - 1)] = igrid;
+        headl(myid, ilevel) = igrid;
+        taill(myid, ilevel) = igrid;
         prev[igrid - 1] = 0; next[igrid - 1] = 0;
     } else {
         int tail = taill(myid, ilevel);
         next[tail - 1] = igrid; prev[igrid - 1] = tail; next[igrid - 1] = 0;
-        taill_vec[ilevel * ncpu + (myid - 1)] = igrid;
+        taill(myid, ilevel) = igrid;
     }
-    numbl_vec[ilevel * ncpu + (myid - 1)]++;
+    numbl(myid, ilevel)++;
 }
 
 int AmrGrid::count_grids_at_level(int ilevel) const {
@@ -281,9 +306,20 @@ int AmrGrid::count_grids_at_level(int ilevel) const {
 void AmrGrid::synchronize_level_counts() {
 #ifdef RAMSES_USE_MPI
     if (ncpu > 1) {
-        std::vector<int> global_numbl(ncpu * (nlevelmax + 1));
-        MPI_Allreduce(numbl_vec.data(), global_numbl.data(), ncpu * (nlevelmax + 1), MPI_INT, MPI_SUM, MPI_COMM_WORLD);
-        numbl_vec = std::move(global_numbl);
+        // Collect CPU domain counts into a contiguous vector to synchronize CPU rank counts
+        std::vector<int> cpu_numbl(ncpu * (nlevelmax + 1), 0);
+        for (int ilevel = 0; ilevel <= nlevelmax; ++ilevel) {
+            for (int icpu = 1; icpu <= ncpu; ++icpu) {
+                cpu_numbl[ilevel * ncpu + (icpu - 1)] = numbl(icpu, ilevel);
+            }
+        }
+        std::vector<int> global_cpu_numbl(ncpu * (nlevelmax + 1), 0);
+        MPI_Allreduce(cpu_numbl.data(), global_cpu_numbl.data(), ncpu * (nlevelmax + 1), MPI_INT, MPI_SUM, MPI_COMM_WORLD);
+        for (int ilevel = 0; ilevel <= nlevelmax; ++ilevel) {
+            for (int icpu = 1; icpu <= ncpu; ++icpu) {
+                numbl(icpu, ilevel) = global_cpu_numbl[ilevel * ncpu + (icpu - 1)];
+            }
+        }
     }
 #endif
 }
@@ -369,14 +405,25 @@ void AmrGrid::get_nbor_cells(const int ign[7], int ic, int icn[6], int igrid) co
             int ic_pos = constants::jjj[idim][inbor][ic - 1];
             int ig = ign[ig_idx];
             if (ig > 0) {
-                // Neighbor grid exists at same level
-                icn[idim * 2 + inbor] = ncoarse + (ic_pos - 1) * ngridmax + ig;
+                if (ig_idx == 0) {
+                    // Same grid, neighbor cell is at the same level in the same grid
+                    icn[idim * 2 + inbor] = ncoarse + (ic_pos - 1) * ngridmax + ig;
+                } else {
+                    int ig_child = (ig <= ncell) ? son[ig - 1] : 0;
+                    if (ig_child > 0) {
+                        // Neighbor grid exists at same level
+                        icn[idim * 2 + inbor] = ncoarse + (ic_pos - 1) * ngridmax + ig_child;
+                    } else {
+                        // Neighbor cell is at coarser level
+                        icn[idim * 2 + inbor] = ig;
+                    }
+                }
             } else if (ig < 0) {
                 // Boundary
                 icn[idim * 2 + inbor] = ig;
             } else {
                 // Coarse neighbor
-                int ifn[6];
+                int ifn[6] = {0};
                 if (ifather <= ncoarse) {
                     get_nbor_cells_coarse(ifather, ifn);
                 } else {
@@ -397,7 +444,7 @@ void AmrGrid::get_27_cell_neighbors(int icell, int nbors[27]) const {
 
     auto get_neighbor = [&](int cell, int dir) -> int {
         if (cell <= 0 || cell > ncell) return 0;
-        int nbs[6];
+        int nbs[6] = {0};
         if (cell <= ncoarse) {
             get_nbor_cells_coarse(cell, nbs);
         } else {
