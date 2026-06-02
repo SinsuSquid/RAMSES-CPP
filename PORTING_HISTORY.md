@@ -4,6 +4,59 @@ This document tracks the major milestones and architectural shifts during the mi
 
 ---
 
+## 🚩 Phase 44: Slope Limiter Completion, HLLC Energy Fix & Diagnostics (Completed) ✨
+
+**Commit:** `778579f`
+
+**Challenge:**
+The `sod-tube` parameter study showed that all 527 reference combinations were failing. Errors broke down into three categories: (1) slope types 6/7/8 returning wrong answers (they silently fell back to Minmod), (2) HLLC producing wrong energy flux across the contact wave, and (3) the diagnostic printer printing misleading `min_rho=0.000e+00` due to scanning unallocated memory.
+
+**Root Cause Analysis & Fixes:**
+
+1. **Missing Slope Limiters 6, 7, 8 (`HydroSolver::compute_slopes`)**
+   - **Issue:** The `else` branch in `compute_slopes` had no cases for slope types 6, 7, or 8, silently defaulting all three to Minmod. Every `slope_type=6/7/8` parameter combination in the test suite therefore returned wrong results.
+   - **Fortran Reference:** `legacy/hydro/slope_types.f90` defines:
+     - Type 6 (`calc_uslope_unstable`): full centered slope on density only; zero for all other variables
+     - Type 7 (`slope_vanLeer`): harmonic mean `2*dlft*drgt/(dlft+drgt)` (same-sign only)
+     - Type 8 (`slope_vanLeer_bis`): `min(1.5*|dlft|, 1.5*|drgt|, |dcen|)` (van Leer 1979 generalized MonCen)
+   - **Fix:** Added `if (slope_type == 6)` block returning early with density-only centered slope, and `else if (slope_type == 7/8)` branches inside the existing same-sign-only loop.
+   - **File:** `src/HydroSolver.cpp`
+
+2. **HLLC Star-Region Energy (Toro Exact Jump Conditions) (`RiemannSolver::solve_hllc`)**
+   - **Issue:** The HLLC star-region energy was computed by calling `prim_to_cons(qstar, ustar_vec)` — i.e., constructing primitives for the star state and then converting. This does not satisfy the Rankine-Hugoniot jump conditions across the contact wave.
+   - **Fix:** Replaced with Toro's exact formulas:
+     ```
+     ustarl[ipress] = ((sl - ul) * ul_E - pl * ul + pstar * ustar) / (sl - ustar)
+     ustarr[ipress] = ((sr - ur) * ur_E - pr * ur + pstar * ustar) / (sr - ustar)
+     ```
+   - **File:** `src/RiemannSolver.cpp`
+
+3. **Grid Collapse in `ensure_ref_rules` — 1D/2D NDIM Guards (`TreeUpdater`)**
+   - **Issue:** `ensure_ref_rules` called `get_27_cell_neighbors` and then iterated all 27 cells with `dz=-1,0,+1` and `dy=-1,0,+1`. In 1D, the y/z neighbors don't exist and return 0, which the function interpreted as "no refined neighbor" and incorrectly zeroed `flag1`, collapsing the entire AMR grid to `levelmin` on every step.
+   - **Fix:** Added `if (NDIM < 3 && dz != 0) continue;` and `if (NDIM < 2 && dy != 0) continue;` guards inside the neighbor loop.
+   - **Additionally:** The `flag_fine` signature was extended to pass `icount` and `nsub_here` through to `ensure_ref_rules` so that refinement rule enforcement is correctly gated only on non-final sub-cycle steps (matching legacy `flag_utils.f90` behavior).
+   - **Files:** `src/TreeUpdater.cpp`, `include/ramses/TreeUpdater.hpp`
+
+4. **Diagnostic Printer Scans Unallocated Cells (`Simulation::run`)**
+   - **Issue:** The per-step `min_rho`/`max_rho` loop over `grid_.ncell` included slots for fine-level grids that had never been allocated (i.e., `grid_.father[igrid-1] == 0`), reading the zero-initialized `uold` and reporting a spurious `min_rho = 0.000e+00`.
+   - **Fix:** Added a guard: for coarse cells always include; for fine-level cells only include if `grid_.father[igrid-1] > 0`.
+   - **File:** `src/Simulation.cpp`
+
+5. **Python Dependencies Installed**
+   - `f90nml` — for reading/writing Fortran namelist files in the parameter study script
+   - `scipy` — required by `check_solution.py` in the `sod-tube` test
+
+**Result:**
+- Build passes cleanly for all NDIM targets after all changes.
+- The stale `sod-tube-parameter-study.csv` (generated with the old binary before slope fixes) is **not committed**. A fresh parameter study run with the new binary is required to regenerate correct reference results.
+
+**Outstanding for Phase 44:**
+1. Re-run sod-tube parameter study against the new binary and commit the updated CSV.
+2. Investigate Superbee (`slope_type=4`) mismatch — errors still ~8–10× above reference, possibly due to Courant-number weighting differences.
+3. Debug `advect1d` output scheduling — simulation runs to t≈9.93 but `output_00002` is never written (analysis script fails). The `tout=10` target appears to not be reached exactly.
+
+---
+
 ## 🚩 Phase 43: Advect1d AMR Parity — Refluxing & Refinement Rules (In Progress) 🛠️
 
 **Challenge:**
