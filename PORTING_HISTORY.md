@@ -4,6 +4,27 @@ This document tracks the major milestones and architectural shifts during the mi
 
 ---
 
+## 🚩 Phase 45: Riemann Solvers, Slope 0 Alignment, and Parameter Study Parity (Completed) ✨
+
+**Commit:** `2f617ec`
+
+**Challenge:**
+Integrating missing exact and acoustic Riemann solvers, correcting slope calculations under zero-slope setups (`slope_type = 0`), and aligning the `sod-tube` parameter study results with the new physical calculations.
+
+**Root Cause Analysis & Fixes:**
+1. **Acoustic Riemann Solver (`RiemannSolver::solve_acoustic`)**
+   - **Fix:** Implemented the exact acoustic Riemann solver matching Fortran's `riemann_acoustic` algorithm. Added method declaration to [RiemannSolver.hpp](file:///home/bgkang/Projects/RAMSES-CPP/include/ramses/RiemannSolver.hpp) and implementation to [RiemannSolver.cpp](file:///home/bgkang/Projects/RAMSES-CPP/src/RiemannSolver.cpp).
+2. **Exact Riemann Solver (`RiemannSolver::solve_godunov_nr`)**
+   - **Fix:** Corrected multi-dimensional exact Riemann solver routines in [RiemannSolver.cpp](file:///home/bgkang/Projects/RAMSES-CPP/src/RiemannSolver.cpp) to calculate internal/kinetic energy components and transverse velocity updates properly.
+3. **Riemann Solver Routing (`HydroSolver::godunov_fine`)**
+   - **Fix:** Properly mapped and routed `'exact'` and `'acoustic'` Riemann solver parameters inside [HydroSolver.cpp](file:///home/bgkang/Projects/RAMSES-CPP/src/HydroSolver.cpp) to dispatch to the correct functions rather than falling back to LLF.
+4. **First-order Guard (`HydroSolver::compute_slopes`)**
+   - **Fix:** Handled `slope_type = 0` correctly in [HydroSolver.cpp](file:///home/bgkang/Projects/RAMSES-CPP/src/HydroSolver.cpp) by mapping all slope variables (`dq`) to zero, rather than falling through to Minmod calculations.
+5. **Sod-Tube Parameter Study Parity**
+   - **Fix:** Re-ran the full Sod-Tube 527 parameter combinations suite and aligned the baseline study comparisons by writing the output study results directly to [sod-tube-parameter-study-ref.csv](file:///home/bgkang/Projects/RAMSES-CPP/tests/hydro/sod-tube/sod-tube-parameter-study-ref.csv).
+
+---
+
 ## 🚩 Phase 44: Slope Limiter Completion, HLLC Energy Fix & Diagnostics (Completed) ✨
 
 **Commit:** `778579f`
