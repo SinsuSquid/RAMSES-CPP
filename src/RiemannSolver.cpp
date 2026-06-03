@@ -259,12 +259,94 @@ void RiemannSolver::solve_godunov_nr(const real_t ql[], const real_t qr[], real_
 
     real_t e_int = po / (gamma - 1.0);
     real_t e_kin = 0.5 * ro * uo * uo;
+    for(int i=2; i<=NDIM; ++i) {
+        real_t vt = (ustar > 0.0) ? ql[i] : qr[i];
+        e_kin += 0.5 * ro * vt * vt;
+    }
     real_t E = e_int + e_kin;
 
     flux[0] = ro * uo;
     flux[1] = ro * uo * uo + po;
-    for(int i=2; i<=NDIM; ++i) flux[i] = 0.0;
+    for(int i=2; i<=NDIM; ++i) {
+        flux[i] = flux[0] * ((ustar > 0.0) ? ql[i] : qr[i]);
+    }
     flux[ipress] = (E + po) * uo;
+}
+
+void RiemannSolver::solve_acoustic(const real_t ql[], const real_t qr[], real_t flux[], real_t gamma, int nener, const std::vector<real_t>& gamma_rad) {
+    const real_t smallc = 1e-10;
+    const real_t smallr = smallc;
+    const real_t smallp = smallc * smallc / gamma;
+
+    int ipress = NDIM + 1;
+    real_t rl = std::max(ql[0], smallr);
+    real_t ul = ql[1];
+    real_t pl = std::max(ql[ipress], rl * smallp);
+    for (int ie = 0; ie < nener; ++ie) pl += ql[ipress + 1 + ie];
+
+    real_t rr = std::max(qr[0], smallr);
+    real_t ur = qr[1];
+    real_t pr = std::max(qr[ipress], rr * smallp);
+    for (int ie = 0; ie < nener; ++ie) pr += qr[ipress + 1 + ie];
+
+    real_t cl = std::sqrt(get_cs2(rl, ql[ipress], gamma, ql, nener, gamma_rad));
+    real_t cr = std::sqrt(get_cs2(rr, qr[ipress], gamma, qr, nener, gamma_rad));
+    real_t wl = cl * rl;
+    real_t wr = cr * rr;
+
+    real_t pstar = ((wr * pl + wl * pr) + wl * wr * (ul - ur)) / (wl + wr + 1e-20);
+    real_t ustar = ((wr * ur + wl * ul) + (pl - pr)) / (wl + wr + 1e-20);
+
+    real_t sgnm = (ustar >= 0.0) ? 1.0 : -1.0;
+    real_t ro, uo, po, wo, co;
+    if (sgnm == 1.0) {
+        ro = rl; uo = ul; po = pl; wo = wl; co = cl;
+    } else {
+        ro = rr; uo = ur; po = pr; wo = wr; co = cr;
+    }
+
+    real_t rstar = ro + (pstar - po) / std::max(co * co, 1e-20);
+    rstar = std::max(rstar, smallr);
+    real_t cstar = std::sqrt(std::max(gamma * pstar / rstar, 1e-20));
+    cstar = std::max(cstar, smallc);
+
+    real_t spout = co - sgnm * uo;
+    real_t spin = cstar - sgnm * ustar;
+    real_t ushock = 0.5 * (spin + spout);
+    ushock = std::max(ushock, -sgnm * ustar);
+
+    if (pstar >= po) {
+        spout = ushock;
+        spin = spout;
+    }
+
+    real_t rgdnv, ugdnv, pgdnv;
+    if (spout < 0.0) {
+        rgdnv = ro; ugdnv = uo; pgdnv = po;
+    } else if (spin >= 0.0) {
+        rgdnv = rstar; ugdnv = ustar; pgdnv = pstar;
+    } else {
+        real_t frac = spout / (spout - spin + 1e-20);
+        rgdnv = frac * rstar + (1.0 - frac) * ro;
+        ugdnv = frac * ustar + (1.0 - frac) * uo;
+        pgdnv = frac * pstar + (1.0 - frac) * po;
+    }
+
+    real_t qgdnv[20] = {0};
+    qgdnv[0] = rgdnv; qgdnv[1] = ugdnv;
+    for (int i = 2; i <= NDIM; ++i) {
+        qgdnv[i] = (sgnm == 1.0) ? ql[i] : qr[i];
+    }
+
+    real_t sum_prad_star = 0.0;
+    for (int ie = 0; ie < nener; ++ie) {
+        real_t prad_star = (sgnm == 1.0) ? ql[ipress + 1 + ie] : qr[ipress + 1 + ie];
+        qgdnv[ipress + 1 + ie] = prad_star;
+        sum_prad_star += prad_star;
+    }
+    qgdnv[ipress] = std::max(pgdnv - sum_prad_star, rgdnv * smallp);
+
+    compute_flux(qgdnv, flux, gamma, nener, gamma_rad);
 }
 
 void RiemannSolver::prim_to_cons(const real_t q[], real_t u[], real_t gamma, int nener, const std::vector<real_t>& gamma_rad) {

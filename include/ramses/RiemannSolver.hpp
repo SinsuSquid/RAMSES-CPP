@@ -18,6 +18,7 @@ public:
     static void solve_hll(const real_t ql[], const real_t qr[], real_t flux[], real_t gamma, int nener = 0, const std::vector<real_t>& gamma_rad = {});
     static void solve_hllc(const real_t ql[], const real_t qr[], real_t flux[], real_t gamma, int nener = 0, const std::vector<real_t>& gamma_rad = {});
     static void solve_godunov_nr(const real_t ql[], const real_t qr[], real_t flux[], real_t gamma);
+    static void solve_acoustic(const real_t ql[], const real_t qr[], real_t flux[], real_t gamma, int nener = 0, const std::vector<real_t>& gamma_rad = {});
 
 private:
     /**

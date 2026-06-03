@@ -155,6 +155,8 @@ void HydroSolver::godunov_fine(int ilevel, real_t dt, real_t dx) {
                     std::string riemann_type = config_.get("hydro_params", "riemann", "llf");
                     if (riemann_type == "hllc") RiemannSolver::solve_hllc(ql_f, qr_f, flux, gamma, nener_, grid_.gamma_rad);
                     else if (riemann_type == "hll") RiemannSolver::solve_hll(ql_f, qr_f, flux, gamma, nener_, grid_.gamma_rad);
+                    else if (riemann_type == "exact") RiemannSolver::solve_godunov_nr(ql_f, qr_f, flux, gamma);
+                    else if (riemann_type == "acoustic") RiemannSolver::solve_acoustic(ql_f, qr_f, flux, gamma, nener_, grid_.gamma_rad);
                     else RiemannSolver::solve_llf(ql_f, qr_f, flux, gamma, nener_, grid_.gamma_rad);
 
                     real_t mass_flux = flux[0];
@@ -169,19 +171,10 @@ void HydroSolver::godunov_fine(int ilevel, real_t dt, real_t dx) {
                         }
                     }
                     if (idim > 0) std::swap(flux[1], flux[1+idim]);
-                    
                     // Refluxing: update coarser neighbor cell's conservative variables
                     if (id_n > 0 && cell_levels[id_n] < ilevel) {
                         real_t factor = 1.0 / (1 << NDIM);
                         real_t sign = (side == 0) ? 1.0 : -1.0;
-                        /* if (ilevel == 10) {
-                            std::cout << "[Reflux L10] idc_0=" << idc_0 + 1 << " (lvl 10) neighbor id_n=" << id_n 
-                                      << " (lvl " << cell_levels[id_n] << ") side=" << side << " sign=" << sign 
-                                      << " flux=" << flux[0] << " sign*flux=" << sign*flux[0]
-                                      << " dtdx=" << dtdx << " factor=" << factor 
-                                      << " old_unew=" << grid_.unew(id_n, 1) 
-                                      << " new_unew=" << grid_.unew(id_n, 1) - dtdx * sign * flux[0] * factor << std::endl;
-                        } */
                         for (int iv = 1; iv <= grid_.nvar; ++iv) {
                             grid_.unew(id_n, iv) -= dtdx * sign * flux[iv - 1] * factor;
                         }
@@ -342,6 +335,10 @@ void HydroSolver::ctoprim(const real_t u[], real_t q[], real_t gamma) {
 }
 
 void HydroSolver::compute_slopes(int idc, const int icelln[6], int idim, real_t dq[20], int slope_type, real_t dt, real_t dx) {
+    if (slope_type == 0) {
+        for (int iv = 0; iv < grid_.nvar; ++iv) dq[iv] = 0.0;
+        return;
+    }
     real_t ql[20], qc[20], qr[20], u_c[20];
     for(int iv=1; iv<=grid_.nvar; ++iv) u_c[iv-1]=grid_.uold(idc, iv);
     ctoprim(u_c, qc, grid_.gamma);
