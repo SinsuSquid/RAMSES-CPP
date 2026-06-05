@@ -15,19 +15,29 @@ HydroSolver::~HydroSolver() {}
 
 void HydroSolver::godunov_fine(int ilevel, real_t dt, real_t dx) {
     int myid = MpiManager::instance().rank() + 1;
+    bool verbose = config_.get_bool("run_params", "verbose", false);
     
     std::vector<int> cell_levels(grid_.ncell + 1, 0);
-    for (int il = 1; il <= grid_.nlevelmax; ++il) {
-        for (int icpu = 1; icpu <= grid_.ncpu + grid_.nboundary; ++icpu) {
-            int ig = grid_.get_headl(icpu, il);
-            while (ig > 0) {
-                for (int ic = 1; ic <= constants::twotondim; ++ic) {
-                    int idc = grid_.ncoarse + (ic - 1) * grid_.ngridmax + ig;
-                    cell_levels[idc] = il;
-                }
-                ig = grid_.next[ig - 1];
+    for (int ig = 1; ig <= grid_.ngridmax; ++ig) {
+        if (grid_.father[ig - 1] > 0) {
+            int level = 1;
+            int curr_ig = ig;
+            while (curr_ig > 0) {
+                int father_cell = grid_.father[curr_ig - 1];
+                if (father_cell <= grid_.ncoarse) break;
+                curr_ig = ((father_cell - grid_.ncoarse - 1) % grid_.ngridmax) + 1;
+                level++;
+            }
+            for (int ic = 1; ic <= constants::twotondim; ++ic) {
+                int idc = grid_.ncoarse + (ic - 1) * grid_.ngridmax + ig;
+                cell_levels[idc] = level;
             }
         }
+    }
+    if (verbose && ilevel == 5) {
+        std::cout << "[DEBUG verify] cell_levels[1057] = " << cell_levels[1057] 
+                  << " get_cell_level(1057) = " << grid_.get_cell_level(1057) 
+                  << " ncell = " << grid_.ncell << std::endl;
     }
 
     std::vector<int> octs;
@@ -43,7 +53,7 @@ void HydroSolver::godunov_fine(int ilevel, real_t dt, real_t dx) {
     real_t gamma = grid_.gamma;
     real_t dtdx = dt / dx;
     int slope_type = config_.get_int("hydro_params", "slope_type", 1);
-    bool verbose = config_.get_bool("run_params", "verbose", false);
+    // std::cout << "[DEBUG slope] slope_type = " << slope_type << " config_raw = " << config_.get("hydro_params", "slope_type", "NONE") << std::endl;
     static bool first_print = true;
     if (first_print && ilevel == 0 && MpiManager::instance().rank() == 0 && verbose) {
         std::cout << "[HydroSolver] Using slope_type=" << slope_type << " Riemann=" << config_.get("hydro_params", "riemann", "hllc") << std::endl;
@@ -112,7 +122,7 @@ void HydroSolver::godunov_fine(int ilevel, real_t dt, real_t dx) {
             for (int side = 0; side < 2; ++side) {
                 int id_n = icn[idim * 2 + side];
                 real_t ql_f[20], qr_f[20], flux[20];
-                bool is_refined = (id_n > 0 && grid_.son.at(id_n - 1) > 0);
+                bool is_refined = (id_n > 0 && (grid_.son.at(id_n - 1) > 0 || cell_levels[id_n] > ilevel));
                 if (is_refined) {
                     // Refined interface: set flux to zero as it will be updated at the finer level.
                     std::fill(flux, flux + grid_.nvar, 0.0);
@@ -137,18 +147,103 @@ void HydroSolver::godunov_fine(int ilevel, real_t dt, real_t dx) {
                         int id_n0 = id_n - 1;
                         if (id_n > 0 && !grid_.son[id_n0] && cell_levels[id_n] == ilevel) {
                             // Neighbor is at the same level; use pre-computed traces
+                            if (verbose) {
+                                static int branch_same = 0;
+                                if (branch_same < 10 && ilevel == 4) {
+                                    std::cout << "[DEBUG branch] SAME level for idc_0=" << idc_0 << " id_n=" << id_n << " side=" << side << std::endl;
+                                    branch_same++;
+                                }
+                            }
                             if (side == 0) { // Cell i, interface i-1/2. Neighbor is i-1.
                                 for(int iv=1; iv<=grid_.nvar; ++iv) { ql_f[iv-1] = get_qr(id_n0, idim, iv); qr_f[iv-1] = get_ql(idc_0, idim, iv); }
                             } else { // Cell i, interface i+1/2. Neighbor is i+1.
                                 for(int iv=1; iv<=grid_.nvar; ++iv) { ql_f[iv-1] = get_qr(idc_0, idim, iv); qr_f[iv-1] = get_ql(id_n0, idim, iv); }
                             }
                         } else {
-                            // Fallback for interface cells: use raw cell primitives
-                            real_t u_nb[20], q_nb[20];
-                            for(int iv=1; iv<=grid_.nvar; ++iv) u_nb[iv-1] = grid_.uold(id_n, iv);
-                            ctoprim(u_nb, q_nb, gamma);
-                            if (side == 0) { for(int iv=0; iv<grid_.nvar; ++iv) { ql_f[iv] = q_nb[iv]; qr_f[iv] = get_ql(idc_0, idim, iv+1); } }
-                            else { for(int iv=0; iv<grid_.nvar; ++iv) { ql_f[iv] = get_qr(idc_0, idim, iv+1); qr_f[iv] = q_nb[iv]; } }
+                            // Interpolate dynamically from coarse neighbor id_n (at level ilevel - 1)
+                            if (verbose) {
+                                static int branch_coarse = 0;
+                                if (branch_coarse < 10 && ilevel == 4) {
+                                    std::cout << "[DEBUG branch] COARSE level for idc_0=" << idc_0 << " id_n=" << id_n << " side=" << side << " cell_levels[id_n]=" << (id_n > 0 ? cell_levels[id_n] : -1) << std::endl;
+                                    branch_coarse++;
+                                }
+                            }
+                            real_t q_nb[20] = {0};
+                            
+                            // 1. Get center primitive variables
+                            real_t u_c[20], q_c[20];
+                            for(int iv=1; iv<=grid_.nvar; ++iv) u_c[iv-1] = grid_.uold(id_n, iv);
+                            ctoprim(u_c, q_c, gamma);
+                            
+                            // 2. Get neighbor cells of id_n at level ilevel - 1
+                            int icn_p[6] = {0};
+                            if (id_n <= grid_.ncoarse) {
+                                grid_.get_nbor_cells_coarse(id_n, icn_p);
+                            } else {
+                                int ig_p = ((id_n - grid_.ncoarse - 1) % grid_.ngridmax) + 1;
+                                int ic_p = ((id_n - grid_.ncoarse - 1) / grid_.ngridmax) + 1;
+                                int ign_p[7]; grid_.get_nbor_grids(ig_p, ign_p);
+                                grid_.get_nbor_cells(ign_p, ic_p, icn_p, ig_p);
+                            }
+                            
+                            // 3. Get primitive variables of left/right neighbors in direction idim
+                            int id_l = icn_p[idim*2];
+                            int id_r = icn_p[idim*2+1];
+                            real_t q_l[20], q_r[20];
+                            
+                            auto get_nb_q_coarse = [&](int id, int side, real_t q_out[20]) {
+                                if (id > 0) {
+                                    real_t u_nb[20];
+                                    for(int iv=1; iv<=grid_.nvar; ++iv) u_nb[iv-1] = grid_.uold(id, iv);
+                                    ctoprim(u_nb, q_out, gamma);
+                                } else {
+                                    for(int iv=0; iv<grid_.nvar; ++iv) q_out[iv] = q_c[iv];
+                                    int ib = -id;
+                                    if (ib > 0 && ib <= (int)grid_.bound_type.size() && grid_.bound_type[ib - 1] == 1) {
+                                        q_out[1 + idim] *= -1.0;
+                                    }
+                                }
+                            };
+                            
+                            get_nb_q_coarse(id_l, 0, q_l);
+                            get_nb_q_coarse(id_r, 1, q_r);
+                            
+                            // Swap velocity components for 1D slope computation if idim > 0
+                            if (idim > 0) {
+                                std::swap(q_l[1], q_l[1+idim]);
+                                std::swap(q_c[1], q_c[1+idim]);
+                                std::swap(q_r[1], q_r[1+idim]);
+                            }
+                            
+                            // 4. Compute slope and time-evolve to the interface
+                            int interpol_type = config_.get_int("refine_params", "interpol_type", 1);
+                            real_t dq_coarse[20] = {0};
+                            real_t dx_coarse = 2.0 * dx; // Coarse neighbor is 2x larger
+                            for (int iv = 0; iv < grid_.nvar; ++iv) {
+                                real_t dlft = q_c[iv] - q_l[iv];
+                                real_t drgt = q_r[iv] - q_c[iv];
+                                real_t slope = 0.0;
+                                if (interpol_type > 0 && dlft * drgt > 0.0) {
+                                    real_t sgn = (dlft >= 0.0) ? 1.0 : -1.0;
+                                    slope = sgn * std::min(std::abs(dlft), std::abs(drgt));
+                                }
+                                dq_coarse[iv] = slope / dx_coarse;
+                            }
+                            
+                            real_t qm_nb[20], qp_nb[20];
+                            trace(q_c, dq_coarse, dt, dx_coarse, qm_nb, qp_nb, gamma);
+
+                            // Swap back if idim > 0
+                            if (idim > 0) {
+                                std::swap(qm_nb[1], qm_nb[1+idim]);
+                                std::swap(qp_nb[1], qp_nb[1+idim]);
+                            }
+                            
+                            if (side == 0) { 
+                                for(int iv=0; iv<grid_.nvar; ++iv) { ql_f[iv] = qm_nb[iv]; qr_f[iv] = get_ql(idc_0, idim, iv+1); } 
+                            } else { 
+                                for(int iv=0; iv<grid_.nvar; ++iv) { ql_f[iv] = get_qr(idc_0, idim, iv+1); qr_f[iv] = qp_nb[iv]; } 
+                            }
                         }
                     }
                     if (idim > 0) { std::swap(ql_f[1], ql_f[1+idim]); std::swap(qr_f[1], qr_f[1+idim]); }
@@ -244,6 +339,14 @@ void HydroSolver::godunov_fine(int ilevel, real_t dt, real_t dx) {
             grid_.unew(idc_0 + 1, iener) = d_curr*1e-10/(gamma-1.0) + 0.5*d_curr*v2_curr + e_non;
         }
         grid_.unew(idc_0 + 1, iener) = std::min(grid_.unew(idc_0 + 1, iener), d_curr * 1e8);
+        if (verbose) {
+            static int print_count = 0;
+            if (print_count < 32 && ilevel == 4) {
+                std::cout << "[DEBUG flux_sum] idc=" << (idc_0 + 1) << " level=" << ilevel
+                          << " flux_sum[0]=" << flux_sum[0] << " flux_sum[1]=" << flux_sum[1] << " flux_sum[2]=" << flux_sum[2] << std::endl;
+                print_count++;
+            }
+        }
     };
 
     if (do_level_0) {
@@ -375,6 +478,20 @@ void HydroSolver::compute_slopes(int idc, const int icelln[6], int idim, real_t 
             real_t dlim = std::min(std::abs(dlft_s), std::abs(drgt_s));
             if (dlft_s * drgt_s <= 0.0) dlim = 0.0;
             dq[iv] = dsgn * dlim / dx;
+
+            // Safety fallback: if the reconstructed interface states overshoot the neighbors, fall back to minmod
+            if (slope_type == 5 && iv == 0) {
+                real_t qp_test = qc[iv] - 0.5 * dlim;
+                real_t qm_test = qc[iv] + 0.5 * dlim;
+                real_t min_q = std::min({ql[iv], qc[iv], qr[iv]});
+                real_t max_q = std::max({ql[iv], qc[iv], qr[iv]});
+                if (qp_test < min_q || qp_test > max_q || qm_test < min_q || qm_test > max_q) {
+                    real_t dcen = 0.5 * (dlft_raw + drgt_raw);
+                    real_t dlim_minmod = std::min(std::abs(dlft_raw), std::abs(drgt_raw));
+                    if (dlft_raw * drgt_raw <= 0.0) dlim_minmod = 0.0;
+                    dq[iv] = dsgn * dlim_minmod / dx;
+                }
+            }
         }
         return;
     }
@@ -416,6 +533,7 @@ void HydroSolver::compute_slopes(int idc, const int icelln[6], int idim, real_t 
             dq[iv] = dsgn * dlim / dx;
         }
     }
+    // No compute_slopes prints
 }
 
 void HydroSolver::trace(const real_t q[], const real_t dq[], real_t dt, real_t dx, real_t qm[], real_t qp[], real_t gamma) {
@@ -441,38 +559,67 @@ void HydroSolver::trace(const real_t q[], const real_t dq[], real_t dt, real_t d
 
         qp[iv] = q[iv] - 0.5 * dx * dqi + 0.5 * dt * dq_dt;
         qm[iv] = q[iv] + 0.5 * dx * dqi + 0.5 * dt * dq_dt;
+
+        // Ensure states don't explode
         if (iv == 0) {
-            if (qp[iv] < 1e-10) qp[iv] = r;
-            if (qp[iv] > 1e6) qp[iv] = 1e6;
-            if (qm[iv] < 1e-10) qm[iv] = r;
-            if (qm[iv] > 1e6) qm[iv] = 1e6;
-        } else if (iv == iener) {
-            if (qp[iv] < r * 1e-20) qp[iv] = r * 1e-20;
-            if (qm[iv] < r * 1e-20) qm[iv] = r * 1e-20;
-            qp[iv] = std::min(qp[iv], r * 1e2);
-            qm[iv] = std::min(qm[iv], r * 1e2);
+            qp[iv] = std::max(r * (real_t)1e-2, std::min(r * (real_t)1e2, qp[iv]));
+            qm[iv] = std::max(r * (real_t)1e-2, std::min(r * (real_t)1e2, qm[iv]));
+        } else if (iv == NDIM + 1) {
+            qp[iv] = std::max(p * (real_t)1e-2, std::min(p * (real_t)1e2, qp[iv]));
+            qm[iv] = std::max(p * (real_t)1e-2, std::min(p * (real_t)1e2, qm[iv]));
         } else if (iv > 0 && iv <= NDIM) {
-            qp[iv] = std::clamp(qp[iv], -10.0, 10.0);
-            qm[iv] = std::clamp(qm[iv], -10.0, 10.0);
+            qp[iv] = std::clamp(qp[iv], (real_t)-1e3, (real_t)1e3);
+            qm[iv] = std::clamp(qm[iv], (real_t)-1e3, (real_t)1e3);
         }
     }
+    // No trace prints here
 }
 
 void HydroSolver::interpol_hydro(const real_t u1[7][64], real_t u2[8][64]) {
     int nvar = grid_.nvar; real_t gam = grid_.gamma;
     real_t q1[7][64], q2[8][64];
     for (int i = 0; i < 7; ++i) ctoprim(u1[i], q1[i], gam);
+    
+    int interpol_type = config_.get_int("refine_params", "interpol_type", 1);
+
     for (int iv = 0; iv < nvar; ++iv) {
         real_t slopes[3] = {0,0,0};
         for (int idim = 0; idim < NDIM; ++idim) {
-            real_t dlft = q1[0][iv] - q1[2*idim+1][iv], drgt = q1[2*idim+2][iv] - q1[0][iv];
-            if (dlft * drgt > 0.0) { real_t sgn = (dlft >= 0.0) ? 1.0 : -1.0; slopes[idim] = sgn * std::min({2.0*std::abs(dlft), 2.0*std::abs(drgt), 0.5*std::abs(dlft+drgt)}); }
+            real_t dlft = q1[0][iv] - q1[2*idim+1][iv];
+            real_t drgt = q1[2*idim+2][iv] - q1[0][iv];
+            if (dlft * drgt > 0.0) {
+                real_t sgn = (dlft >= 0.0) ? 1.0 : -1.0;
+                if (interpol_type == 1) {
+                    slopes[idim] = sgn * 0.5 * std::min(std::abs(dlft), std::abs(drgt));
+                } else if (interpol_type == 2) {
+                    slopes[idim] = sgn * std::min({std::abs(dlft), std::abs(drgt), 0.25*std::abs(dlft+drgt)});
+                } else if (interpol_type == 3) {
+                    slopes[idim] = 0.25 * (dlft + drgt);
+                } else {
+                    slopes[idim] = 0.0;
+                }
+            }
         }
         for (int i = 0; i < 8; ++i) {
             int ix = i & 1, iy = (i & 2) >> 1, iz = (i & 4) >> 2;
             q2[i][iv] = q1[0][iv] + (ix-0.5)*slopes[0] + (iy-0.5)*slopes[1] + (iz-0.5)*slopes[2];
         }
     }
+    // Correct total momentum keeping the slope fixed (momentum conservation)
+    int n2d = 1 << NDIM;
+    real_t oneover_n2d = 1.0 / n2d;
+    for (int d_idx = 1; d_idx <= NDIM; ++d_idx) {
+        real_t mom_sum = 0.0;
+        for (int i = 0; i < n2d; ++i) {
+            mom_sum += q2[i][0] * q2[i][d_idx] * oneover_n2d;
+        }
+        real_t mom_err = mom_sum - u1[0][d_idx];
+        for (int i = 0; i < n2d; ++i) {
+            real_t d = std::max(q2[i][0], (real_t)1e-10);
+            q2[i][d_idx] = (d * q2[i][d_idx] - mom_err) / d;
+        }
+    }
+
     int iener = NDIM + 1;
     for (int i = 0; i < 8; ++i) {
         real_t d = std::max(q2[i][0], 1e-10);

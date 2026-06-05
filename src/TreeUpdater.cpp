@@ -88,28 +88,41 @@ void TreeUpdater::make_grid_fine(int ilevel) {
             }
         }
         
+        int icn_coarse_nb[6] = {0};
+        if (ilevel == 1) {
+            for(int idim=0; idim<NDIM; ++idim) {
+                icn_coarse_nb[idim*2] = get_nbor_of_coarse(grid_, ic_coarse, idim, 0);
+                icn_coarse_nb[idim*2+1] = get_nbor_of_coarse(grid_, ic_coarse, idim, 1);
+            }
+        } else {
+            int ig_coarse = ((ic_coarse - 1 - grid_.ncoarse) % grid_.ngridmax) + 1;
+            int ic_pos = ((ic_coarse - 1 - grid_.ncoarse) / grid_.ngridmax) + 1;
+            int ign_coarse[7]; grid_.get_nbor_grids(ig_coarse, ign_coarse);
+            grid_.get_nbor_cells(ign_coarse, ic_pos, icn_coarse_nb, ig_coarse);
+        }
+
         real_t u1[7][64] = {0}, u2[8][64] = {0};
         for(int iv=1; iv<=grid_.nvar; ++iv) u1[0][iv-1] = grid_.uold(ic_coarse, iv);
         
-        int icn_ref[6] = {0};
-        if (ilevel > 1) {
-            int ig_ref = ((ic_coarse - 1 - grid_.ncoarse) % grid_.ngridmax) + 1;
-            int ic_ref = ((ic_coarse - 1 - grid_.ncoarse) / grid_.ngridmax) + 1;
-            int ign_ref[7] = {0}; grid_.get_nbor_grids(ig_ref, ign_ref);
-            grid_.get_nbor_cells(ign_ref, ic_ref, icn_ref, ig_ref);
-        } else {
-            for(int idim=0; idim<NDIM; ++idim) {
-                icn_ref[idim*2] = get_nbor_of_coarse(grid_, ic_coarse, idim, 0);
-                icn_ref[idim*2+1] = get_nbor_of_coarse(grid_, ic_coarse, idim, 1);
+        for (int i = 1; i <= 6; ++i) {
+            int id_n = icn_coarse_nb[i - 1];
+            if (id_n > 0) {
+                for (int iv = 1; iv <= grid_.nvar; ++iv) {
+                    u1[i][iv - 1] = grid_.uold(id_n, iv);
+                }
+            } else {
+                for (int iv = 1; iv <= grid_.nvar; ++iv) {
+                    u1[i][iv - 1] = u1[0][iv - 1];
+                }
+                int ib = -id_n;
+                if (ib > 0 && ib <= (int)grid_.bound_type.size() && grid_.bound_type.at(ib-1) == 1) {
+                    int idim = (i - 1) / 2;
+                    u1[i][1 + idim] *= -1.0;
+                }
             }
         }
-        for(int idim=0; idim<NDIM; ++idim) {
-            int id_l = icn_ref[idim*2], id_r = icn_ref[idim*2+1];
-            if (id_l > 0) { for(int iv=1; iv<=grid_.nvar; ++iv) { if(iv<=64) u1[2*idim+1][iv-1] = grid_.uold(id_l, iv); } }
-            else { for(int iv=1; iv<=grid_.nvar; ++iv) { if(iv<=64) u1[2*idim+1][iv-1] = u1[0][iv-1]; } }
-            if (id_r > 0) { for(int iv=1; iv<=grid_.nvar; ++iv) { if(iv<=64) u1[2*idim+2][iv-1] = grid_.uold(id_r, iv); } }
-            else { for(int iv=1; iv<=grid_.nvar; ++iv) { if(iv<=64) u1[2*idim+2][iv-1] = u1[0][iv-1]; } }
-        }
+        
+        int icn_ref[6] = {0};
         grid_.interpol(u1, u2);
         
         for (int isc = 1; isc <= n2d; ++isc) {

@@ -36,6 +36,7 @@ void AmrGrid::allocate(int nx_val, int ny_val, int nz_val, int ngridmax_val, int
     f_vec.assign(3 * ncell, 0.0);
     uold_vec.assign(nvar * ncell, 0.0);
     unew_vec.assign(nvar * ncell, 0.0);
+    hilbert_keys.assign(ncell, 0.0);
 
     // Particles (default allocation, can be resized)
     npart = 0; npartmax = ngridmax * 10; // Rule of thumb

@@ -182,30 +182,27 @@ void Simulation::initialize(const std::string& nml_path) {
     real_t ev = config_.get_double("refine_params", "err_grad_v", -1.0);
     real_t eb2 = config_.get_double("refine_params", "err_grad_b2", -1.0);
 
-    for (int ipass = 1; ipass <= levelmax; ++ipass) {
-        initializer_->apply_all(); // Ensure all existing grids are analytically initialized before flagging
-        for (int il = levelmax - 1; il >= 1; --il) {
-            updater_.restrict_fine(il);
-        }
-        // Flag all levels in descending order
-        for (int il = levelmax; il >= 1; --il) {
-            updater_.flag_fine(il, ed, ep, ev, eb2, {}, nexpand_[std::min(il, 32)]);
-        }
-        // Refine and initialize all levels in ascending order
-        for (int il = 1; il <= levelmax; ++il) {
-            updater_.make_grid_fine(il);
-            updater_.remove_grid_fine(il);
-        }
+    // Standard RAMSES-style level-by-level mesh initialization
+    for (int il = 1; il <= levelmax; ++il) {
+        // Analytic initialization of existing grids at all levels
+        initializer_->apply_all();
+        
+        // Flag and refine at current level
+        updater_.flag_fine(il, ed, ep, ev, eb2, {}, nexpand_[std::min(il, 32)]);
+        updater_.make_grid_fine(il);
+        
         grid_.synchronize_level_counts();
         if (MpiManager::instance().size() > 1) {
             load_balancer_.calculate_hilbert_keys();
             load_balancer_.balance();
         }
-        particles_->relink();
     }
 
     nstep_ = 0;
     initializer_->apply_all();
+    for (int il = levelmax - 1; il >= 0; --il) {
+        updater_.restrict_fine(il);
+    }
     if (config_.get_bool("run_params", "turb", false)) turb_->init();
     if (config_.get_bool("run_params", "sink", false)) sink_->init();
     for (int il = levelmax - 1; il >= 1; --il) updater_.restrict_fine(il);
@@ -336,6 +333,10 @@ void Simulation::run() {
                 printf(" Step=%d t=%12.5e dt=%10.3e min_rho=%10.3e max_rho=%10.3e time_elapsed=%8.2fs total_time=%8.2fs\n", nstep_, t_, dt, min_rho, max_rho, duration, total_time);
             }
         }
+    }
+
+    if (snapshot_count <= 2) {
+        dump_snapshot(snapshot_count++);
     }
 
     if (MpiManager::instance().rank() == 0) {

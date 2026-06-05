@@ -12,18 +12,13 @@ RAMSES-CPP is a modern C++17 port of the legacy [RAMSES-2025](https://github.com
 
 ## Build System
 
-CMake >= 3.15 is required. The build produces three executables (`ramses_1d`, `ramses_2d`, `ramses_3d`) and a verification tool (`verify_ref`).
+CMake >= 3.15 is required. The build produces three optimized executables (`ramses_1d`, `ramses_2d`, `ramses_3d`) and a verification tool (`verify_ref`).
 
 ```bash
 mkdir -p build && cd build
+# Release builds are 9.2x faster than Debug (default is Release)
 cmake .. -DRAMSES_NDIM=3 -DRAMSES_USE_MPI=OFF -DRAMSES_USE_MHD=ON -DRAMSES_USE_RT=ON
 make -j$(nproc)
-
-# For Debug builds (slower, but useful for debugging):
-# cmake .. -DCMAKE_BUILD_TYPE=Debug
-# make -j$(nproc)
-
-Pre-commit hooks are configured to check for trailing whitespace and EOF issues. Run `pre-commit install` to set them up.
 ```
 
 Key CMake flags:
@@ -37,116 +32,74 @@ Key CMake flags:
 - `RAMSES_NGROUPS` / `RAMSES_NIONS` — RT photon groups / ion species
 - `RAMSES_LONGINT` — Use 64-bit grid IDs (`ON`/`OFF`)
 
-These flags become compile-time `#define` macros (e.g., `NDIM=3`, `MHD`, `RT`). The `NDIM` macro is defined per target so all three dimensionality libraries are built simultaneously from the same sources.
+These flags become compile-time `#define` macros (e.g., `NDIM=3`, `MHD`, `RT`). The build system only compiles the target dimensionality specified by `RAMSES_NDIM` to optimize build times.
 
 ## Running Simulations
 
-Simulations take a RAMSES `.nml` namelist file as the sole argument:
+Simulations take a RAMSES `.nml` namelist file as the sole argument. **ALWAYS use `timeout`** to prevent indefinite stalls due to numerical instability:
 
 ```bash
+# Set PYTHONPATH for visualization/analysis scripts
+export PYTHONPATH=${PYTHONPATH}:$(pwd)/tests/visu
+
 ./build/ramses_3d namelist/sedov3d.nml
+
 # MPI
 mpirun -np 8 ./build/ramses_3d namelist/sedov3d.nml
 ```
 
-Pre-configured namelists live in `namelist/`. Each test case in `tests/` has its own `.nml` alongside a `config.txt` that records the `FLAGS` used for compilation (e.g., `FLAGS: NDIM=1 SOLVER=hydro`).
+Pre-configured namelists live in `namelist/`. Each test case in `tests/` has its own `.nml` alongside a `config.txt` that records the `FLAGS` used for compilation.
 
 ## Testing
 
-**Always use `timeout` — simulations can stall indefinitely due to numerical instability.**
-
 ```bash
-export PYTHONPATH=${PYTHONPATH}:$(pwd)/tests/visu
-
-# Run all tests
+# Run all tests (with 10m timeout)
 cd tests && timeout 10m ./run_test_suite.sh
 
 # Run a specific test category
 cd tests && timeout 10m ./run_test_suite.sh -t hydro
 cd tests && timeout 10m ./run_test_suite.sh -t mhd
-
-# Run specific test numbers
-cd tests && timeout 10m ./run_test_suite.sh -t 3-5,10
-
-# Parallel run (4 MPI ranks)
-cd tests && timeout 10m ./run_test_suite.sh -p 4
 ```
 
-The test runner reads each test's `config.txt`, re-invokes `cmake` with the appropriate flags, runs the simulation, and calls the `plot-*.py` script which prints `PASSED` or `FAILED`. Results are written to `tests/test_suite.log` and a `test_results.pdf`.
-
 ### Snapshot Parity Verification
-
+The primary goal is **binary parity** with legacy RAMSES. Use the internal tool to verify:
 ```bash
 cd build && ./verify_ref <reference_snapshot> <local_snapshot>
-# e.g.:
-./verify_ref tests/hydro/sod-tube/output_00001/hydro_00001.out00001 \
-             /tmp/output_00001/hydro_00001.out00001
 ```
 
 ## Architecture
 
 ### Core Data Structure: `AmrGrid`
 
-`AmrGrid` (`include/ramses/AmrGrid.hpp`) is the central data store for the entire AMR octree. It owns all grid and particle arrays as flat `std::vector`s with Fortran-style 1-based indexing. Key conventions:
+`AmrGrid` (`include/ramses/AmrGrid.hpp`) is the central data store for the entire AMR octree.
+- **Dynamic Resizing:** Grid storage grows automatically via `resize_grids()` to prevent overflow during refinement.
+- **1-Based Indexing:** Uses Fortran-style 1-based indexing for parity. Coarse cells are Level 0; refined grids are Level 1+.
+- **Linked Lists:** `headl(icpu, ilevel)` tracks grids; `son` and `father` arrays define the hierarchy.
 
-- Coarse cells (level 0) occupy indices `1..ncoarse`; refined cells start at `ncoarse+1`
-- `headl(icpu, ilevel)` / `taill` / `numbl` — linked lists of grids per (rank, level)
-- `son[igrid]` — index of the first child cell; `father[igrid]` — parent cell index
-- `nbor[iface * ngridmax + igrid - 1]` — neighbor grid indices (0..5) for ghost zone exchange
-- `xg[igrid * 3]` — oct center coordinates (3D storage even for 1D/2D; unused dims default to `0.5 * boxlen`)
-- `uold_vec` / `unew_vec` — conservative hydro variables, layout: `[nvar][ncell]`
-- Particles: `xp`, `vp`, `mp`, `tp`, `zp`, `idp`, `family`, `tag` — families are `FAM_DM=1`, `FAM_STAR=2`, `FAM_SINK=3`, `FAM_TRACER=6` (see `Types.hpp`)
+### Solver Pattern & Phase 45 Updates
 
-### `Simulation` and the Time-Step Loop
-
-`Simulation` (`src/Simulation.cpp`) drives everything:
-1. `initialize(nml_path)` — parses the `.nml` file via `Config`, instantiates all solvers through `SolverFactory`, and builds the initial AMR tree via `Initializer` inside the refinement loop.
-2. `run()` — top-level time loop calling `amr_step(0, dt)`.
-3. `amr_step(ilevel, dt)` — recursive sub-cycling: applies hydro/MHD/RT/gravity at each level before recursing to `ilevel+1`. Calls `TreeUpdater` to refine/coarsen after each level step.
-
-### Solver Pattern
-
-All physics modules are polymorphic classes instantiated by free functions in `SolverFactory` (`src/SolverFactory.cpp`). Each solver takes `AmrGrid&` and `Config&` in its constructor and is owned by `Simulation` via `std::unique_ptr`. To add a new physics module: implement a class derived from the relevant base, register a factory function in `SolverFactory.hpp/.cpp`, and add the `std::unique_ptr` member to `Simulation`.
+All physics modules are polymorphic classes instantiated by `SolverFactory`. 
+**Phase 45** integrated missing Riemann solvers:
+- `RiemannSolver::solve_acoustic` — Exact acoustic solver.
+- `RiemannSolver::solve_godunov_nr` — Exact multi-dimensional Godunov solver (Newton-Raphson).
+- **Slope Alignment:** `slope_type = 0` now correctly maps to zero slopes (first-order).
 
 Key solvers:
-- `HydroSolver` — MUSCL-Hancock Godunov scheme; slope limiting via `SlopeLimiter`; Riemann solvers in `RiemannSolver`
-- `MhdSolver` — Constrained-transport MHD on staggered grid (compile with `-DRAMSES_USE_MHD=ON`)
-- `RhdSolver` — Relativistic hydrodynamics with Newton-Raphson primitive recovery and TM EOS
-- `RtSolver` / `RtChemistry` — M1 radiative transfer (compile with `-DRAMSES_USE_RT=ON`)
-- `PoissonSolver` — Multi-grid self-gravity with comoving support
-- `ParticleSolver` — N-body + tracer particles with trilinear interpolation
-- `StarSolver` / `FeedbackSolver` — Star formation (Poisson statistics) and SN feedback
-- `SinkSolver` — Sink particles for sub-grid accretion
-- `TurbulenceSolver` — Stochastic spectral driving in Fourier space
-- `ClumpFinder` — On-the-fly density peak / saddle-point structure identification
-
-### I/O and Parity
-
-`RamsesWriter` / `RamsesReader` (`src/`) produce binary snapshots in **Fortran unformatted record** format using 4-byte record markers, exactly matching legacy RAMSES output. The snapshot level indexing uses `il + 1` (Level 0 in C++ → Level 1 in file). `Hdf5Writer` provides a parallel HDF5 alternative. Visualization uses `tests/visu/visu_ramses.py` (set `PYTHONPATH` as above).
-
-### Configuration Parsing
-
-`Config` (`src/Config.cpp`) parses RAMSES `.nml` files. It supports standard `&BLOCK / key=value /` syntax, Fortran array keys (`key(1:2)=val1,val2`), and case-insensitive lookups. Access values via `config.get_int("RUN_PARAMS", "nstepmax", 10)`, etc.
-
-### MPI
-
-`MpiManager` is a singleton. `LoadBalancer` distributes octs using Hilbert-curve keys (`Hilbert.cpp`). Build with `-DRAMSES_USE_MPI=ON` to activate; otherwise all MPI calls are no-ops.
-
-### Custom Patches
-
-C++ source files placed in `patch/` are automatically discovered by CMake and compiled in with `-DRAMSES_USE_CUSTOM_PATCHES`. This is the mechanism for porting legacy Fortran override files (see `tools/ramses-patch-porter`).
+- `HydroSolver` — MUSCL-Hancock Godunov scheme; supports `exact`, `hllc`, `llf`, and `acoustic` Riemann solvers.
+- `MhdSolver` — Constrained-transport MHD on staggered grid.
+- `ParticleSolver` — N-body + tracer particles (FAM_TRACER=6).
 
 ## Code Style & Porting Patterns
 
-- Translate Fortran idioms into safe, modern C++ patterns. Avoid C-style casts, unmanaged raw arrays (prefer `std::vector`), and magic numbers.
-- Do not bypass the type system or disable warnings. Use explicit instantiation and strong typing.
-- When porting logic, always cross-reference the original Fortran in `./legacy/`.
+- **Heritage:** Always cross-reference logic with the legacy Fortran in `./legacy/`.
+- **Strict Parity:** Do not change numerical algorithms or output formats unless specifically fixing a divergence from legacy.
+- **Documentation:** After significant changes, update `PORTING_HISTORY.md` and relevant docs in `docs/`.
 
-## Mandatory Documentation Updates
+## Mandatory Updates
 
-After any significant code change, update:
-- `PORTING_HISTORY.md` — log the phase, what changed, and why
-- `docs/` — update the relevant architecture/usage/physics markdown guide
-- `README.md` — if build instructions or project status changed
+After significant work, update:
+- `PORTING_HISTORY.md` — log the phase and changes.
+- `README.md` — if build/status changed.
+- `AGENT.md` (this file) — if conventions or architecture shifted.
 
-After updating docs, you are **explicitly expected to `git commit` and `git push`** the changes.
+You are **explicitly expected to `git commit` and `git push`** updates to documentation.
