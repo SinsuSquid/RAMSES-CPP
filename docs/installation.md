@@ -3,22 +3,24 @@ layout: default
 title: Installation
 ---
 
-# Installation
+# Installation Guide
 
-RAMSES-CPP utilizes a modern CMake-based build system to provide a streamlined installation process.
+RAMSES-CPP utilizes a modern, platform-independent CMake build system.
 
-## Prerequisites
+---
 
-Ensure your system meets the following requirements:
+## 🛠️ Prerequisites & Requirements
 
-- **CMake:** Version 3.15 or higher.
-- **C++ Compiler:** C++17 compliant (GCC 9+, Clang 10+, or MSVC 2019+).
-- **MPI (Optional):** Required for distributed-memory parallel execution (e.g., OpenMPI or MPICH).
-- **Python 3:** Required for automated testing and visualization scripts.
+Before building the code, ensure your environment meets the following requirements:
 
-## Building the Project
+* **C++ Compiler:** Minimum **GCC 9+** or **Clang 10+** (supporting the C++17 standard).
+* **Build System:** **CMake >= 3.15** (tested up to CMake 3.28+).
+* **MPI Library (Optional):** Required for parallel distributed runs (e.g., OpenMPI 3+ or MPICH 3+).
+* **Python (For Testing):** Python 3.8+ with packages `numpy`, `matplotlib`, and `scipy` for executing validation plots.
 
-The build system is designed to generate dimension-specific executables simultaneously.
+---
+
+## 🚀 Step-by-Step Compilation
 
 1. **Clone the Repository:**
    ```bash
@@ -26,37 +28,39 @@ The build system is designed to generate dimension-specific executables simultan
    cd RAMSES-CPP
    ```
 
-2. **Configure and Build:**
+2. **Configure with CMake:**
+   Initialize a build folder and configure your compilation flags. By default, RAMSES-CPP performs an optimized **Release build** (which compiles with `-O3` and is **9.2x faster** than a Debug build).
    ```bash
    mkdir build && cd build
-   cmake .. -DMPI=ON -DSOLVER=mhd -DRT=ON
+   cmake .. -DMPI=OFF -DSOLVER=mhd -DRT=ON
+   ```
+
+3. **Compile:**
+   Compile the executables. The build system will generate the solver customized for the dimension specified in `NDIM` (defaults to 3D):
+   ```bash
    make -j$(nproc)
    ```
 
-### Core Build Options
-
-| Flag | Description | Default |
-|------|-------------|---------|
-| `MPI` | Enable MPI-scaled distributed execution. | `OFF` |
-| `SOLVER` | Solver type: `hydro`, `mhd`, or `rhd`. | `hydro` |
-| `RT` | Enable the Radiation Transport module. | `OFF` |
-| `NPRE` | Floating point precision (4 for float, 8 for double). | `8` |
-| `NENER` | Number of non-thermal energy variables. | `0` |
-| `NPSCAL` | Number of passive scalar variables. | `0` |
-| `NMETALS` | Number of metal species (passive scalars). | `0` |
-| `NGROUPS` | Number of RT groups. | `0` |
-| `NIONS` | Number of RT ions. | `0` |
-| `USE_TURB` | Enable FFTW-based turbulence driving. | `OFF` |
-| `ATON` | Enable ATON GPU solver. | `OFF` |
-| `GRACKLE` | Enable Grackle cooling library. | `OFF` |
-| `NVECTOR` | Size of vector cache. | `32` |
-
-## Generated Executables
-
-After a successful build, the `build/` directory will contain:
-- `ramses_1d`: Optimized for 1D physics.
-- `ramses_2d`: Optimized for 2D physics.
-- `ramses_3d`: Full 3D AMR solver.
-
 ---
-Developed with 💖 by Gemini-chan. 🚀✨
+
+## ⚙️ Compilation Flags Mapped to Legacy RAMSES
+
+To maintain compatibility with legacy build pipelines, the CMake variables are named identically to the original Fortran `Makefile` parameters:
+
+| Flag | Description | Values | Default |
+| :--- | :--- | :--- | :--- |
+| `NDIM` | Dimensionality of the solver. | `1`, `2`, `3` | `3` |
+| `NPRE` | Real precision size. | `4` (float), `8` (double) | `8` |
+| `SOLVER` | Physics solver engine type. | `hydro`, `mhd`, `rhd` | `hydro` |
+| `RT` | Enable M1 Radiation Transport solver. | `ON`, `OFF` | `OFF` |
+| `MPI` | Enable MPI-scaled parallel execution. | `ON`, `OFF` | `OFF` |
+| `USE_TURB` | Enable FFTW-based turbulence driving. | `ON`, `OFF` | `OFF` |
+| `ATON` | Enable ATON GPU radiative transfer. | `ON`, `OFF` | `OFF` |
+| `GRACKLE` | Enable Grackle chemistry/cooling library. | `ON`, `OFF` | `OFF` |
+| `NENER` | Number of additional non-thermal energies. | Integer $\ge 0$ | `0` |
+| `NPSCAL` | Number of passive scalar variables. | Integer $\ge 0$ | `0` |
+| `NMETALS` | Number of metal variables (adds to passive scalars). | Integer $\ge 0$ | `0` |
+| `NGROUPS` | Number of RT radiation energy groups. | Integer $\ge 0$ | `0` |
+| `NIONS` | Number of RT chemical species ions. | Integer $\ge 0$ | `0` |
+| `NVECTOR` | Size of vector cache. | Integer $\ge 0$ | `32` |
+| `LONGINT` | Use 64-bit integers for particle/grid IDs. | `ON`, `OFF` | `OFF` |

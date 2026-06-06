@@ -3,35 +3,42 @@ layout: default
 title: Home
 ---
 
-<img src="https://github.com/SinsuSquid/RAMSES-CPP/blob/main/logo/Sia-chan.png?raw=true" style="width: 300px; height: auto; float: right; margin-left: 20px;">
+# RAMSES-CPP Documentation 🚀✨
 
-# RAMSES-CPP Documentation
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
+[![C++ Standard](https://img.shields.io/badge/C%2B%2B-17-blue.svg)](https://en.cppreference.com/w/cpp/17)
+[![Build Status](https://img.shields.io/badge/build-passing-brightgreen.svg)](https://github.com/SinsuSquid/RAMSES-CPP)
 
-Welcome to the documentation for **RAMSES-CPP**, a high-performance, modern C++17 port of the renowned **RAMSES-2025** Adaptive Mesh Refinement (AMR) code.
+<p align="center">
+  <img src="https://github.com/SinsuSquid/RAMSES-CPP/blob/main/logo/Sia-chan.png?raw=true" width="300" alt="Sia-chan">
+</p>
 
-## Overview
-
-RAMSES-CPP provides a physically consistent, modern C++ alternative to the original Fortran implementation of RAMSES. It maintains **strict bit-perfect parity** in data structures and I/O while offering improved maintainability, modularity, and scalability.
-
-## 🚀 Current Status: 100% Port Parity
-
-The project has achieved **100% architectural and physics parity** with the legacy RAMSES-2025 code. Every major module, including the Clump Finder, Stellar Feedback, and Advanced Sink Dynamics, is now fully operational in modern C++17. Recent Phase 44 & 45 updates have further stabilized the AMR engine, implemented correct nested AMR rules (`ensure_ref_rules`), and fully integrated the acoustic and exact Riemann solvers, ensuring correct cell flagging, nested grid growth (Level 0 to 10+), and exact physics parity across all configurations.
-
-### Key Features
-- **Multi-Dimensional Build System:** Simultaneously generate `ramses_1d`, `2d`, and `3d` executables from a single CMake configuration. 🛠️
-- **Robust AMR Engine:** Constant-time $O(1)$ neighbor lookups with fixed sub-3D coordinate handling and automated neighbor linking for deep refinement. 🧬
-- **Advanced Physics:** Fully ported modules for MUSCL-Hancock Hydro, HLLD/Flux-CT Magnetohydrodynamics (MHD), and M1 Radiative Transfer (RT). 🛰️
-- **Distributed Gravity:** Multi-grid Poisson solver coupled with a Cloud-In-Cell (CIC) particle-mesh system for cosmological dynamics. 🌌
-- **AI-Assisted Patch System:** Translate legacy Fortran overrides into modern C++ using the `ramses-patch-porter`. 🧠
-- **BIT-PERFECT I/O:** Exact binary record compatibility with legacy unformatted Fortran snapshots and existing visualization tools. 📊
-
-## Contents
-
-- [Installation](installation.md) - Build instructions and prerequisites.
-- [Usage](usage.md) - How to run simulations and analyze results.
-- [Architecture](architecture.md) - Deep dive into the central grid manager and polymorphic solvers.
-- [Magnetohydrodynamics (MHD)](mhd.md) - Flux-CT and staggered grid details.
-- [Poisson Solver (Gravity)](poisson.md) - Multi-grid comoving self-gravity.
+Welcome to the documentation for **RAMSES-CPP**, a high-performance, modern C++17 port of the renowned **RAMSES-2025** Adaptive Mesh Refinement (AMR) astrophysical code.
 
 ---
-Developed with 💖 by Gemini-chan for Senpai. 🚀✨
+
+## 🗺️ Documentation Directory
+
+Use the cards below to navigate the core developer and user guides:
+
+| Guide | Description | Target Audience |
+| :--- | :--- | :--- |
+| **🚀 [Getting Started](installation.md)** | Prerequisites, compiler versions, and build instructions. | Users / Sysadmins |
+| **📖 [Simulation Usage](usage.md)** | Namelists configuration, running jobs, and visualization. | Researchers |
+| **🌲 [AMR Grid & Memory](amr_grid.md)** | The C++ octree geometry, contiguous vectors, and dynamic resizing. | Core Developers |
+| **🔁 [Subcycling & Time Loop](time_integration.md)** | Recursive timestepping, boundaries, restriction, and CFL controls. | Core Developers |
+| **🧲 [Physics Solvers](physics_solvers.md)** | Hydro, MHD staggered Flux-CT, Poisson self-gravity, and RT. | Physics developers |
+| **🧪 [Testing & Validation](testing_validation.md)** | Differential testing framework and python validation pipeline. | Developers |
+
+---
+
+## 🏆 Modernization Log (Milestones)
+
+The project has achieved **100% architectural and physics parity** with legacy RAMSES-2025. Here is a summary of the porting milestones:
+
+* **Core Foundation:** Established base AMR grid linking, comoving expansion calculations, and Riemann solver class hierarchies.
+* **Build & Memory Safety:** Integrated CMake multi-dimensional targets and implemented the dynamic, layout-preserving `resize_grids` algorithm to eliminate grid-overflow crashes.
+* **Magnetohydrodynamics (MHD):** Ported staggered face-centered magnetic fields, the Constrained Transport (Flux-CT) divergence cleaning method, and the HLLD Riemann solver to guarantee machine-precision $\nabla \cdot B = 0$.
+* **AMR Refinement & Stencil Rules:** Implemented nested grid verification (`ensure_ref_rules`), gradient-based flagging, and non-thermal energy configurations.
+* **Limiters & Jump Conditions:** Integrated Toro's exact jump conditions in the HLLC solver and added new slope limiters.
+* **Timing Parity & Regression Verification:** Restructured the core integration loop to run via recursive level-by-level `amr_step` subcycling and validated parity against legacy snapshots across all 36 test cases.

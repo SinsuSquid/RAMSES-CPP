@@ -3,114 +3,73 @@ layout: default
 title: Usage
 ---
 
-# Usage Guide
+# Simulation Usage Guide
 
-RAMSES-CPP is fully compatible with the legacy RAMSES ecosystem, including namelists and visualization tools. Recent architectural fixes (Phase 32) have significantly improved stability for simulations requiring deep AMR refinement (up to Level 10 and beyond).
+This document describes how to execute simulations in RAMSES-CPP, configure namelist parameters, and verify outputs.
 
-## Running Simulations
+---
 
-To start a simulation, choose the executable matching your problem dimensionality and provide a standard RAMSES namelist file.
+## 🏃 Running Simulations
 
+RAMSES-CPP generates dimension-specific executables named `ramses_1d`, `ramses_2d`, and `ramses_3d` based on the configured `NDIM` CMake flag.
+
+### 1. Serial Execution
+To run a serial simulation, pass a standard RAMSES `.nml` namelist file as the sole argument:
 ```bash
-# Standard 3D execution
-./ramses_3d path/to/namelist.nml
-
-# MPI-scaled execution (e.g., 8 ranks)
-mpirun -np 8 ./ramses_3d path/to/namelist.nml
+./build/ramses_3d namelist/sedov3d.nml
 ```
 
-### Namelist Compatibility
-The project uses the standard RAMSES namelist format. Key blocks include:
-- `&RUN_PARAMS`: Control the simulation lifecycle (`hydro`, `poisson`, `ncontrol`, etc.).
-- `&AMR_PARAMS`: Grid resolution and refinement (`nx,ny,nz`, `levelmin`, `levelmax`).
-- `&HYDRO_PARAMS`: Fluid physics settings (`gamma`, `riemann`, `slope_type`).
-- `&SF_PARAMS`: Star formation settings (`n_star`, `eps_star`, `m_star`).
-- `&FEEDBACK_PARAMS`: Supernova and metal parameters (`yield`, `eta_sn`).
-- `&CLUMP_PARAMS`: Structure identification thresholds.
-- `&RT_PARAMS`: Radiation groups and parameters.
-
-## Star Formation and Feedback
-
-To enable star formation and stellar feedback:
-
-```fortran
-&RUN_PARAMS
-hydro=true
-poisson=true
-star=true
-/
-
-&SF_PARAMS
-n_star=0.1      ! SF density threshold [H/cc]
-eps_star=0.01   ! Efficiency per free-fall time
-m_star=1.5      ! Base star mass [Code units]
-/
-
-&FEEDBACK_PARAMS
-eta_sn=0.1      ! SN energy fraction
-yield=0.02      ! Metal yield
-/
+### 2. MPI Parallel Execution
+To run on multiple processors, use the standard `mpirun` wrapper:
+```bash
+mpirun -np 8 ./build/ramses_3d namelist/sedov3d.nml
 ```
 
-## Tracer Particles
+> [!WARNING]
+> **Safety Watchdog:** To prevent simulations from hanging indefinitely due to physics instabilities or tiny timesteps during development, always run tests or debug jobs with the `timeout` command:
+> `timeout 10m ./build/ramses_3d namelist/sedov3d.nml`
 
-Tracers are massless particles that follow the gas flow. They are useful for tracking the history of specific fluid elements.
+---
 
-```fortran
-&RUN_PARAMS
-hydro=true
-tracer=true
-/
+## ⚙️ Namelist Parameters
 
-&TRACER_PARAMS
-mc_tracer=false       ! Set to false for classical tracers
-tracer_feed_fmt='inplace'
-tracer_mass=1.0e-6    ! Targeted gas mass per tracer
-/
-```
+Simulation runs are configured using the standard Fortran namelist format, organized into parameter blocks. Key blocks include:
 
-## Structure Identification (ClumpFinder)
+### `&RUN_PARAMS`
+Controls the physical modules and solvers active in the run.
+* `hydro=true`: Enables the hydrodynamics/MHD fluid solver.
+* `poisson=true`: Enables the self-gravity Poisson solver.
+* `particles=true`: Enables N-body dark matter/stellar particles.
+* `pic=true`: Enables Particle-Mesh calculations.
 
-Enable clump finding in the snapshot dump:
+### `&AMR_PARAMS`
+Governs the grid resolution, refinement criteria, and domain size.
+* `nx, ny, nz`: Grid cell counts at the root level (Level 0).
+* `levelmin`: The base grid level (e.g., `4` corresponds to a $2^4 = 16$ grid).
+* `levelmax`: The maximum allowed refinement level.
+* `boxlen`: Size of the simulation domain (usually in code units).
 
-```fortran
-&RUN_PARAMS
-clumpfind=true
-/
+### `&HYDRO_PARAMS`
+Physical and numerical fluid dynamics configurations.
+* `gamma`: Adiabatic index (e.g., `1.4` for diatomic gas, `1.667` for monoatomic).
+* `courant_factor`: The CFL timestep restriction multiplier (default `0.8`).
+* `riemann`: The Riemann solver to use (`hllc`, `llf`, `exact`, etc.).
+* `slope_type`: Slope limiter for MUSCL reconstruction (`1`=MinMod, `2`=MC, `3`=Superbee).
 
-&CLUMP_PARAMS
-density_threshold=100.0
-/
-```
+---
 
-## Visualization and Analysis
+## 📊 Visualizing Results
 
-RAMSES-CPP maintains **Bit-Perfect Parity** in its binary outputs. This means you can use legacy `visu_ramses.py` or OSIRIS directly.
+Since RAMSES-CPP preserves **Bit-Perfect Binary Parity** in its output structures, you can analyze and visualize output snapshots using existing legacy python scripts (such as the standard `visu_ramses.py` or OSIRIS pipelines).
 
-### Python Plotting
-1. **Set PYTHONPATH:**
+### Python Setup Example
+To plot grid slices using the visualization modules in the test suite:
+1. Export the python path containing the visualization libraries:
    ```bash
    export PYTHONPATH=${PYTHONPATH}:$(pwd)/tests/visu
    ```
-2. **Execute Plotting Script:**
+2. Execute the python plotting scripts:
    ```bash
    python3 tests/hydro/advect1d/plot-advect1d.py
    ```
-
-## Automated Test Suite
-
-A comprehensive test suite is included to ensure physics and parity integrity.
-
-### Mandatory Watchdog Rule
-Always use the `timeout` command to prevent hangs during development:
-```bash
-cd tests
-timeout 10m ./run_test_suite.sh -t hydro
-```
-
-## Snapshot Verification
-
-You can compare output snapshots against reference snapshots using the comparison utilities located in the `tests/` directory (such as `tests/visu/visu_ramses.py`).
-
----
-*Pro Tip: Check the `namelist/` directory for pre-configured benchmark examples!* 🛰️✨
+This will parse the raw binary snapshot and generate a high-fidelity PDF showing the fluid variables alongside reference comparisons.
