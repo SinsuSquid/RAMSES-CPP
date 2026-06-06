@@ -352,7 +352,7 @@ void Simulation::run() {
         }
 
         // 5. Snapshot check
-        if (iout < (int)tout_.size() && t_ >= tout_[iout] - 1e-10 * dtnew_[p::levelmin]) {
+        if (iout < (int)tout_.size() && t_ >= tout_[iout] - 1e-10 * std::min(dtnew_[p::levelmin], p::boxlen)) {
             dump_snapshot(snapshot_count++); iout++;
         }
     }

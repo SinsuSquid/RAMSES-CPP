@@ -646,7 +646,7 @@ void HydroSolver::interpol_hydro(const real_t u1[7][64], real_t u2[8][64]) {
 
 real_t HydroSolver::compute_courant_step(int ilevel, real_t dx, real_t gamma, real_t courant_factor) {
     int myid = MpiManager::instance().rank() + 1;
-    real_t dt_max = 1e30;
+    real_t dt_max = params::boxlen / 1e-10;
     real_t max_dtdx = 0.1;
     real_t max_dt = max_dtdx * dx;
 
@@ -683,8 +683,18 @@ real_t HydroSolver::compute_courant_step(int ilevel, real_t dx, real_t gamma, re
             }
             
             real_t cs = get_cs(d, p, sum_gamma_p);
-            real_t v_mag = std::sqrt(v2);
-            dt_max = std::min(dt_max, courant_factor * dx / (v_mag + cs));
+            real_t u_wave = NDIM * cs;
+            for (int idim = 1; idim <= NDIM; ++idim) {
+                u_wave += std::abs(grid_.uold(id, 1 + idim) / d);
+            }
+            real_t a_grav = 0.0;
+            for (int idim = 1; idim <= NDIM; ++idim) {
+                a_grav += std::abs(grid_.f(id, idim));
+            }
+            real_t alpha = a_grav * dx / (u_wave * u_wave);
+            alpha = std::max(alpha, (real_t)0.0001);
+            real_t dt_cand = (dx / u_wave) * (std::sqrt(1.0 + 2.0 * courant_factor * alpha) - 1.0) / alpha;
+            dt_max = std::min(dt_max, dt_cand);
         }
     } else {
         int igrid = grid_.get_headl(myid, ilevel);
@@ -716,16 +726,17 @@ real_t HydroSolver::compute_courant_step(int ilevel, real_t dx, real_t gamma, re
                 }
                 
                 real_t cs = get_cs(d, p, sum_gamma_p);
-                real_t v_mag = std::sqrt(v2);
-                real_t dt_cfl = courant_factor * dx / (v_mag + cs);
-                real_t dt_grav = 1e30;
-                real_t max_acc = 0;
-                for(int idim=1; idim<=NDIM; ++idim) {
-                    real_t acc = std::abs(grid_.f(id, idim));
-                    if (acc > max_acc) max_acc = acc;
-                    if (acc > 0) dt_grav = std::min(dt_grav, courant_factor * std::sqrt(dx / acc));
+                real_t u_wave = NDIM * cs;
+                for (int idim = 1; idim <= NDIM; ++idim) {
+                    u_wave += std::abs(grid_.uold(id, 1 + idim) / d);
                 }
-                real_t dt_cand = std::min(dt_cfl, dt_grav);
+                real_t a_grav = 0.0;
+                for (int idim = 1; idim <= NDIM; ++idim) {
+                    a_grav += std::abs(grid_.f(id, idim));
+                }
+                real_t alpha = a_grav * dx / (u_wave * u_wave);
+                alpha = std::max(alpha, (real_t)0.0001);
+                real_t dt_cand = (dx / u_wave) * (std::sqrt(1.0 + 2.0 * courant_factor * alpha) - 1.0) / alpha;
                 /*
                 if (dt_cand < 1e-8) {
                     std::cout << "[DEBUG] Timestep collapse! idc=" << id << " max_acc=" << max_acc << " dt_cfl=" << dt_cfl << " dt_grav=" << dt_grav << " v_mag=" << v_mag << " cs=" << cs << std::endl;

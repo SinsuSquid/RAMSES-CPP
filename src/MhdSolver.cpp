@@ -65,7 +65,7 @@ void MhdSolver::set_uold(int ilevel) {
 }
 
 real_t MhdSolver::compute_courant_step(int ilevel, real_t dx, real_t gamma, real_t courant_factor) {
-    real_t dt_max = 1e30, smallr = 1e-10;
+    real_t dt_max = params::boxlen / 1e-10, smallr = 1e-10;
     int n2d = (1 << NDIM);
     for (int icpu = 1; icpu <= grid_.ncpu; ++icpu) {
         int igrid = grid_.headl(icpu, ilevel);
