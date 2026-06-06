@@ -144,6 +144,14 @@ void Simulation::initialize(const std::string& nml_path) {
     for (int i = levelmin; i < 33; ++i) {
         nsubcycle_[i] = 2;
     }
+    dtnew_.assign(33, 0.0);
+    dtold_.assign(33, 0.0);
+    courant_factor_ = config_.get_double("hydro_params", "courant_factor", 0.8);
+    err_grad_d_ = config_.get_double("refine_params", "err_grad_d", -1.0);
+    err_grad_p_ = config_.get_double("refine_params", "err_grad_p", -1.0);
+    err_grad_v_ = config_.get_double("refine_params", "err_grad_v", -1.0);
+    err_grad_b2_ = config_.get_double("refine_params", "err_grad_b2", -1.0);
+
     std::string nsub_s = config_.get("run_params", "nsubcycle", "");
     if (!nsub_s.empty()) {
         std::stringstream ss(nsub_s); std::string item; int l = levelmin;
@@ -182,30 +190,61 @@ void Simulation::initialize(const std::string& nml_path) {
     real_t ev = config_.get_double("refine_params", "err_grad_v", -1.0);
     real_t eb2 = config_.get_double("refine_params", "err_grad_b2", -1.0);
 
-    // Standard RAMSES-style level-by-level mesh initialization
-    for (int il = 1; il <= levelmax; ++il) {
-        // Analytic initialization of existing grids at all levels
+    // Strict RAMSES legacy init_refine alignment
+    int lmin = p::levelmin, lmax = p::nlevelmax;
+    
+    // Helper to perform the legacy "init_flow" (analytical init + restrict + BC)
+    auto legacy_init_flow = [&]() {
         initializer_->apply_all();
-        
-        // Flag and refine at current level
-        updater_.flag_fine(il, ed, ep, ev, eb2, {}, nexpand_[std::min(il, 32)]);
-        updater_.make_grid_fine(il);
-        
+        for (int il = lmax - 1; il >= 0; --il) {
+            updater_.restrict_fine(il);
+            // In a full port, we'd sync ghost cells here, but let's see if restrict is enough for flagging
+        }
+    };
+
+    // 1. Base refinement loop (1 to levelmin)
+    for (int il_ref = 1; il_ref <= lmin; ++il_ref) {
+        // Flag all levels (nlevelmax down to 1) like legacy flag subroutine
+        for (int il = lmax; il >= 1; --il) {
+            updater_.flag_fine(il, ed, ep, ev, eb2, {}, nexpand_[std::min(il, 32)]);
+        }
+        // Refine all levels (1 up to nlevelmax) like legacy refine subroutine
+        for (int il = 1; il <= lmax; ++il) {
+            updater_.make_grid_fine(il); // refine_fine
+        }
         grid_.synchronize_level_counts();
+    }
+
+    // 2. Further refinements (levelmin+1 to levelmax)
+    for (int il_ref = lmin + 1; il_ref <= lmax; ++il_ref) {
+        legacy_init_flow();
+        
+        // Flag all levels
+        for (int il = lmax; il >= 1; --il) {
+            updater_.flag_fine(il, ed, ep, ev, eb2, {}, nexpand_[std::min(il, 32)]);
+        }
+        // Refine all levels
+        updater_.make_grid_fine(0);
+        for (int il = 1; il < lmax; ++il) {
+            updater_.make_grid_fine(il);
+        }
+        grid_.synchronize_level_counts();
+        
         if (MpiManager::instance().size() > 1) {
             load_balancer_.calculate_hilbert_keys();
             load_balancer_.balance();
         }
+        
+        // Break if no more grids are being created (mimic legacy exit condition)
+        // For simplicity, we just run the full loop for now.
     }
 
+    // 3. Final flow initialization
     nstep_ = 0;
-    initializer_->apply_all();
-    for (int il = levelmax - 1; il >= 0; --il) {
-        updater_.restrict_fine(il);
-    }
+    legacy_init_flow();
+    
     if (config_.get_bool("run_params", "turb", false)) turb_->init();
     if (config_.get_bool("run_params", "sink", false)) sink_->init();
-    for (int il = levelmax - 1; il >= 1; --il) updater_.restrict_fine(il);
     particles_->relink();
 
     tend_ = config_.get_double("run_params", "tend", 1e10);
@@ -244,7 +283,6 @@ void Simulation::initialize(const std::string& nml_path) {
 }
 
 void Simulation::run() {
-    real_t courant = config_.get_double("hydro_params", "courant_factor", 0.8);
     int snapshot_count = 1;
     int iout = 0;
     
@@ -255,7 +293,7 @@ void Simulation::run() {
         if (verbose) {
             std::cout << "[Simulation] Starting simulation with NDIM=" << NDIM << std::endl;
             std::cout << "[Simulation] Boxlen=" << p::boxlen << " Levelmin=" << p::levelmin << " Levelmax=" << p::nlevelmax << std::endl;
-            std::cout << "[Simulation] Gamma=" << grid_.gamma << " Courant=" << courant << std::endl;
+            std::cout << "[Simulation] Gamma=" << grid_.gamma << " Courant=" << courant_factor_ << std::endl;
         }
         std::cout << "Initial mesh structure" << std::endl;
         for (int il = 1; il <= grid_.nlevelmax; ++il) {
@@ -270,44 +308,31 @@ void Simulation::run() {
     auto t_start_loop = std::chrono::high_resolution_clock::now();
     while (t_ < tout_.back() && nstep_ < nstepmax_) {
         auto t_step_start = std::chrono::high_resolution_clock::now();
-        real_t min_dt = 1e10;
-        real_t dx0 = p::boxlen / (real_t)p::nx;
-        min_dt = std::min(min_dt, hydro_->compute_courant_step(0, dx0, grid_.gamma, courant));
 
-        int cumulative_nsub = 1;
-        for (int il = 1; il <= grid_.nlevelmax; ++il) {
-            if (grid_.count_grids_at_level(il) == 0) continue;
-            real_t dx = p::boxlen / (real_t)(p::nx * (1 << il));
-            real_t dt_l = hydro_->compute_courant_step(il, dx, grid_.gamma, courant);
-            min_dt = std::min(min_dt, dt_l * cumulative_nsub);
-            int nsub = (il < (int)nsubcycle_.size()) ? nsubcycle_[il] : 1;
-            cumulative_nsub *= nsub;
+        // 1. Refine coarse domain (adaptive_loop.f90:158)
+        if (p::levelmin < p::nlevelmax) {
+             for (int il = 1; il <= p::levelmin; ++il) {
+                 updater_.make_grid_fine(il); // refine_fine
+             }
+             grid_.synchronize_level_counts();
         }
 
-        real_t global_min_dt = min_dt;
-#ifdef RAMSES_USE_MPI
-        if (MpiManager::instance().size() > 1) {
-            MPI_Allreduce(&min_dt, &global_min_dt, 1, MPI_DOUBLE, MPI_MIN, MPI_COMM_WORLD);
-        }
-#endif
-        real_t dt = global_min_dt;
-        bool exact_output_time = config_.get_bool("output_params", "exact_output_time", false);
-        if (exact_output_time && iout < (int)tout_.size()) {
-            dt = std::min(dt, tout_[iout] - t_);
-        }
+        // 2. Call amr_step for base level (adaptive_loop.f90:185)
+        amr_step(p::levelmin, 1);
 
-        amr_step(0, dt); t_ += dt; p::t = t_; nstep_++;
-
-        if (config_.get_bool("run_params", "cosmo", false)) {
-            real_t texp;
-            cosmo_.get_cosmo_params(t_, aexp_, hexp_, texp);
+        // 3. Restriction for whole domain (adaptive_loop.f90:188)
+        if (p::levelmin < p::nlevelmax) {
+             for (int il = p::levelmin - 1; il >= 1; --il) {
+                  updater_.restrict_fine(il);
+             }
         }
 
         particles_->relink();
 
-        if (iout < (int)tout_.size() && t_ >= tout_[iout] - 1e-10 * dt) {
+        if (iout < (int)tout_.size() && t_ >= tout_[iout] - 1e-10 * dtnew_[p::levelmin]) {
             dump_snapshot(snapshot_count++); iout++;
         }
+        
         if (true) {
             auto t_step_end = std::chrono::high_resolution_clock::now();
             double duration = std::chrono::duration<double>(t_step_end - t_step_start).count();
@@ -330,7 +355,7 @@ void Simulation::run() {
                 }
             }
             if (MpiManager::instance().rank() == 0) {
-                printf(" Step=%d t=%12.5e dt=%10.3e min_rho=%10.3e max_rho=%10.3e time_elapsed=%8.2fs total_time=%8.2fs\n", nstep_, t_, dt, min_rho, max_rho, duration, total_time);
+                printf(" Step=%d t=%12.5e dt=%10.3e min_rho=%10.3e max_rho=%10.3e time_elapsed=%8.2fs total_time=%8.2fs\n", nstep_, t_, dtnew_[p::levelmin], min_rho, max_rho, duration, total_time);
             }
         }
     }
@@ -347,100 +372,57 @@ void Simulation::run() {
     }
 }
 
-void Simulation::amr_step(int ilevel, real_t dt, int icount) {
+void Simulation::amr_step(int ilevel, int icount) {
     if (ilevel > grid_.nlevelmax) return;
-    bool grids_exist = (ilevel == 0) || (grid_.count_grids_at_level(ilevel) > 0);
-    if (!grids_exist) return;
+    if (grid_.count_grids_at_level(ilevel) == 0 && ilevel > 0) return;
 
     if (config_.get_bool("run_params", "verbose", false) && MpiManager::instance().rank() == 0) {
         std::cout << " Entering amr_step(" << icount << ") for level " << ilevel << std::endl;
     }
 
-    // Dynamic Refinement
-    // For nsub=2 at fine levels: only refine on last sub-step to avoid double-refinement
-    int nsub_here = (ilevel < (int)nsubcycle_.size()) ? nsubcycle_[ilevel] : 1;
-    bool should_refine = (nsub_here <= 1) || (icount >= nsub_here);
-    if (ilevel < grid_.nlevelmax && should_refine) {
-        updater_.make_grid_fine(ilevel + 1);
-        updater_.remove_grid_fine(ilevel + 1);
-        grid_.synchronize_level_counts();
+    // 1. Make new refinements and update boundaries
+    if (p::levelmin < p::nlevelmax) {
+        if (ilevel == p::levelmin || icount > 1) {
+            for (int i = ilevel; i <= p::nlevelmax; ++i) {
+                updater_.make_grid_fine(i + 1);
+                updater_.remove_grid_fine(i + 1);
+            }
+            grid_.synchronize_level_counts();
+        }
     }
 
+    // 2. Timestep calculation (newdt_fine)
     real_t dx = p::boxlen / (real_t)(p::nx * (1 << ilevel));
-    bool do_poisson = config_.get_bool("run_params", "poisson", false);
+    dtold_[ilevel] = dtnew_[ilevel];
+    dtnew_[ilevel] = hydro_->compute_courant_step(ilevel, dx, grid_.gamma, courant_factor_);
+    
+    if (ilevel > p::levelmin) {
+        dtnew_[ilevel] = std::min(dtnew_[ilevel], dtnew_[ilevel - 1] / (real_t)nsubcycle_[ilevel - 1]);
+    }
+    real_t dt = dtnew_[ilevel];
 
+    // 3. set_unew
 #ifdef MHD
     mhd_->set_unew(ilevel);
 #else
     hydro_->set_unew(ilevel);
 #endif
 
-    if (do_poisson) {
-        hydro_->synchro_hydro_fine(ilevel, -0.5 * dt);
-
-        // Calculate total mass and mean density for Poisson stability
-        real_t total_mass = 0, total_vol = 0;
-        int n2d_val = (1 << NDIM);
-        for (int i = 1; i <= grid_.ncoarse; ++i) {
-            real_t dx_c = p::boxlen / (real_t)p::nx;
-            real_t dV = std::pow(dx_c, NDIM);
-            if (grid_.son[i-1] == 0) { total_mass += grid_.uold(i, 1) * dV; total_vol += dV; }
-        }
-        for (int il = 1; il <= grid_.nlevelmax; ++il) {
-            int my_id = MpiManager::instance().rank() + 1;
-            int ig = grid_.get_headl(my_id, il);
-            real_t dx_l = p::boxlen / (real_t)(p::nx * (1 << il));
-            real_t dV = std::pow(dx_l, NDIM);
-            while (ig > 0) {
-                for (int ic = 1; ic <= n2d_val; ++ic) {
-                    int idc = grid_.ncoarse + (ic - 1) * grid_.ngridmax + ig - 1;
-                    if (grid_.son[idc] == 0) { total_mass += grid_.uold(idc + 1, 1) * dV; total_vol += dV; }
-                }
-                ig = grid_.next[ig - 1];
-            }
-        }
-        real_t global_mass = total_mass, global_vol = total_vol;
-#ifdef RAMSES_USE_MPI
-        if (MpiManager::instance().size() > 1) {
-            MPI_Allreduce(&total_mass, &global_mass, 1, MPI_DOUBLE, MPI_SUM, MPI_COMM_WORLD);
-            MPI_Allreduce(&total_vol, &global_vol, 1, MPI_DOUBLE, MPI_SUM, MPI_COMM_WORLD);
-        }
-#endif
-        real_t rho_mean = global_mass / std::max(global_vol, 1e-10);
-        
-        // Update density and aggregate for multi-grid
-        for (int il = ilevel; il >= 0; --il) rho_fine(il);
-        for (int il = ilevel; il >= 1; --il) {
-            int my_id = MpiManager::instance().rank() + 1;
-            int ig = grid_.get_headl(my_id, il);
-            while (ig > 0) {
-                int id_p = grid_.father[ig - 1];
-                if (id_p > 0) {
-                    real_t sum = 0;
-                    for (int ic = 1; ic <= n2d_val; ++ic) {
-                        size_t idx = (size_t)grid_.ncoarse + (size_t)(ic - 1) * grid_.ngridmax + ig - 1;
-                        sum += grid_.rho[idx];
-                    }
-                    grid_.rho[id_p - 1] += sum;
-                }
-                ig = grid_.next[ig - 1];
-            }
-        }
-        
-        real_t omega_m = config_.get_double("cosmo_params", "omega_m", 0.3);
-        poisson_->solve(ilevel, aexp_, omega_m, rho_mean);
-        poisson_->compute_force(ilevel);
-
-        hydro_->synchro_hydro_fine(ilevel, 0.5 * dt);
-        particles_->move_fine(ilevel, 0.5 * dt);
-    }
-
-    // Recursive call to finer levels (post-order traversal like Fortran)
+    // 4. Recursive call to finer levels
     int nsub = (ilevel < (int)nsubcycle_.size()) ? nsubcycle_[ilevel] : 1;
-    if (ilevel < grid_.nlevelmax) {
-        for (int i = 1; i <= nsub; ++i) amr_step(ilevel + 1, dt / nsub, i);
+    if (ilevel < p::nlevelmax) {
+        if (grid_.count_grids_at_level(ilevel + 1) > 0) {
+            for (int i = 1; i <= nsub; ++i) amr_step(ilevel + 1, i);
+        } else {
+            dtold_[ilevel + 1] = dtnew_[ilevel] / (real_t)nsub;
+            dtnew_[ilevel + 1] = dtnew_[ilevel] / (real_t)nsub;
+            t_ += dt; nstep_++;
+        }
+    } else {
+        t_ += dt; nstep_++;
     }
 
+    // 5. Hydro step (godunov_fine)
 #ifdef MHD
     mhd_->godunov_fine(ilevel, dt, dx);
 #else
@@ -448,30 +430,12 @@ void Simulation::amr_step(int ilevel, real_t dt, int icount) {
 #endif
 
     if (config_.get_bool("run_params", "turb", false)) turb_->apply_forcing(ilevel, dt);
-
     if (config_.get_bool("run_params", "sink", false)) {
         sink_->create_sinks(ilevel);
         sink_->grow_sinks(ilevel, dt);
         sink_->synchronize_sinks();
     }
-
-    if (config_.get_bool("run_params", "star", false)) {
-        star_->form_stars(ilevel, dt);
-    }
-
-    if (config_.get_bool("run_params", "star", false) && config_.get_double("feedback_params", "eta_sn", 0.0) > 0) {
-        feedback_->thermal_feedback(ilevel, dt);
-    }
-
-    if (config_.get_bool("run_params", "cosmo", false) && config_.get_bool("run_params", "lightcone", false)) {
-        light_cone_->update(t_, dt);
-    }
-
-    if (do_poisson) {
-        hydro_->add_gravity_source_terms(ilevel, dt);
-        particles_->move_fine(ilevel, 0.5 * dt);
-        particles_->exchange_particles();
-    }
+    if (config_.get_bool("run_params", "star", false)) star_->form_stars(ilevel, dt);
 
     cooling_->apply_cooling(ilevel, dt);
 
@@ -480,33 +444,25 @@ void Simulation::amr_step(int ilevel, real_t dt, int icount) {
     rt_->apply_source_terms(ilevel, dt);
 #endif
 
+    // 6. set_uold
 #ifdef MHD
     mhd_->set_uold(ilevel);
 #else
     hydro_->set_uold(ilevel);
 #endif
 
-    if (do_poisson) hydro_->synchro_hydro_fine(ilevel, 0.5 * dt);
-
 #ifdef RT
     rt_->set_uold(ilevel);
 #endif
 
-    // Restrict parent level from finer child levels (called after set_uold like upload_fine in Fortran)
-    if (ilevel < grid_.nlevelmax) {
+    // 7. Restrict parent level from finer child levels (upload_fine)
+    if (ilevel < p::nlevelmax) {
         updater_.restrict_fine(ilevel);
     }
 
-    // Dynamic Refinement: compute refinement flags for the next step (finer-to-coarser order)
-    if (ilevel < grid_.nlevelmax) {
-        real_t ed = config_.get_double("refine_params", "err_grad_d", -1.0);
-        real_t ep = config_.get_double("refine_params", "err_grad_p", -1.0);
-        real_t ev = config_.get_double("refine_params", "err_grad_v", -1.0);
-        real_t eb2 = config_.get_double("refine_params", "err_grad_b2", -1.0);
-        int nexp = config_.get_int("amr_params", "nexpand", 1);
-        int nsub_here = (ilevel < (int)nsubcycle_.size()) ? nsubcycle_[ilevel] : 1;
-        updater_.flag_fine(ilevel + 1, ed, ep, ev, eb2, {}, nexp, icount, nsub_here);
-    }
+    // 8. Compute refinement flags for the next step (flag_fine)
+    int nexp = config_.get_int("amr_params", "nexpand", 1);
+    updater_.flag_fine(ilevel, err_grad_d_, err_grad_p_, err_grad_v_, err_grad_b2_, {}, nexp, icount, nsub);
 }
 
 void Simulation::rho_fine(int ilevel) {

@@ -35,7 +35,7 @@ public:
     void run();
 
 private:
-    void amr_step(int ilevel, real_t dt, int icount = 1);
+    void amr_step(int ilevel, int icount = 1);
     void dump_snapshot(int iout);
     void rho_fine(int ilevel);
 
@@ -62,12 +62,15 @@ private:
     real_t tend_ = 1.0;
     real_t aexp_ = 1.0;
     real_t hexp_ = 0.0;
+    std::vector<real_t> dtnew_, dtold_;
 
     int nstep_ = 0;
     int nstepmax_ = 10;
     int ncontrol_ = 1;
     int noutput_ = 0;
     int nener_ = 0;
+    real_t courant_factor_ = 0.8;
+    real_t err_grad_d_ = 0.05, err_grad_p_ = -1.0, err_grad_v_ = -1.0, err_grad_b2_ = -1.0;
     std::vector<int> nsubcycle_;
     std::vector<int> nexpand_;
     std::vector<double> tout_;
