@@ -4,7 +4,9 @@
 [![C++ Standard](https://img.shields.io/badge/C%2B%2B-17-blue.svg)](https://en.cppreference.com/w/cpp/17)
 [![Build Status](https://img.shields.io/badge/build-passing-brightgreen.svg)](https://github.com/SinsuSquid/RAMSES-CPP)
 
-<img src="https://github.com/SinsuSquid/RAMSES-CPP/blob/main/logo/Sia-chan.png?raw=true" align="right" width="300">
+<p align="center">
+  <img src="https://github.com/SinsuSquid/RAMSES-CPP/blob/main/logo/Sia-chan.png?raw=true" width="300" alt="Sia-chan">
+</p>
 
 RAMSES-CPP is a modern, high-performance C++17 port of the legacy [RAMSES-2025](https://github.com/ramses-organisation/ramses/releases/tag/2025.05) Adaptive Mesh Refinement (AMR) astrophysics code. The core mission of this project is to modernize the original Fortran solver engine for modern HPC architectures while maintaining **strict, bit-perfect binary parity** with legacy Fortran snapshot outputs.
 
