@@ -45,12 +45,12 @@ COVERAGE=false;
 CLEAN_ALL=false;
 SELECTTEST=false;
 RESTART=false;
-while getopts "cdsp:qt:vr" OPTION; do
+while getopts "cksp:qt:vr" OPTION; do
    case $OPTION in
       c)
          CLEAN_ALL=true;
       ;;
-      d)
+      k)
          DELDATA=false;
       ;;
       s)

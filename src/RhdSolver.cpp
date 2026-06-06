@@ -13,18 +13,24 @@ void RhdSolver::godunov_fine(int ilevel, real_t dt, real_t dx) {
     int myid = MpiManager::instance().rank() + 1;
     
     std::vector<int> cell_levels(grid_.ncell + 1, 0);
-    for (int il = 1; il <= grid_.nlevelmax; ++il) {
-        for (int icpu = 1; icpu <= grid_.ncpu + grid_.nboundary; ++icpu) {
-            int ig = grid_.get_headl(icpu, il);
-            while (ig > 0) {
-                for (int ic = 1; ic <= constants::twotondim; ++ic) {
-                    int idc = grid_.ncoarse + (ic - 1) * grid_.ngridmax + ig;
-                    cell_levels[idc] = il;
-                }
-                ig = grid_.next[ig - 1];
+    for (int ig = 1; ig <= grid_.ngridmax; ++ig) {
+        if (grid_.father[ig - 1] > 0) {
+            int level = 1;
+            int curr_ig = ig;
+            while (curr_ig > 0) {
+                int father_cell = grid_.father[curr_ig - 1];
+                if (father_cell <= grid_.ncoarse) break;
+                curr_ig = ((father_cell - grid_.ncoarse - 1) % grid_.ngridmax) + 1;
+                level++;
+            }
+            for (int ic = 1; ic <= constants::twotondim; ++ic) {
+                int idc = grid_.ncoarse + (ic - 1) * grid_.ngridmax + ig;
+                cell_levels[idc] = level;
             }
         }
     }
+    
+
 
     std::vector<int> octs;
     if (ilevel > 0) {

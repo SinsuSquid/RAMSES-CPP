@@ -329,39 +329,32 @@ void Simulation::run() {
 
         particles_->relink();
 
+        // 4. Output stats
+        auto t_step_end = std::chrono::high_resolution_clock::now();
+        double duration = std::chrono::duration<double>(t_step_end - t_step_start).count();
+        double total_time = std::chrono::duration<double>(t_step_end - t_start_loop).count();
+        real_t min_rho = 1e30, max_rho = -1e30;
+        for (int i = 1; i <= grid_.ncell; ++i) {
+            bool active = false;
+            if (i <= grid_.ncoarse) active = true;
+            else {
+                int igrid = ((i - grid_.ncoarse - 1) % grid_.ngridmax) + 1;
+                if (grid_.father[igrid - 1] > 0) active = true;
+            }
+            if (active && grid_.son[i - 1] == 0) {
+                real_t rho_val = grid_.uold(i, 1);
+                min_rho = std::min(min_rho, rho_val);
+                max_rho = std::max(max_rho, rho_val);
+            }
+        }
+        if (MpiManager::instance().rank() == 0) {
+            printf(" Step=%d t=%12.5e dt=%10.3e min_rho=%10.3e max_rho=%10.3e time_elapsed=%8.2fs total_time=%8.2fs\n", nstep_, t_, dtnew_[p::levelmin], min_rho, max_rho, duration, total_time);
+        }
+
+        // 5. Snapshot check
         if (iout < (int)tout_.size() && t_ >= tout_[iout] - 1e-10 * dtnew_[p::levelmin]) {
             dump_snapshot(snapshot_count++); iout++;
         }
-        
-        if (true) {
-            auto t_step_end = std::chrono::high_resolution_clock::now();
-            double duration = std::chrono::duration<double>(t_step_end - t_step_start).count();
-            double total_time = std::chrono::duration<double>(t_step_end - t_start_loop).count();
-            real_t min_rho = 1e30, max_rho = -1e30;
-            for (int i = 1; i <= grid_.ncell; ++i) {
-                bool active = false;
-                if (i <= grid_.ncoarse) {
-                    active = true;
-                } else {
-                    int igrid = ((i - grid_.ncoarse - 1) % grid_.ngridmax) + 1;
-                    if (grid_.father[igrid - 1] > 0) {
-                        active = true;
-                    }
-                }
-                if (active && grid_.son[i - 1] == 0) {
-                    real_t rho_val = grid_.uold(i, 1);
-                    min_rho = std::min(min_rho, rho_val);
-                    max_rho = std::max(max_rho, rho_val);
-                }
-            }
-            if (MpiManager::instance().rank() == 0) {
-                printf(" Step=%d t=%12.5e dt=%10.3e min_rho=%10.3e max_rho=%10.3e time_elapsed=%8.2fs total_time=%8.2fs\n", nstep_, t_, dtnew_[p::levelmin], min_rho, max_rho, duration, total_time);
-            }
-        }
-    }
-
-    if (snapshot_count <= 2) {
-        dump_snapshot(snapshot_count++);
     }
 
     if (MpiManager::instance().rank() == 0) {
@@ -370,9 +363,7 @@ void Simulation::run() {
         std::cout << "Simulation finished in " << std::fixed << std::setprecision(2) << total_duration << " seconds." << std::endl;
         std::cout << "Total steps: " << nstep_ << " Final time: " << std::scientific << std::setprecision(6) << t_ << std::endl;
     }
-}
-
-void Simulation::amr_step(int ilevel, int icount) {
+}void Simulation::amr_step(int ilevel, int icount) {
     if (ilevel > grid_.nlevelmax) return;
     if (grid_.count_grids_at_level(ilevel) == 0 && ilevel > 0) return;
 
