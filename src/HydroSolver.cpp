@@ -747,18 +747,6 @@ void HydroSolver::get_diagnostics(int ilevel, real_t dx, real_t& min_d, real_t& 
 void HydroSolver::add_gravity_source_terms(int ilevel, real_t dt) {
     int myid = MpiManager::instance().rank() + 1, n2d_val = (1 << NDIM);
     int iener = NDIM + 2;
-    if (ilevel == 1) {
-        for (int idc = 1; idc <= grid_.ncoarse; ++idc) {
-            if (grid_.son.at(idc - 1) > 0) continue;
-            real_t d = std::clamp(grid_.uold(idc, 1), 1e-10, 1e6);
-            for (int idim = 1; idim <= NDIM; ++idim) {
-                real_t f = grid_.f(idc, idim);
-                grid_.unew(idc, 1 + idim) += d * f * dt;
-                grid_.unew(idc, 1 + idim) = std::clamp(grid_.unew(idc, 1 + idim), -d * 10.0, d * 10.0);
-                grid_.unew(idc, iener) += grid_.uold(idc, 1 + idim) * f * dt + 0.5 * d * f * f * dt * dt;
-            }
-        }
-    }
     int igrid = grid_.get_headl(myid, ilevel);
     while (igrid > 0) {
         for (int ic = 1; ic <= n2d_val; ++ic) {
@@ -814,17 +802,13 @@ void HydroSolver::synchro_hydro_fine(int ilevel, real_t dt) {
         grid_.uold(idc, iener) = e_int + 0.5*d*v2_new + e_nonthermal;
     };
 
-    if (ilevel == 1) {
-        for (int idc = 1; idc <= grid_.ncoarse; ++idc) apply_synchro(idc);
-    } else {
-        int igrid = grid_.get_headl(myid, ilevel);
-        while (igrid > 0) {
-            for (int ic = 1; ic <= n2d_val; ++ic) {
-                int idc = grid_.ncoarse + (ic - 1) * grid_.ngridmax + igrid;
-                apply_synchro(idc);
-            }
-            igrid = grid_.next[igrid - 1];
+    int igrid = grid_.get_headl(myid, ilevel);
+    while (igrid > 0) {
+        for (int ic = 1; ic <= n2d_val; ++ic) {
+            int idc = grid_.ncoarse + (ic - 1) * grid_.ngridmax + igrid;
+            apply_synchro(idc);
         }
+        igrid = grid_.next[igrid - 1];
     }
 }
 

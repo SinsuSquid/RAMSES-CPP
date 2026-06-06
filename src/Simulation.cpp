@@ -322,7 +322,7 @@ void Simulation::run() {
 
         // 3. Restriction for whole domain (adaptive_loop.f90:188)
         if (p::levelmin < p::nlevelmax) {
-             for (int il = p::levelmin - 1; il >= 1; --il) {
+             for (int il = p::levelmin - 1; il >= 0; --il) {
                   updater_.restrict_fine(il);
              }
         }
