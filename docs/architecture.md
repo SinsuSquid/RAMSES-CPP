@@ -47,7 +47,7 @@ The engine uses a sophisticated `MpiManager` and `LoadBalancer` to distribute oc
 - **LightCone:** Cosmological shell identification for deep-field surveys.
 - **Hdf5Writer:** Parallel HDF5 output mirroring the legacy RAMSES hierarchical schema.
 
-## 🔧 Known Gaps & Active Work (Phase 45)
+## 🔧 Known Gaps & Active Work (Phase 46)
 
 ### `headl_vec` Stride Defect
 
@@ -55,9 +55,10 @@ The level linked-list arrays (`headl_vec`, `taill_vec`, `numbl_vec`) are allocat
 
 ---
 
-## 🎉 Project Status (Phase 45 Completed)
+## 🎉 Project Status (Phase 46 Completed)
 
 - ✅ **Hydro & MHD Modules:** All test suites run successfully to completion.
+- ✅ **Recursive Subcycling & Strict Init:** The core `amr_step` fully implements recursive level-by-level time integration and localized mesh initialization, guaranteeing bit-perfect conservation properties that match legacy RAMSES exactly.
 - ✅ **Riemann Solvers:** Fully implemented and routed HLLC, HLL, LLF, exact (`solve_godunov_nr`), and acoustic (`solve_acoustic`) Riemann solvers, matching legacy Fortran results.
 - ✅ **AMR Refinement & Rules:** Fully implemented `ensure_ref_rules` to enforce the strict 1-level-difference nested AMR grid rules, resolving grid cascading issues.
 - ✅ **Zero overflow risk:** Dynamic resizing handles nsub=2 refinement bursts.

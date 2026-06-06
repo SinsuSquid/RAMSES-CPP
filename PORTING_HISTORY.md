@@ -4,7 +4,35 @@ This document tracks the major milestones and architectural shifts during the mi
 
 ---
 
-## 🚩 Phase 45: Riemann Solvers, Slope 0 Alignment, and Parameter Study Parity (Completed) ✨
+## 🚩 Phase 46: Recursive Subcycling & Strict Initialization Alignment (Completed) ✨🎯
+
+**Commit:** `a7431e3`
+
+**Challenge:** 
+Numerical instabilities and conservation violations in multi-level simulations (specifically `advect1d`). The C++ engine approximated the recursive step but diverged in the exact ordering of flux updates, restriction, and flagging, leading to "conceptual collisions" at refinement boundaries.
+
+**Root Cause Analysis & Fixes:**
+
+1. **Strict Recursive amr_step (`Simulation::amr_step`)**
+   - **Fix:** Refactored the core time-stepping loop to mirror legacy `amr_step.f90` exactly. Timestep calculation (`newdt_fine`) and flagging are now integrated into the recursive level-step. Removed the `dt` argument from the signature, forcing levels to manage their own timing via the new `dtnew_` array.
+2. **Double-Fluxing at Refinement Boundaries**
+   - **Issue:** The `is_refined` check incorrectly allowed coarse cells to compute fluxes at interfaces where a fine neighbor existed, leading to double-counting of mass loss/gain.
+   - **Fix:** Implemented a robust `is_refined` logic that combines grid-based (`son > 0`) and cache-based (`cell_levels > ilevel`) checks to handle both level-0 and fine-level boundaries consistently.
+3. **Garbage Interpolation in `make_grid_fine`**
+   - **Issue:** The interpolator was incorrectly using cell indices as grid indices when fetching neighbor states, seeding new child cells with random memory values.
+   - **Fix:** Corrected the neighbor lookup to use proper coordinate math for coarse cells and standard neighbor-grid indexing for fine cells.
+4. **Localized Initialization Refactor (`Simulation::initialize`)**
+   - **Issue:** A multi-pass initialization loop with premature restriction smeared sharp analytical jumps, causing the engine to over-refine the entire domain.
+   - **Fix:** Implemented a clean, level-by-level initialization matching legacy `init_refine.f90`. This ensures that the AMR tree only grows where analytical gradients are present.
+5. **Conservation and Refluxing**
+   - **Fix:** Restored the mathematically correct refluxing factor `1.0 / (1 << NDIM)` for 1D, ensuring strict conservation across $\Delta x$ jumps.
+
+**Result:**
+- **Stability:** `advect1d` now runs stably for 10 full advection periods (approx 23,000 steps at level 10) without explosions.
+- **Parity:** Simulation now follows the exact recursive hierarchy of legacy RAMSES, resolving deep structural divergence.
+
+---
+
 
 **Commit:** `2f617ec`
 
