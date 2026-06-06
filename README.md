@@ -23,7 +23,9 @@ To ensure bit-perfect mathematical and indexical alignment with the original For
 ### 2. Memory Layout (Column-Major to Flat Arrays)
 * **Fortran Column-Major Layout:** The original code stores state variables in the form `uold(ncell, nvar)`.
 * **C++ Row-Major Vector Mapping:** In C++, we store variables in flat, contiguous 1D vectors (`std::vector<real_t>`). To preserve column-major access and avoid index translation errors, variables are mapped as:
-  $$\text{uold}(icell, ivar) \rightarrow \text{uold\_vec}[(ivar - 1) \cdot ncellmax + (icell - 1)]$$
+  ```cpp
+  uold(icell, ivar) -> uold_vec[(ivar - 1) * ncellmax + (icell - 1)]
+  ```
   This allows C++ cache lines to remain contiguous when looping over cells for a single variable, matching the legacy memory stride pattern.
 
 ---
