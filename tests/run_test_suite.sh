@@ -153,10 +153,12 @@ if $CLEAN_ALL ; then
          $SHELL after_test.sh;
       fi
    done
-   $RETURN_TO_BIN;
-   make clean;
-   rm -f ${EXECNAME}*d;
-   exit;
+    $RETURN_TO_BIN;
+    if [ -f Makefile ] || [ -f build.ninja ]; then
+       cmake --build . --target clean;
+    fi
+    rm -f ${EXECNAME}*d;
+    exit;
 fi
 
 #######################################################################
@@ -323,27 +325,42 @@ for ((i=0;i<$ntests;i++)); do
        fi
     done
 
-   # Initial cleanup
-   if ${make_clean[n]}; then
-      echo "Cleanup" | tee -a $LOGFILE;
-      cd ${BASE_DIRECTORY}/build;
-      if [ -f Makefile ]; then
-        cmake --build . --target clean >> ${LOGFILE} 2>&1;
-      fi
-      cd ${TEST_DIRECTORY}/${testname[n]};
-      LAST_CMAKE_FLAGS="";
-   fi
+    # Initial cleanup
+    if ${make_clean[n]}; then
+       echo "Cleanup" | tee -a $LOGFILE;
+       cd ${BASE_DIRECTORY}/build;
+       if [ -f Makefile ] || [ -f build.ninja ]; then
+         cmake --build . --target clean >> ${LOGFILE} 2>&1;
+       fi
+       cd ${TEST_DIRECTORY}/${testname[n]};
+       LAST_CMAKE_FLAGS="";
+    fi
 
    # Compile source if configuration changed
    echo "Compiling with: ${CMAKE_FLAGS}" | tee -a $LOGFILE;
 
-   if [ "${CMAKE_FLAGS}" != "${LAST_CMAKE_FLAGS}" ]; then
-      echo "Configuration changed, rebuilding..." | tee -a $LOGFILE;
-      cd ${BASE_DIRECTORY}/build;
-      cmake .. ${CMAKE_FLAGS} >> ${LOGFILE} 2>&1;
-      make -j$(nproc) ramses_${ndim}d >> ${LOGFILE} 2>&1;
-      LAST_CMAKE_FLAGS="${CMAKE_FLAGS}";
-   else
+    if [ "${CMAKE_FLAGS}" != "${LAST_CMAKE_FLAGS}" ]; then
+       echo "Configuration changed, rebuilding..." | tee -a $LOGFILE;
+       cd ${BASE_DIRECTORY}/build;
+       if command -v ninja >/dev/null 2>&1; then
+          if [ -f Makefile ] || [ ! -f build.ninja ]; then
+             rm -rf *
+             cmake -G Ninja .. ${CMAKE_FLAGS} >> ${LOGFILE} 2>&1
+          else
+             cmake .. ${CMAKE_FLAGS} >> ${LOGFILE} 2>&1
+          fi
+          ninja ramses_${ndim}d >> ${LOGFILE} 2>&1
+       else
+          if [ -f build.ninja ]; then
+             rm -rf *
+             cmake .. ${CMAKE_FLAGS} >> ${LOGFILE} 2>&1
+          else
+             cmake .. ${CMAKE_FLAGS} >> ${LOGFILE} 2>&1
+          fi
+          make -j$(nproc) ramses_${ndim}d >> ${LOGFILE} 2>&1
+       fi
+       LAST_CMAKE_FLAGS="${CMAKE_FLAGS}";
+    else
       echo "Configuration unchanged, skipping rebuild (using cached build)" | tee -a $LOGFILE;
    fi
    cd ${TEST_DIRECTORY}/${testname[n]};
@@ -609,10 +626,12 @@ if ${DELDATA} ; then
       fi
    done
    $RETURN_TO_BIN;
-   if $VERBOSE ; then
-      make clean 2>&1 | tee -a $LOGFILE;
-   else
-      make clean >> $LOGFILE 2>&1;
-   fi
-   rm -f ${EXECNAME}*d;
+    if [ -f Makefile ] || [ -f build.ninja ]; then
+       if $VERBOSE ; then
+          cmake --build . --target clean 2>&1 | tee -a $LOGFILE;
+       else
+          cmake --build . --target clean >> $LOGFILE 2>&1;
+       fi
+    fi
+    rm -f ${EXECNAME}*d;
 fi
