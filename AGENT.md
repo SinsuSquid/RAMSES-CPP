@@ -12,27 +12,27 @@ RAMSES-CPP is a modern C++17 port of the legacy [RAMSES-2025](https://github.com
 
 ## Build System
 
-CMake >= 3.15 is required. The build produces three optimized executables (`ramses_1d`, `ramses_2d`, `ramses_3d`) and a verification tool (`verify_ref`).
+CMake >= 3.15 is required. The build produces three optimized executables (`ramses_1d`, `ramses_2d`, `ramses_3d`).
 
 ```bash
 mkdir -p build && cd build
 # Release builds are 9.2x faster than Debug (default is Release)
-cmake .. -DRAMSES_NDIM=3 -DRAMSES_USE_MPI=OFF -DRAMSES_USE_MHD=ON -DRAMSES_USE_RT=ON
+cmake .. -DNDIM=3 -DMPI=OFF -DSOLVER=mhd -DRT=ON
 make -j$(nproc)
 ```
 
 Key CMake flags:
-- `RAMSES_NDIM` — Dimensionality: `1`, `2`, or `3` (default `3`)
-- `RAMSES_USE_MHD` — Enable magnetohydrodynamics (`ON`/`OFF`)
-- `RAMSES_USE_RT` — Enable radiative transfer (`ON`/`OFF`)
-- `RAMSES_USE_MPI` — Enable MPI (`ON`/`OFF`, default `OFF`)
-- `RAMSES_PRECISION` — Float precision: `4` or `8` (default `8`)
-- `RAMSES_NENER` — Number of non-thermal energy groups
-- `RAMSES_NPSCAL` — Number of passive scalars
-- `RAMSES_NGROUPS` / `RAMSES_NIONS` — RT photon groups / ion species
-- `RAMSES_LONGINT` — Use 64-bit grid IDs (`ON`/`OFF`)
+- `NDIM` — Dimensionality: `1`, `2`, or `3` (default `3`)
+- `SOLVER` — Solver type: `hydro`, `mhd`, or `rhd` (default `hydro`)
+- `RT` — Enable radiative transfer (`ON`/`OFF`)
+- `MPI` — Enable MPI (`ON`/`OFF`, default `OFF`)
+- `NPRE` — Float precision: `4` or `8` (default `8`)
+- `NENER` — Number of non-thermal energy groups
+- `NPSCAL` — Number of passive scalars
+- `NGROUPS` / `NIONS` — RT photon groups / ion species
+- `LONGINT` — Use 64-bit grid IDs (`ON`/`OFF`)
 
-These flags become compile-time `#define` macros (e.g., `NDIM=3`, `MHD`, `RT`). The build system only compiles the target dimensionality specified by `RAMSES_NDIM` to optimize build times.
+These flags match legacy Makefile options. The build system only compiles the target dimensionality specified by `NDIM` to optimize build times.
 
 ## Running Simulations
 
@@ -62,10 +62,7 @@ cd tests && timeout 10m ./run_test_suite.sh -t mhd
 ```
 
 ### Snapshot Parity Verification
-The primary goal is **binary parity** with legacy RAMSES. Use the internal tool to verify:
-```bash
-cd build && ./verify_ref <reference_snapshot> <local_snapshot>
-```
+The primary goal is **binary parity** with legacy RAMSES. Output snapshots are automatically compared to legacy references by the Python scripts in `tests/visu/` when running the test suite.
 
 ## Architecture
 

@@ -29,7 +29,7 @@ The build system is designed to generate dimension-specific executables simultan
 2. **Configure and Build:**
    ```bash
    mkdir build && cd build
-   cmake .. -DRAMSES_USE_MPI=ON -DRAMSES_USE_MHD=ON -DRAMSES_USE_RT=ON
+   cmake .. -DMPI=ON -DSOLVER=mhd -DRT=ON
    make -j$(nproc)
    ```
 
@@ -37,12 +37,19 @@ The build system is designed to generate dimension-specific executables simultan
 
 | Flag | Description | Default |
 |------|-------------|---------|
-| `RAMSES_USE_MPI` | Enable MPI-scaled distributed execution. | `OFF` (Auto-detected) |
-| `RAMSES_USE_MHD` | Enable the Magnetohydrodynamics module. | `OFF` |
-| `RAMSES_USE_RT` | Enable the Radiation Transport module. | `OFF` |
-| `RAMSES_PRECISION` | Floating point precision (4 for float, 8 for double). | `8` |
-| `RAMSES_NENER` | Number of non-thermal energy variables. | `0` |
-| `RAMSES_NPSCAL` | Number of passive scalar variables. | `0` |
+| `MPI` | Enable MPI-scaled distributed execution. | `OFF` |
+| `SOLVER` | Solver type: `hydro`, `mhd`, or `rhd`. | `hydro` |
+| `RT` | Enable the Radiation Transport module. | `OFF` |
+| `NPRE` | Floating point precision (4 for float, 8 for double). | `8` |
+| `NENER` | Number of non-thermal energy variables. | `0` |
+| `NPSCAL` | Number of passive scalar variables. | `0` |
+| `NMETALS` | Number of metal species (passive scalars). | `0` |
+| `NGROUPS` | Number of RT groups. | `0` |
+| `NIONS` | Number of RT ions. | `0` |
+| `USE_TURB` | Enable FFTW-based turbulence driving. | `OFF` |
+| `ATON` | Enable ATON GPU solver. | `OFF` |
+| `GRACKLE` | Enable Grackle cooling library. | `OFF` |
+| `NVECTOR` | Size of vector cache. | `32` |
 
 ## Generated Executables
 
@@ -50,7 +57,6 @@ After a successful build, the `build/` directory will contain:
 - `ramses_1d`: Optimized for 1D physics.
 - `ramses_2d`: Optimized for 2D physics.
 - `ramses_3d`: Full 3D AMR solver.
-- `verify_ref`: Parity verification tool.
 
 ---
 Developed with 💖 by Gemini-chan. 🚀✨

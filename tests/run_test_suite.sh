@@ -293,29 +293,35 @@ for ((i=0;i<$ntests;i++)); do
          ndim=$(echo ${flag_split[$k]} | cut -d '=' -f2);
       fi
    done
-   CMAKE_FLAGS="-DRAMSES_NDIM=${ndim} -DRAMSES_USE_MHD=OFF -DRAMSES_USE_RT=OFF -DRAMSES_NENER=0 -DRAMSES_NPSCAL=0 -DRAMSES_NMETALS=0 -DRAMSES_NGROUPS=0 -DRAMSES_NIONS=0 ";
-   if ${COVERAGE}; then
-      CMAKE_FLAGS="${CMAKE_FLAGS} -DCMAKE_CXX_FLAGS=--coverage -DCMAKE_EXE_LINKER_FLAGS=--coverage ";
-   fi
-   for ((k=0;k<$nflags;k++)); do
-      if [[ ${flag_split[$k]} == *"="* ]]; then
-         key=$(echo ${flag_split[$k]} | cut -d '=' -f1);
-         val=$(echo ${flag_split[$k]} | cut -d '=' -f2);
-         if [ "$key" != "NDIM" ]; then
-            if [ "$key" = "SOLVER" ] && [ "$val" = "mhd" ]; then
-                CMAKE_FLAGS="${CMAKE_FLAGS} -DRAMSES_USE_MHD=ON ";
-            elif [ "$key" = "RT" ] && [ "$val" = "1" ]; then
-                CMAKE_FLAGS="${CMAKE_FLAGS} -DRAMSES_USE_RT=ON ";
-            else
-                CMAKE_FLAGS="${CMAKE_FLAGS} -DRAMSES_${key}=${val} ";
-            fi
-         fi
-      else
-         # Map boolean legacy flags to CMake options
-         if [ ${flag_split[$k]} = "MHD" ] ; then CMAKE_FLAGS="${CMAKE_FLAGS} -DRAMSES_USE_MHD=ON "; fi
-         if [ ${flag_split[$k]} = "RT" ] ; then CMAKE_FLAGS="${CMAKE_FLAGS} -DRAMSES_USE_RT=ON "; fi
-      fi
-   done
+    mpi_val="OFF"
+    if [ ${MPI} -eq 1 ]; then
+       mpi_val="ON"
+    fi
+    CMAKE_FLAGS="-DNDIM=${ndim} -DSOLVER=hydro -DRT=OFF -DNENER=0 -DNPSCAL=0 -DNMETALS=0 -DNGROUPS=0 -DNIONS=0 -DMPI=${mpi_val} "
+    if ${COVERAGE}; then
+       CMAKE_FLAGS="${CMAKE_FLAGS} -DCMAKE_CXX_FLAGS=--coverage -DCMAKE_EXE_LINKER_FLAGS=--coverage "
+    fi
+    for ((k=0;k<$nflags;k++)); do
+       if [[ ${flag_split[$k]} == *"="* ]]; then
+          key=$(echo ${flag_split[$k]} | cut -d '=' -f1)
+          val=$(echo ${flag_split[$k]} | cut -d '=' -f2)
+          if [ "$key" != "NDIM" ]; then
+             if [ "$key" = "RT" ] || [ "$key" = "MPI" ] || [ "$key" = "USE_TURB" ] || [ "$key" = "ATON" ] || [ "$key" = "GRACKLE" ]; then
+                if [ "$val" = "1" ]; then
+                   CMAKE_FLAGS="${CMAKE_FLAGS} -D${key}=ON "
+                else
+                   CMAKE_FLAGS="${CMAKE_FLAGS} -D${key}=OFF "
+                fi
+             else
+                CMAKE_FLAGS="${CMAKE_FLAGS} -D${key}=${val} "
+             fi
+          fi
+       else
+          # Map boolean legacy flags to CMake options
+          if [ ${flag_split[$k]} = "MHD" ] ; then CMAKE_FLAGS="${CMAKE_FLAGS} -DSOLVER=mhd "; fi
+          if [ ${flag_split[$k]} = "RT" ] ; then CMAKE_FLAGS="${CMAKE_FLAGS} -DRT=ON "; fi
+       fi
+    done
 
    # Initial cleanup
    if ${make_clean[n]}; then

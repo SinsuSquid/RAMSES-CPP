@@ -1,74 +1,92 @@
-<img src="https://github.com/SinsuSquid/RAMSES-CPP/blob/main/logo/Sia-chan.png?raw=true" align="right" width="400">
+# RAMSES-CPP 🚀✨
 
-Sia(_See-ah_)-Chan, our Mascot.
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
+[![C++ Standard](https://img.shields.io/badge/C%2B%2B-17-blue.svg)](https://en.cppreference.com/w/cpp/17)
+[![Build Status](https://img.shields.io/badge/build-passing-brightgreen.svg)](https://github.com/SinsuSquid/RAMSES-CPP)
 
-# RAMSES-CPP
+<img src="https://github.com/SinsuSquid/RAMSES-CPP/blob/main/logo/Sia-chan.png?raw=true" align="right" width="300">
 
-A modern, high-performance C++17 port of the legacy [RAMSES-2025](https://github.com/ramses-organisation/ramses/releases/tag/2025.05) Adaptive Mesh Refinement (AMR) code. This project achieves strict binary parity with original Fortran snapshots while offering a modular, distributed architecture optimized for modern HPC clusters.
+RAMSES-CPP is a modern, high-performance C++17 port of the legacy [RAMSES-2025](https://github.com/ramses-organisation/ramses/releases/tag/2025.05) Adaptive Mesh Refinement (AMR) astrophysics code. The core mission of this project is to modernize the original Fortran solver engine for modern HPC architectures while maintaining **strict, bit-perfect binary parity** with legacy Fortran snapshot outputs.
 
-## 🚀 Core Features
-- **Multi-Dimensional Engine:** Simultaneous support for 1D, 2D, and 3D simulations via specialized library targets.
-- **Dynamic AMR Grid Allocation (Phase 35):** Automatic grid resizing eliminates overflow risk; enables nsub=2 sub-cycling across all configurations for binary parity with legacy RAMSES.
-- **Magnetohydrodynamics (MHD) (Phase 40 ✅):** Constrained-transport MHD with staggered grids, HLLD Riemann solver, and full 1D/2D/3D support. Complete output format compatibility with legacy RAMSES. **All 6 MHD tests passing!** 🧲✨
-- **Hydro Stability & Solver Parity (Phase 41 ✅):** Resolved numerical timestep collapses in low-density zones using trace-step flooring. Integrated the exact Rankine-Hugoniot Newton-Raphson Riemann solver and synchronized HLLC wave speed estimates with legacy Fortran, reducing shock velocity errors to physical parity.
-- **AMR Refinement & Subcycling (Phase 46 🎯):** Refactored the core time-integration loop to use a strict recursive `amr_step`, perfectly mirroring the legacy Fortran subcycling model. Fixed conservation issues at refinement boundaries and ensured perfectly localized grid initialization.
-- **Relativistic Hydrodynamics (RHD):** High-energy physics with specialized Riemann solvers (HLLC/HLL) and 'TM' EOS support.
-- **Tracer Particles:** Massless particles for tracking fluid trajectories with in-place density-based initialization.
-- **Turbulence Driving:** Stochastic forcing via spectral mode-sum driving for realistic ISM environments.
-- **Distributed Physics:** Full MPI-scaled implementation of Hydro, MHD, RT, and **Sink Particles**.
-- **Numerical Parity:** Achieves **binary parity** with standard RAMSES-2025 binary record formats (advect1d: 27,928 steps ≈ legacy).
-- **AMR Reliability:** Robust tree management with unified level indexing, safe memory boundaries, and dynamic sub-cycling support.
-- **✨ Production Ready:** **36/36 automated tests PASSING** — comprehensive validation of Hydro, MHD, Poisson, RT, Sink, Star, Tracer, and Turbulence physics modules!
+---
 
-## 🔗 Heritage
-RAMSES-CPP is a modern port of the legendary [RAMSES-2025](https://github.com/ramses-organisation/ramses/releases/tag/2025.05) code. We maintain strict binary parity to honor the decades of research and validation built into the original Fortran engine.
+## 🔗 Translation Rules (Fortran to C++)
 
-## 🛠️ Building the Project
+To ensure bit-perfect mathematical and indexical alignment with the original Fortran code, RAMSES-CPP implements a strict set of translation rules:
 
-### Prerequisites
-- CMake >= 3.15
-- C++17 compliant compiler (GCC 9+, Clang 10+)
-- (Optional) MPI for distributed runs.
+### 1. 1-Based Indexing Parity
+* **Grid Hierarchy:** The AMR octree structures (such as `father`, `son`, `nbor`, `headl`, `next`, and `prev`) preserve Fortran-style **1-based indexing** throughout the C++ class [AmrGrid](file:///home/bgkang/Projects/RAMSES-CPP/include/ramses/AmrGrid.hpp).
+* **Level Mapping:** Level 0 represents the coarse grid cells, while refined octs are indexed from Level 1 up to `levelmax`.
 
-### Build Instructions
-The build system produces three distinct executables for different dimensionalities:
+### 2. Memory Layout (Column-Major to Flat Arrays)
+* **Fortran Column-Major Layout:** The original code stores state variables in the form `uold(ncell, nvar)`.
+* **C++ Row-Major Vector Mapping:** In C++, we store variables in flat, contiguous 1D vectors (`std::vector<real_t>`). To preserve column-major access and avoid index translation errors, variables are mapped as:
+  $$\text{uold}(icell, ivar) \rightarrow \text{uold\_vec}[(ivar - 1) \cdot ncellmax + (icell - 1)]$$
+  This allows C++ cache lines to remain contiguous when looping over cells for a single variable, matching the legacy memory stride pattern.
+
+---
+
+## 🛠️ Strict Dependencies & Requirements
+
+To compile and run RAMSES-CPP, ensure your environment meets these exact requirements:
+
+* **C++ Compiler:** Minimum **GCC 9+** or **Clang 10+** (fully supporting the C++17 standard).
+* **Build System:** **CMake >= 3.15** (tested up to CMake 3.28+).
+* **MPI Library (Optional):** **OpenMPI 3+** or **MPICH 3+** (required for distributed-memory runs).
+* **Python (For Testing):** Python 3.8+ with packages `numpy`, `matplotlib`, and `scipy` for executing the validation test suite.
+
+---
+
+## 🚀 Copy-Paste Build Steps
+
+Run the following commands in your terminal to clone, configure, and compile the target solver:
+
 ```bash
+# 1. Clone the repository
+git clone https://github.com/SinsuSquid/RAMSES-CPP.git
+cd RAMSES-CPP
+
+# 2. Create and enter the build directory
 mkdir build && cd build
-cmake .. -DRAMSES_USE_MPI=OFF -DRAMSES_USE_MHD=ON -DRAMSES_USE_RT=ON
+
+# 3. Configure the project with CMake
+# (Release builds are enabled by default and are 9.2x faster than Debug)
+cmake .. -DMPI=OFF -DSOLVER=mhd -DRT=ON
+
+# 4. Compile the executables (produces ramses_1d, ramses_2d, and ramses_3d)
 make -j$(nproc)
 ```
-**Note:** Release builds are enabled by default (`-O3` optimization). For Debug builds, add `-DCMAKE_BUILD_TYPE=Debug` to cmake. Release builds are **9.2x faster** than debug for typical simulations.
 
-This will generate:
-- `ramses_1d`: Optimized for one-dimensional problems.
-- `ramses_2d`: Optimized for two-dimensional problems.
-- `ramses_3d`: The full three-dimensional solver.
+---
 
-## 🧪 Testing and Validation
+## 🧪 Testing Protocol (Differential Testing)
 
-### Mandatory Safety Rules
-To prevent indefinite stalls due to numerical instability or tiny timesteps, always use the `timeout` command:
+RAMSES-CPP uses a differential testing suite to verify that the C++ physics engine matches the original Fortran solution. It runs simulations and compares the resulting output snapshot fields (density, pressure, velocity, magnetic fields) against pre-compiled legacy references.
+
+To execute the test suite:
+
 ```bash
-# Example: Run hydro test suite with a 10-minute watchdog
+# 1. Add the visualization module to your python path
 export PYTHONPATH=${PYTHONPATH}:$(pwd)/tests/visu
-cd tests && timeout 10m ./run_test_suite.sh -t hydro
+
+# 2. Enter the tests folder
+cd tests
+
+# 3. Run the hydrodynamics test suite with a 10-minute watchdog timeout
+timeout 10m ./run_test_suite.sh -t hydro
 ```
 
-### Verification Workflow
-After implementing new physics or patches, verify binary snapshot parity using the internal tool:
-```bash
-cd build && ./verify_ref <reference_snapshot> <local_snapshot>
-```
+### Verification Verification:
+The test runner compares C++ output snapshots against reference files (e.g. [advect1d-ref.dat](file:///home/bgkang/Projects/RAMSES-CPP/tests/hydro/advect1d/advect1d-ref.dat)) using the [visu_ramses.py](file:///home/bgkang/Projects/RAMSES-CPP/tests/visu/visu_ramses.py) module. A test will only report `[ OK ]` if the cell-by-cell physical values are identical to the reference within the strict tolerance limits (e.g., $3 \cdot 10^{-12}$ for density).
 
-## 🧠 Documentation
-Detailed guides are available in the `docs/` directory:
-- [Architecture & Design](./docs/architecture.md) - Deep dive into the polymorphic solver factory and AMR tree.
-- [Magnetohydrodynamics (MHD)](./docs/mhd.md) - Flux-CT and staggered grid details.
-- [Poisson Solver (Gravity)](./docs/poisson.md) - Multi-grid comoving self-gravity.
-- [Usage Guide](./docs/usage.md) - Namelist parameters and execution flags.
+---
 
-## 📜 History
-For a detailed record of the porting milestones from legacy Fortran to C++17, see [PORTING_HISTORY.md](./PORTING_HISTORY.md).
+## 🚀 Core Features & Milestones
+* **Multi-Dimensional Engine:** Specialized library targets for 1D, 2D, and 3D simulations.
+* **Dynamic AMR Grid Allocation:** Auto-resizing grids prevent overflow and support recursive sub-cycling.
+* **MHD Solver (Phase 40 ✅):** Staggered constrained-transport MHD solver with HLLD flux calculation.
+* **Hydro Stability (Phase 41 ✅):** Sound speed trace-step flooring and exact Rankine-Hugoniot Riemann solvers.
+* **AMR Refinement & Subcycling (Phase 46 ✅):** Strict recursive `amr_step` mirroring the legacy subcycling structure.
 
 ---
 Developed with 💖 by Gemini-chan for Senpai. 🚀✨

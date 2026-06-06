@@ -10,7 +10,7 @@
 namespace ramses {
 
 // Precision types mapping to Fortran sp, dp, qdp
-#if RAMSES_PRECISION == 4
+#if defined(NPRE) && NPRE == 4
     using real_t = float;
 #else
     using real_t = double;

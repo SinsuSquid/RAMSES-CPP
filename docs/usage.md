@@ -110,10 +110,7 @@ timeout 10m ./run_test_suite.sh -t hydro
 
 ## Snapshot Verification
 
-Use the `verify_ref` tool to compare your results against legacy Fortran reference snapshots:
-```bash
-./verify_ref path/to/ref_amr_00001.out00001 path/to/local_amr_00001.out00001
-```
+You can compare output snapshots against reference snapshots using the comparison utilities located in the `tests/` directory (such as `tests/visu/visu_ramses.py`).
 
 ---
 *Pro Tip: Check the `namelist/` directory for pre-configured benchmark examples!* 🛰️✨
