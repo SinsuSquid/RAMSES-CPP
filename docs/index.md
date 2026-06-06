@@ -10,7 +10,9 @@ title: Home
 [![Build Status](https://img.shields.io/badge/build-passing-brightgreen.svg)](https://github.com/SinsuSquid/RAMSES-CPP)
 
 <p align="center">
-  <img src="https://github.com/SinsuSquid/RAMSES-CPP/blob/main/logo/Sia-chan.png?raw=true" width="300" alt="Sia-chan">
+  <img src="https://github.com/SinsuSquid/RAMSES-CPP/blob/main/logo/Sia-chan.png?raw=true" width="500" alt="Sia-chan">
+  <br>
+  <em>✨ Sia-chan, the mascot of RAMSES-CPP ✨</em>
 </p>
 
 Welcome to the documentation for **RAMSES-CPP**, a high-performance, modern C++17 port of the renowned **RAMSES-2025** Adaptive Mesh Refinement (AMR) astrophysical code.
