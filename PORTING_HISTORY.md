@@ -4,6 +4,16 @@ This document tracks the milestones, architecture updates, and physics solver in
 
 ---
 
+## 🚩 Phase 47: CMake Parameter Alignment, verify_ref Cleanup, and Ninja Support (Completed) ✨🎯
+**Commit:** `1277719`
+* **CMake Variable Alignment:** Mapped and standardized all C++ build-system cache flags in [CMakeLists.txt](file:///home/bgkang/Projects/RAMSES-CPP/CMakeLists.txt) to match legacy Fortran variables exactly.
+* **verify_ref Executable Cleanup:** Removed the obsolete `verify_ref` executable target and deleted `src/verify_ref.cpp`.
+* **MIT License:** Integrated the MIT License under the copyright of `SinsuSquid`.
+* **Ninja Build Support:** Updated [run_test_suite.sh](file:///home/bgkang/Projects/RAMSES-CPP/tests/run_test_suite.sh) to detect and use the `Ninja` generator automatically if available, yielding faster compile/re-compile times during local regression testing.
+* **Advection Test Parity Diagnosis:** Successfully diagnosed the root cause of the advection test snapshot mismatch, identifying that the base-level timestep collapses to `1e30` when all cells at `levelmin` are refined, satisfying the premature dump condition.
+
+---
+
 ## 🚩 Phase 46: Recursive Subcycling & Strict Initialization Alignment (Completed) ✨🎯
 **Commit:** `a7431e3` & `5e00381`
 * **Recursive Time Integration:** Refactored the time-stepping loop in [Simulation::amr_step](file:///home/bgkang/Projects/RAMSES-CPP/src/Simulation.cpp#L126) to mirror legacy `amr_step.f90` exactly. Timestep calculation (`newdt_fine`) and flagging are now integrated recursively, with levels managing their own timing via `dtnew_` and `dtold_` arrays.

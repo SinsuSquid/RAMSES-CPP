@@ -9,7 +9,7 @@ This document describes the design of the differential test suite, the python ve
 To guarantee that the modern C++ engine matches the original Fortran physics, RAMSES-CPP uses a **differential testing suite**. 
 
 * **The Core Mechanism:** For each physical test, the engine runs a simulation and compares the resulting output snapshots cell-by-cell against pre-compiled legacy references.
-* **The Test Runner:** [run_test_suite.sh](file:///home/bgkang/Projects/RAMSES-CPP/tests/run_test_suite.sh) automatically configures CMake, builds the target dimensional executable, runs the simulation, and executes the Python validation checks.
+* **The Test Runner:** [run_test_suite.sh](file:///home/bgkang/Projects/RAMSES-CPP/tests/run_test_suite.sh) automatically configures CMake, builds the target dimensional executable (automatically detecting and leveraging `ninja` if installed on your system for faster incremental builds), runs the simulation, and executes the Python validation checks.
 
 ### Test Runner Options
 ```bash

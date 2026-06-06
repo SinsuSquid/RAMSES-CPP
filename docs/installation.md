@@ -29,16 +29,17 @@ Before building the code, ensure your environment meets the following requiremen
    ```
 
 2. **Configure with CMake:**
-   Initialize a build folder and configure your compilation flags. By default, RAMSES-CPP performs an optimized **Release build** (which compiles with `-O3` and is **9.2x faster** than a Debug build).
+   Initialize a build folder and configure your compilation flags. By default, RAMSES-CPP performs an optimized **Release build** (which compiles with `-O3` and is **9.2x faster** than a Debug build). You can append `-G Ninja` if you have the `ninja` build tool installed to speed up compiling/re-compiling:
    ```bash
    mkdir build && cd build
-   cmake .. -DMPI=OFF -DSOLVER=mhd -DRT=ON
+   cmake -G Ninja .. -DMPI=OFF -DSOLVER=mhd -DRT=ON
    ```
 
 3. **Compile:**
    Compile the executables. The build system will generate the solver customized for the dimension specified in `NDIM` (defaults to 3D):
    ```bash
-   make -j$(nproc)
+   ninja
+   # (Or "make -j$(nproc)" if configured without the Ninja generator)
    ```
 
 ---

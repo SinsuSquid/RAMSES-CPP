@@ -54,11 +54,13 @@ cd RAMSES-CPP
 mkdir build && cd build
 
 # 3. Configure the project with CMake
-# (Release builds are enabled by default and are 9.2x faster than Debug)
-cmake .. -DMPI=OFF -DSOLVER=mhd -DRT=ON
+# (Release builds are enabled by default and are 9.2x faster than Debug.
+# Use "-G Ninja" for faster compilation if Ninja is installed)
+cmake -G Ninja .. -DMPI=OFF -DSOLVER=mhd -DRT=ON
 
 # 4. Compile the executables (produces ramses_1d, ramses_2d, and ramses_3d)
-make -j$(nproc)
+ninja
+# (Or "make -j$(nproc)" if using the standard Makefile generator)
 ```
 
 ---
@@ -91,6 +93,7 @@ The test runner compares C++ output snapshots against reference files (e.g. [adv
 * **MHD Solver (Phase 40 ✅):** Staggered constrained-transport MHD solver with HLLD flux calculation.
 * **Hydro Stability (Phase 41 ✅):** Sound speed trace-step flooring and exact Rankine-Hugoniot Riemann solvers.
 * **AMR Refinement & Subcycling (Phase 46 ✅):** Strict recursive `amr_step` mirroring the legacy subcycling structure.
+* **CMake & Ninja Build Support (Phase 47 ✅):** Aligned build-system cache flags with the legacy Makefile variables, removed `verify_ref`, and integrated `Ninja` compiler support.
 
 ---
 Developed with 💖 by Gemini-chan for Senpai. 🚀✨
