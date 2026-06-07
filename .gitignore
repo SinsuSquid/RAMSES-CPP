@@ -49,8 +49,7 @@ tests/**/output_*/
 **/cosmo_128/
 **/dwarf_galaxy/
 
-# Legacy codes
-legacy/
+# legacy/
 
 # Binaries
 bin/

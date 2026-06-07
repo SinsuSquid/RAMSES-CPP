@@ -216,7 +216,7 @@ void Simulation::initialize(const std::string& nml_path) {
     }
 
     // 2. Further refinements (levelmin+1 to levelmax)
-    for (int il_ref = lmin + 1; il_ref <= lmax; ++il_ref) {
+    for (int il_ref = lmin + 1; il_ref <= lmax + 2; ++il_ref) {
         legacy_init_flow();
         
         // Flag all levels
@@ -224,8 +224,7 @@ void Simulation::initialize(const std::string& nml_path) {
             updater_.flag_fine(il, ed, ep, ev, eb2, {}, nexpand_[std::min(il, 32)]);
         }
         // Refine all levels
-        updater_.make_grid_fine(0);
-        for (int il = 1; il < lmax; ++il) {
+        for (int il = 1; il <= lmax; ++il) {
             updater_.make_grid_fine(il);
         }
         grid_.synchronize_level_counts();

@@ -24,6 +24,7 @@ int get_nbor_of_coarse(const AmrGrid& grid, int ic, int idim, int side) {
 }
 
 void TreeUpdater::make_grid_fine(int ilevel) {
+    if (ilevel > grid_.nlevelmax) return;
     int myid = MpiManager::instance().rank() + 1, n2d = (1 << NDIM);
     std::vector<int> cells_to_refine;
     
@@ -138,19 +139,26 @@ void TreeUpdater::make_grid_fine(int ilevel) {
 }
 
 void TreeUpdater::remove_grid_fine(int ilevel) {
+    if (ilevel > grid_.nlevelmax) return;
     int myid = MpiManager::instance().rank() + 1;
-    int ig = grid_.get_headl(myid, ilevel + 1);
+    int ig = grid_.get_headl(myid, ilevel);
     while (ig > 0) {
         int next_ig = grid_.next[ig - 1];
         int n2d = (1 << NDIM);
-        bool should_remove = true;
-        for (int ic = 1; ic <= n2d; ++ic) {
-            int idc = grid_.ncoarse + (ic - 1) * grid_.ngridmax + ig - 1;
-            if (grid_.flag1[idc] == 1 || grid_.son[idc] > 0) {
-                should_remove = false;
-                break;
+        int father_cell = grid_.father[ig - 1];
+        
+        bool should_remove = false;
+        if (father_cell > 0 && grid_.flag1[father_cell - 1] == 0) {
+            should_remove = true;
+            for (int ic = 1; ic <= n2d; ++ic) {
+                int idc = grid_.ncoarse + (ic - 1) * grid_.ngridmax + ig - 1;
+                if (grid_.son[idc] > 0) {
+                    should_remove = false;
+                    break;
+                }
             }
         }
+        
         if (should_remove) {
             for (int ic = 1; ic <= n2d; ++ic) {
                 int idc = grid_.ncoarse + (ic - 1) * grid_.ngridmax + ig - 1;
@@ -158,9 +166,9 @@ void TreeUpdater::remove_grid_fine(int ilevel) {
             }
             int p = grid_.prev[ig - 1];
             int n = grid_.next[ig - 1];
-            if (p > 0) grid_.next[p - 1] = n; else grid_.headl(myid, ilevel + 1) = n;
-            if (n > 0) grid_.prev[n - 1] = p; else grid_.taill(myid, ilevel + 1) = p;
-            grid_.numbl(myid, ilevel + 1)--;
+            if (p > 0) grid_.next[p - 1] = n; else grid_.headl(myid, ilevel) = n;
+            if (n > 0) grid_.prev[n - 1] = p; else grid_.taill(myid, ilevel) = p;
+            grid_.numbl(myid, ilevel)--;
             grid_.free_grid(ig);
         }
         ig = next_ig;
@@ -318,7 +326,7 @@ void TreeUpdater::flag_fine(int ilevel, real_t ed, real_t ep, real_t ev, real_t 
         for (int i = 0; i < grid_.ncoarse; ++i) grid_.flag1[i] = 0;
         for (int i = 1; i <= grid_.ncoarse; ++i) {
             grid_.cpu_map[i-1] = myid;
-            if (ilevel <= lmin) {
+            if (ilevel < lmin) {
                 grid_.flag1[i-1] = 1;
             } else {
                 bool ok = false;
@@ -341,7 +349,7 @@ void TreeUpdater::flag_fine(int ilevel, real_t ed, real_t ep, real_t ev, real_t 
             for (int ic = 1; ic <= n2d; ++ic) {
                 int idc = grid_.ncoarse + (ic - 1) * grid_.ngridmax + ig - 1;
                 grid_.flag1[idc] = 0;
-                if (ilevel <= lmin) {
+                if (ilevel < lmin) {
                     grid_.flag1[idc] = 1;
                 } else {
                     bool ok = false;
@@ -451,8 +459,8 @@ void TreeUpdater::flag_fine(int ilevel, real_t ed, real_t ep, real_t ev, real_t 
     }
 
     authorize_fine(ilevel);
-    if (ilevel + 1 > lmin && icount < nsubcycle_val) {
-        ensure_ref_rules(ilevel + 1);
+    if (ilevel > lmin + 1 && icount < nsubcycle_val) {
+        ensure_ref_rules(ilevel);
     }
 }
 
