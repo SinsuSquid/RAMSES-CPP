@@ -96,6 +96,7 @@ The test runner compares C++ output snapshots against reference files (e.g. [adv
 * **Hydro Stability (Phase 41 ✅):** Sound speed trace-step flooring and exact Rankine-Hugoniot Riemann solvers.
 * **AMR Refinement & Subcycling (Phase 46 ✅):** Strict recursive `amr_step` mirroring the legacy subcycling structure.
 * **CMake & Ninja Build Support (Phase 47 ✅):** Aligned build-system cache flags with the legacy Makefile variables, removed `verify_ref`, and integrated `Ninja` compiler support.
+* **Advect1d AMR & Solver Realignment (Phase 48 ✅):** Aligned C++ initial grid refinement sweeps, corrected `remove_grid_fine` level evaluation offsets, and matched the Ultrabee limiter formulation exactly by removing C++ specific fallback checks.
 
 ---
-Developed with 💖 by Gemini-chan for Senpai. 🚀✨
+Developed with 💖 by Sia-chan for Senpai. 🚀✨

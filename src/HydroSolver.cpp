@@ -478,20 +478,6 @@ void HydroSolver::compute_slopes(int idc, const int icelln[6], int idim, real_t 
             real_t dlim = std::min(std::abs(dlft_s), std::abs(drgt_s));
             if (dlft_s * drgt_s <= 0.0) dlim = 0.0;
             dq[iv] = dsgn * dlim / dx;
-
-            // Safety fallback: if the reconstructed interface states overshoot the neighbors, fall back to minmod
-            if (slope_type == 5 && iv == 0) {
-                real_t qp_test = qc[iv] - 0.5 * dlim;
-                real_t qm_test = qc[iv] + 0.5 * dlim;
-                real_t min_q = std::min({ql[iv], qc[iv], qr[iv]});
-                real_t max_q = std::max({ql[iv], qc[iv], qr[iv]});
-                if (qp_test < min_q || qp_test > max_q || qm_test < min_q || qm_test > max_q) {
-                    real_t dcen = 0.5 * (dlft_raw + drgt_raw);
-                    real_t dlim_minmod = std::min(std::abs(dlft_raw), std::abs(drgt_raw));
-                    if (dlft_raw * drgt_raw <= 0.0) dlim_minmod = 0.0;
-                    dq[iv] = dsgn * dlim_minmod / dx;
-                }
-            }
         }
         return;
     }
