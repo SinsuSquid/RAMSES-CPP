@@ -439,6 +439,34 @@ void AmrGrid::get_nbor_cells(const int ign[7], int ic, int icn[6], int igrid) co
     }
 }
 
+// Mirrors Fortran getnborcells: returns 0 for any direction where the neighbor
+// grid does not exist at the same level. This is used by smooth_fine to prevent
+// stale cross-level flag1 values from being counted as flagged neighbors.
+void AmrGrid::get_nbor_cells_exact(const int ign[7], int ic, int icn[6]) const {
+    for (int i = 0; i < 6; ++i) icn[i] = 0;
+    for (int idim = 0; idim < NDIM; ++idim) {
+        for (int inbor = 0; inbor < 2; ++inbor) {
+            int ig_idx = constants::iii[idim][inbor][ic - 1];
+            int ic_pos = constants::jjj[idim][inbor][ic - 1];
+            int ig     = ign[ig_idx];
+            int slot   = idim * 2 + inbor;
+            if (ig_idx == 0) {
+                // Same grid — neighbor cell always exists at the same level
+                icn[slot] = ncoarse + (ic_pos - 1) * ngridmax + ig;
+            } else if (ig > 0) {
+                // ig is the father cell of the neighboring grid; check if the
+                // child grid (i.e., same-level neighbour) actually exists.
+                int ig_child = (ig <= ncell) ? son[ig - 1] : 0;
+                if (ig_child > 0) {
+                    icn[slot] = ncoarse + (ic_pos - 1) * ngridmax + ig_child;
+                }
+                // else: neighbor grid absent at this level → leave icn[slot]=0
+            }
+            // ig == 0 (not exist) or ig < 0 (boundary) → leave icn[slot]=0
+        }
+    }
+}
+
 void AmrGrid::get_27_cell_neighbors(int icell, int nbors[27]) const {
     for (int i = 0; i < 27; ++i) nbors[i] = 0;
     if (icell <= 0 || icell > ncell) return;

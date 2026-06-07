@@ -225,7 +225,10 @@ void TreeUpdater::smooth_fine(int ilevel) {
             for (int ic = 1; ic <= n2d; ++ic) {
                 int idc = grid_.ncoarse + (ic - 1) * ngridmax + ig - 1;
                 if (grid_.flag1[idc] == 0) {
-                    int icn_nb[6]; grid_.get_nbor_cells(ign, ic, icn_nb, ig);
+                    // Use exact same-level lookup (mirrors Fortran getnborcells):
+                    // returns 0 for non-existent neighbor grids so stale flag1
+                    // values at coarser levels are never counted.
+                    int icn_nb[6]; grid_.get_nbor_cells_exact(ign, ic, icn_nb);
                     int num_flagged_nbors = 0;
                     for (int inbor = 0; inbor < 2 * NDIM; ++inbor) {
                         int neighbor_cell = icn_nb[inbor];
