@@ -186,53 +186,131 @@ void HydroSolver::godunov_fine(int ilevel, real_t dt, real_t dx) {
                                 grid_.get_nbor_cells(ign_p, ic_p, icn_p, ig_p);
                             }
                             
-                            // 3. Get primitive variables of left/right neighbors in direction idim
+                            // 3. Get neighbor variables
                             int id_l = icn_p[idim*2];
                             int id_r = icn_p[idim*2+1];
-                            real_t q_l[20], q_r[20];
+                            real_t u_l[20] = {0}, u_r[20] = {0};
                             
-                            auto get_nb_q_coarse = [&](int id, int side, real_t q_out[20]) {
+                            auto get_nb_u_coarse = [&](int id, int side, real_t u_out[20]) {
                                 if (id > 0) {
-                                    real_t u_nb[20];
-                                    for(int iv=1; iv<=grid_.nvar; ++iv) u_nb[iv-1] = grid_.uold(id, iv);
-                                    ctoprim(u_nb, q_out, gamma);
+                                    for(int iv=1; iv<=grid_.nvar; ++iv) u_out[iv-1] = grid_.uold(id, iv);
                                 } else {
-                                    for(int iv=0; iv<grid_.nvar; ++iv) q_out[iv] = q_c[iv];
+                                    for(int iv=0; iv<grid_.nvar; ++iv) u_out[iv] = u_c[iv];
                                     int ib = -id;
                                     if (ib > 0 && ib <= (int)grid_.bound_type.size() && grid_.bound_type[ib - 1] == 1) {
-                                        q_out[1 + idim] *= -1.0;
+                                        u_out[1 + idim] *= -1.0;
                                     }
                                 }
                             };
                             
-                            get_nb_q_coarse(id_l, 0, q_l);
-                            get_nb_q_coarse(id_r, 1, q_r);
+                            get_nb_u_coarse(id_l, 0, u_l);
+                            get_nb_u_coarse(id_r, 1, u_r);
                             
                             // Swap velocity components for 1D slope computation if idim > 0
                             if (idim > 0) {
-                                std::swap(q_l[1], q_l[1+idim]);
-                                std::swap(q_c[1], q_c[1+idim]);
-                                std::swap(q_r[1], q_r[1+idim]);
+                                std::swap(u_l[1], u_l[1+idim]);
+                                std::swap(u_c[1], u_c[1+idim]);
+                                std::swap(u_r[1], u_r[1+idim]);
                             }
                             
-                            // 4. Compute slope and time-evolve to the interface
                             int interpol_type = config_.get_int("refine_params", "interpol_type", 1);
+                            int interpol_var = config_.get_int("refine_params", "interpol_var", config_.get_int("hydro_params", "interpol_var", 0));
                             real_t dq_coarse[20] = {0};
                             real_t dx_coarse = 2.0 * dx; // Coarse neighbor is 2x larger
-                            for (int iv = 0; iv < grid_.nvar; ++iv) {
-                                real_t dlft = q_c[iv] - q_l[iv];
-                                real_t drgt = q_r[iv] - q_c[iv];
-                                real_t slope = 0.0;
-                                if (interpol_type > 0 && dlft * drgt > 0.0) {
-                                    real_t sgn = (dlft >= 0.0) ? 1.0 : -1.0;
-                                    slope = sgn * std::min(std::abs(dlft), std::abs(drgt));
+                            
+                            if (interpol_var == 0) {
+                                // Conserved variables interpolation
+                                real_t slopes[20] = {0};
+                                for (int iv = 0; iv < grid_.nvar; ++iv) {
+                                    real_t dlft = u_c[iv] - u_l[iv];
+                                    real_t drgt = u_r[iv] - u_c[iv];
+                                    if (interpol_type > 0 && dlft * drgt > 0.0) {
+                                        real_t sgn = (dlft >= 0.0) ? 1.0 : -1.0;
+                                        if (interpol_type == 1) {
+                                            slopes[iv] = sgn * 0.5 * std::min(std::abs(dlft), std::abs(drgt));
+                                        } else if (interpol_type == 2) {
+                                            slopes[iv] = sgn * std::min({std::abs(dlft), std::abs(drgt), 0.25 * std::abs(dlft + drgt)});
+                                        } else if (interpol_type == 3) {
+                                            slopes[iv] = 0.25 * (dlft + drgt);
+                                        }
+                                    }
+                                    dq_coarse[iv] = slopes[iv] / dx_coarse;
                                 }
-                                dq_coarse[iv] = slope / dx_coarse;
+                                
+                                // Swap back conserved vars
+                                if (idim > 0) {
+                                    std::swap(u_l[1], u_l[1+idim]);
+                                    std::swap(u_c[1], u_c[1+idim]);
+                                    std::swap(u_r[1], u_r[1+idim]);
+                                }
+                                
+                                // Re-evaluate primitive q_c for trace
+                                ctoprim(u_c, q_c, gamma);
+                                if (idim > 0) {
+                                    std::swap(q_c[1], q_c[1+idim]);
+                                }
+                                
+                                // Compute primitive slopes for the trace step
+                                real_t q_l[20], q_r[20];
+                                ctoprim(u_l, q_l, gamma);
+                                ctoprim(u_r, q_r, gamma);
+                                if (idim > 0) {
+                                    std::swap(q_l[1], q_l[1+idim]);
+                                    std::swap(q_r[1], q_r[1+idim]);
+                                }
+                                for (int iv = 0; iv < grid_.nvar; ++iv) {
+                                    real_t dlft = q_c[iv] - q_l[iv];
+                                    real_t drgt = q_r[iv] - q_c[iv];
+                                    real_t slope_p = 0.0;
+                                    if (interpol_type > 0 && dlft * drgt > 0.0) {
+                                        real_t sgn = (dlft >= 0.0) ? 1.0 : -1.0;
+                                        if (interpol_type == 1) {
+                                            slope_p = sgn * 0.5 * std::min(std::abs(dlft), std::abs(drgt));
+                                        } else if (interpol_type == 2) {
+                                            slope_p = sgn * std::min({std::abs(dlft), std::abs(drgt), 0.25 * std::abs(dlft + drgt)});
+                                        } else if (interpol_type == 3) {
+                                            slope_p = 0.25 * (dlft + drgt);
+                                        }
+                                    }
+                                    dq_coarse[iv] = slope_p / dx_coarse;
+                                }
+                            } else {
+                                // Primitive variables interpolation
+                                if (idim > 0) {
+                                    std::swap(u_l[1], u_l[1+idim]);
+                                    std::swap(u_c[1], u_c[1+idim]);
+                                    std::swap(u_r[1], u_r[1+idim]);
+                                }
+                                ctoprim(u_c, q_c, gamma);
+                                real_t q_l[20], q_r[20];
+                                ctoprim(u_l, q_l, gamma);
+                                ctoprim(u_r, q_r, gamma);
+                                if (idim > 0) {
+                                    std::swap(q_l[1], q_l[1+idim]);
+                                    std::swap(q_c[1], q_c[1+idim]);
+                                    std::swap(q_r[1], q_r[1+idim]);
+                                }
+                                for (int iv = 0; iv < grid_.nvar; ++iv) {
+                                    real_t dlft = q_c[iv] - q_l[iv];
+                                    real_t drgt = q_r[iv] - q_c[iv];
+                                    real_t slope = 0.0;
+                                    if (interpol_type > 0 && dlft * drgt > 0.0) {
+                                        real_t sgn = (dlft >= 0.0) ? 1.0 : -1.0;
+                                        if (interpol_type == 1) {
+                                            slope = sgn * 0.5 * std::min(std::abs(dlft), std::abs(drgt));
+                                        } else if (interpol_type == 2) {
+                                            slope = sgn * std::min({std::abs(dlft), std::abs(drgt), 0.25 * std::abs(dlft + drgt)});
+                                        } else if (interpol_type == 3) {
+                                            slope = 0.25 * (dlft + drgt);
+                                        }
+                                    }
+                                    dq_coarse[iv] = slope / dx_coarse;
+                                }
                             }
                             
                             real_t qm_nb[20], qp_nb[20];
                             trace(q_c, dq_coarse, dt, dx_coarse, qm_nb, qp_nb, gamma);
-
+                            
                             // Swap back if idim > 0
                             if (idim > 0) {
                                 std::swap(qm_nb[1], qm_nb[1+idim]);
@@ -563,11 +641,49 @@ void HydroSolver::trace(const real_t q[], const real_t dq[], real_t dt, real_t d
 
 void HydroSolver::interpol_hydro(const real_t u1[7][64], real_t u2[8][64]) {
     int nvar = grid_.nvar; real_t gam = grid_.gamma;
-    real_t q1[7][64], q2[8][64];
-    for (int i = 0; i < 7; ++i) ctoprim(u1[i], q1[i], gam);
-    
+    int interpol_var = config_.get_int("refine_params", "interpol_var", config_.get_int("hydro_params", "interpol_var", 0));
     int interpol_type = config_.get_int("refine_params", "interpol_type", 1);
 
+    real_t q1[7][64] = {0};
+    real_t q2[8][64] = {0};
+
+    // Step 1: Convert conserved variables u1 to interpolation variables q1
+    if (interpol_var == 0) {
+        // Mode 0: conserved variables directly (rho, momentum, E, scalars)
+        for (int i = 0; i < 7; ++i) {
+            for (int iv = 0; iv < nvar; ++iv) {
+                q1[i][iv] = u1[i][iv];
+            }
+        }
+    } else if (interpol_var == 1) {
+        // Mode 1: density, momentum, internal energy, scalars
+        for (int i = 0; i < 7; ++i) {
+            real_t d = std::max(u1[i][0], (real_t)1e-10);
+            q1[i][0] = u1[i][0]; // density
+            real_t e_kin = 0.0;
+            for (int idim = 1; idim <= NDIM; ++idim) {
+                q1[i][idim] = u1[i][idim]; // momentum
+                e_kin += 0.5 * u1[i][idim] * u1[i][idim] / d;
+            }
+            real_t e_nonthermal = 0.0;
+            int iener = NDIM + 1;
+            for (int ie = 0; ie < nener_; ++ie) {
+                e_nonthermal += u1[i][iener + 1 + ie];
+                q1[i][iener + 1 + ie] = u1[i][iener + 1 + ie];
+            }
+            q1[i][iener] = u1[i][iener] - e_kin - e_nonthermal; // internal energy
+            for (int iv = iener + 1 + nener_; iv < nvar; ++iv) {
+                q1[i][iv] = u1[i][iv]; // passive scalars/other vars
+            }
+        }
+    } else {
+        // Mode 2: primitive variables (density, velocity, pressure, scalars)
+        for (int i = 0; i < 7; ++i) {
+            ctoprim(u1[i], q1[i], gam);
+        }
+    }
+
+    // Step 2: Perform linear interpolation on q1 -> q2
     for (int iv = 0; iv < nvar; ++iv) {
         real_t slopes[3] = {0,0,0};
         for (int idim = 0; idim < NDIM; ++idim) {
@@ -575,11 +691,20 @@ void HydroSolver::interpol_hydro(const real_t u1[7][64], real_t u2[8][64]) {
             real_t drgt = q1[2*idim+2][iv] - q1[0][iv];
             if (dlft * drgt > 0.0) {
                 real_t sgn = (dlft >= 0.0) ? 1.0 : -1.0;
-                if (interpol_type == 1) {
+                int itype = interpol_type;
+                if (interpol_type == 4) {
+                    // type 3 (central) for velocity, type 2 (moncen) for others
+                    if (interpol_var == 2 && iv >= 1 && iv <= NDIM) {
+                        itype = 3;
+                    } else {
+                        itype = 2;
+                    }
+                }
+                if (itype == 1) {
                     slopes[idim] = sgn * 0.5 * std::min(std::abs(dlft), std::abs(drgt));
-                } else if (interpol_type == 2) {
-                    slopes[idim] = sgn * std::min({std::abs(dlft), std::abs(drgt), 0.25*std::abs(dlft+drgt)});
-                } else if (interpol_type == 3) {
+                } else if (itype == 2) {
+                    slopes[idim] = sgn * std::min({std::abs(dlft), std::abs(drgt), 0.25 * std::abs(dlft + drgt)});
+                } else if (itype == 3) {
                     slopes[idim] = 0.25 * (dlft + drgt);
                 } else {
                     slopes[idim] = 0.0;
@@ -591,42 +716,74 @@ void HydroSolver::interpol_hydro(const real_t u1[7][64], real_t u2[8][64]) {
             q2[i][iv] = q1[0][iv] + (ix-0.5)*slopes[0] + (iy-0.5)*slopes[1] + (iz-0.5)*slopes[2];
         }
     }
-    // Correct total momentum keeping the slope fixed (momentum conservation)
-    int n2d = 1 << NDIM;
-    real_t oneover_n2d = 1.0 / n2d;
-    for (int d_idx = 1; d_idx <= NDIM; ++d_idx) {
-        real_t mom_sum = 0.0;
-        for (int i = 0; i < n2d; ++i) {
-            mom_sum += q2[i][0] * q2[i][d_idx] * oneover_n2d;
-        }
-        real_t mom_err = mom_sum - u1[0][d_idx];
-        for (int i = 0; i < n2d; ++i) {
-            real_t d = std::max(q2[i][0], (real_t)1e-10);
-            q2[i][d_idx] = (d * q2[i][d_idx] - mom_err) / d;
-        }
-    }
 
-    int iener = NDIM + 1;
-    for (int i = 0; i < 8; ++i) {
-        real_t d = std::max(q2[i][0], 1e-10);
-        real_t p = 0;
-        if (params::barotropic_eos) {
-            real_t T2 = params::T_eos / params::mu_gas * (constants::kB / constants::mH);
-            real_t temp_mu = T2;
-            if (params::barotropic_eos_form == "polytrope") temp_mu = T2 * std::pow(d * params::units_density / params::polytrope_rho, params::polytrope_index - 1.0);
-            else if (params::barotropic_eos_form == "double_polytrope") temp_mu = T2 * (1.0 + std::pow(d * params::units_density / params::polytrope_rho, params::polytrope_index - 1.0));
-            p = d * temp_mu / (params::units_velocity * params::units_velocity);
-        } else {
-            p = std::max(q2[i][iener], 1e-20);
+    // Step 3: Convert interpolation variables q2 back to conserved variables u2
+    if (interpol_var == 0) {
+        // Mode 0: conserved variables directly
+        for (int i = 0; i < 8; ++i) {
+            for (int iv = 0; iv < nvar; ++iv) {
+                u2[i][iv] = q2[i][iv];
+            }
         }
-        
-        u2[i][0] = d;
-        real_t v2 = 0;
-        for(int d_idx=1; d_idx<=NDIM; ++d_idx) { u2[i][d_idx] = d * q2[i][d_idx]; v2 += q2[i][d_idx] * q2[i][d_idx]; }
-        real_t e_thermal = p / (gam - 1.0), e_kinetic = 0.5 * d * v2, e_nonthermal = 0.0;
-        for (int ie = 0; ie < nener_; ++ie) { real_t e_rad = q2[i][iener+1+ie] / (grid_.gamma_rad[ie] - 1.0); u2[i][iener+1+ie] = e_rad; e_nonthermal += e_rad; }
-        u2[i][iener] = e_thermal + e_kinetic + e_nonthermal;
-        for (int iv = iener + 1 + nener_; iv < nvar; ++iv) u2[i][iv] = d * q2[i][iv];
+    } else if (interpol_var == 1) {
+        // Mode 1: density, momentum, internal energy -> density, momentum, total energy
+        for (int i = 0; i < 8; ++i) {
+            real_t d = std::max(q2[i][0], (real_t)1e-10);
+            u2[i][0] = d;
+            real_t e_kin = 0.0;
+            for (int idim = 1; idim <= NDIM; ++idim) {
+                u2[i][idim] = q2[i][idim];
+                e_kin += 0.5 * q2[i][idim] * q2[i][idim] / d;
+            }
+            real_t e_nonthermal = 0.0;
+            int iener = NDIM + 1;
+            for (int ie = 0; ie < nener_; ++ie) {
+                u2[i][iener + 1 + ie] = q2[i][iener + 1 + ie];
+                e_nonthermal += q2[i][iener + 1 + ie];
+            }
+            u2[i][iener] = q2[i][iener] + e_kin + e_nonthermal;
+            for (int iv = iener + 1 + nener_; iv < nvar; ++iv) {
+                u2[i][iv] = q2[i][iv];
+            }
+        }
+    } else {
+        // Mode 2: primitive variables -> conserved variables (with momentum conservation)
+        int n2d = 1 << NDIM;
+        real_t oneover_n2d = 1.0 / n2d;
+        for (int d_idx = 1; d_idx <= NDIM; ++d_idx) {
+            real_t mom_sum = 0.0;
+            for (int i = 0; i < n2d; ++i) {
+                mom_sum += q2[i][0] * q2[i][d_idx] * oneover_n2d;
+            }
+            real_t mom_err = mom_sum - u1[0][d_idx];
+            for (int i = 0; i < n2d; ++i) {
+                real_t d = std::max(q2[i][0], (real_t)1e-10);
+                q2[i][d_idx] = (d * q2[i][d_idx] - mom_err) / d;
+            }
+        }
+
+        int iener = NDIM + 1;
+        for (int i = 0; i < 8; ++i) {
+            real_t d = std::max(q2[i][0], 1e-10);
+            real_t p = 0;
+            if (params::barotropic_eos) {
+                real_t T2 = params::T_eos / params::mu_gas * (constants::kB / constants::mH);
+                real_t temp_mu = T2;
+                if (params::barotropic_eos_form == "polytrope") temp_mu = T2 * std::pow(d * params::units_density / params::polytrope_rho, params::polytrope_index - 1.0);
+                else if (params::barotropic_eos_form == "double_polytrope") temp_mu = T2 * (1.0 + std::pow(d * params::units_density / params::polytrope_rho, params::polytrope_index - 1.0));
+                p = d * temp_mu / (params::units_velocity * params::units_velocity);
+            } else {
+                p = std::max(q2[i][iener], 1e-20);
+            }
+            
+            u2[i][0] = d;
+            real_t v2 = 0;
+            for(int d_idx=1; d_idx<=NDIM; ++d_idx) { u2[i][d_idx] = d * q2[i][d_idx]; v2 += q2[i][d_idx] * q2[i][d_idx]; }
+            real_t e_thermal = p / (gam - 1.0), e_kinetic = 0.5 * d * v2, e_nonthermal = 0.0;
+            for (int ie = 0; ie < nener_; ++ie) { real_t e_rad = q2[i][iener+1+ie] / (grid_.gamma_rad[ie] - 1.0); u2[i][iener+1+ie] = e_rad; e_nonthermal += e_rad; }
+            u2[i][iener] = e_thermal + e_kinetic + e_nonthermal;
+            for (int iv = iener + 1 + nener_; iv < nvar; ++iv) u2[i][iv] = d * q2[i][iv];
+        }
     }
 }
 
