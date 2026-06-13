@@ -4,15 +4,18 @@ This document tracks the milestones, architecture updates, and physics solver in
 
 ---
 
-## 🚩 Phase 48: Advect1d AMR & Solver Realignment (In Progress) 🚀✨
-**Commit:** `bce0823`
+## 🚩 Phase 48: Advect1d AMR & Solver Realignment (Completed) 🚀✨
+**Commit:** `64601ad`
 * **Initial Grid Refinement:** Extended the C++ further refinement iterations in [Simulation.cpp](file:///home/bgkang/Projects/RAMSES-CPP/src/Simulation.cpp#L219) from `lmax` to `lmax + 2`. This aligned C++ with the combined refinement sweeps of Fortran's `init_refine` and `init_refine_2`, achieving bit-perfect grid matching in Snapshot 1.
 * **Grid Deletion Correction:** Corrected `remove_grid_fine` in [TreeUpdater.cpp](file:///home/bgkang/Projects/RAMSES-CPP/src/TreeUpdater.cpp#L140) to check if the father cell at level `ilevel - 1` is unflagged (`flag1 == 0`), matching Fortran's grid deletion logic.
 * **Refinement Rules subcycling correction:** Aligned C++ subcycle checking in [TreeUpdater.cpp](file:///home/bgkang/Projects/RAMSES-CPP/src/TreeUpdater.cpp#L477) to evaluate the current level timing compared to the parent level subcycle factor.
 * **Ultrabee Limiter formulation matching:** Removed the non-standard C++ safety fallback check in `HydroSolver::compute_slopes` for the Ultrabee limiter (`slope_type == 5`), which was overriding compressive slopes with minmod slopes. This brought Snapshot 2 grid size from 110 cells down to 104 cells, and aligned C++ time steps perfectly with Fortran.
 * **Interpolation Modes & Limiters:** Implemented options for conserved variables (Mode 0), internal energy (Mode 1), and primitive variables (Mode 2) interpolation at coarse-fine boundaries, matching legacy `interpol_var` behavior, and added support for the combined central/MonCen limiter (`interpol_type = 4`).
+* **Snapshot Timing & Exit Condition Alignment:** Realigned snapshot write timing by moving the snapshot output block from the end of `Simulation::run` to the beginning of the recursive `amr_step` (after the refinement/derefinement stage). Adjusted the run loop exit logic to check `finished_` flags, mirroring Fortran's output timing state.
+* **Sub-Grid Logging Parity:** Added sub-grid creation and deletion logging to `TreeUpdater::make_grid_fine` and `TreeUpdater::remove_grid_fine` matching the legacy run log style.
 
 ---
+
 
 ## 🚩 Phase 47: CMake Parameter Alignment, verify_ref Cleanup, and Ninja Support (Completed) ✨🎯
 **Commit:** `1277719`
