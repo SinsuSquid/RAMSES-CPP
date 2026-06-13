@@ -43,6 +43,7 @@
 # Tests
 tests/test_suite.log
 tests/**/output_*/
+output_*/
 *.pdf
 *.tex
 *.log
@@ -50,6 +51,7 @@ tests/**/output_*/
 **/dwarf_galaxy/
 
 # legacy/
+legacy/
 
 # Binaries
 bin/

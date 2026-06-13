@@ -480,7 +480,7 @@ void AmrGrid::get_27_cell_neighbors(int icell, int nbors[27]) const {
             int ig = ((cell - ncoarse - 1) % ngridmax) + 1;
             int ic = ((cell - ncoarse - 1) / ngridmax) + 1;
             int ign[7]; get_nbor_grids(ig, ign);
-            get_nbor_cells(ign, ic, nbs, ig);
+            get_nbor_cells_exact(ign, ic, nbs);
         }
         return (dir >= 0 && dir < 6) ? nbs[dir] : 0;
     };
