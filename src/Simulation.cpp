@@ -452,7 +452,7 @@ void Simulation::run() {
 
     // 8. Compute refinement flags for the next step (flag_fine)
     int nexp = config_.get_int("amr_params", "nexpand", 1);
-    updater_.flag_fine(ilevel, err_grad_d_, err_grad_p_, err_grad_v_, err_grad_b2_, {}, nexp, icount, nsub);
+    updater_.flag_fine(ilevel + 1, err_grad_d_, err_grad_p_, err_grad_v_, err_grad_b2_, {}, nexp, icount, nsub);
 }
 
 void Simulation::rho_fine(int ilevel) {
