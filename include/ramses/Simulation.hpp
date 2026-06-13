@@ -74,6 +74,9 @@ private:
     std::vector<int> nsubcycle_;
     std::vector<int> nexpand_;
     std::vector<double> tout_;
+    int snapshot_count_ = 1;
+    int iout_ = 0;
+    bool finished_ = false;
 };
 
 } // namespace ramses

@@ -282,10 +282,10 @@ void Simulation::initialize(const std::string& nml_path) {
 }
 
 void Simulation::run() {
-    int snapshot_count = 1;
-    int iout = 0;
+    snapshot_count_ = 1;
+    iout_ = 0;
     
-    dump_snapshot(snapshot_count++);
+    dump_snapshot(snapshot_count_++);
     bool verbose = config_.get_bool("run_params", "verbose", false);
 
     if (MpiManager::instance().rank() == 0) {
@@ -305,7 +305,7 @@ void Simulation::run() {
     }
 
     auto t_start_loop = std::chrono::high_resolution_clock::now();
-    while (t_ < tout_.back() && nstep_ < nstepmax_) {
+    while (!finished_) {
         auto t_step_start = std::chrono::high_resolution_clock::now();
 
         // 1. Refine coarse domain (adaptive_loop.f90:158)
@@ -358,10 +358,6 @@ void Simulation::run() {
             printf(" Step=%d t=%12.5e dt=%10.3e min_rho=%10.3e max_rho=%10.3e time_elapsed=%8.2fs total_time=%8.2fs\n", nstep_, t_, dtnew_[p::levelmin], min_rho, max_rho, duration, total_time);
         }
 
-        // 5. Snapshot check
-        if (iout < (int)tout_.size() && t_ >= tout_[iout] - 1e-10 * std::min(dtnew_[p::levelmin], p::boxlen)) {
-            dump_snapshot(snapshot_count++); iout++;
-        }
     }
 
     if (MpiManager::instance().rank() == 0) {
@@ -383,9 +379,21 @@ void Simulation::run() {
         if (ilevel == p::levelmin || icount > 1) {
             for (int i = ilevel; i <= p::nlevelmax; ++i) {
                 updater_.make_grid_fine(i + 1);
+            }
+            for (int i = p::nlevelmax; i >= ilevel; --i) {
                 updater_.remove_grid_fine(i + 1);
             }
             grid_.synchronize_level_counts();
+        }
+    }
+
+    if (ilevel == p::levelmin && icount == 1) {
+        if (iout_ < (int)tout_.size() && t_ >= tout_[iout_] - 1e-10 * std::min(dtnew_[p::levelmin], p::boxlen)) {
+            dump_snapshot(snapshot_count_++); iout_++;
+            if (iout_ >= (int)tout_.size()) {
+                finished_ = true;
+                return;
+            }
         }
     }
 
@@ -461,6 +469,7 @@ void Simulation::run() {
     // 8. Compute refinement flags for the next step (flag_fine)
     int nexp = config_.get_int("amr_params", "nexpand", 1);
     updater_.flag_fine(ilevel + 1, err_grad_d_, err_grad_p_, err_grad_v_, err_grad_b2_, {}, nexp, icount, ilevel > 0 ? nsubcycle_[ilevel - 1] : 1);
+
 }
 
 void Simulation::rho_fine(int ilevel) {

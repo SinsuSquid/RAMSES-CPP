@@ -43,6 +43,12 @@ void TreeUpdater::make_grid_fine(int ilevel) {
         }
     }
 
+    int ncreate = cells_to_refine.size();
+    if (config_.get_bool("run_params", "verbose", false) && MpiManager::instance().rank() == 0) {
+        std::cout << "    Entering refine_fine for level  " << ilevel - 1 << std::endl;
+        std::cout << "   ==> Make      " << ncreate << " sub-grids" << std::endl;
+    }
+
     for (size_t idx = 0; idx < cells_to_refine.size(); ++idx) {
         int ic_coarse = cells_to_refine[idx];
         int idc = ic_coarse - 1;
@@ -142,6 +148,7 @@ void TreeUpdater::remove_grid_fine(int ilevel) {
     if (ilevel > grid_.nlevelmax) return;
     int myid = MpiManager::instance().rank() + 1;
     int ig = grid_.get_headl(myid, ilevel);
+    int nkill = 0;
     while (ig > 0) {
         int next_ig = grid_.next[ig - 1];
         int n2d = (1 << NDIM);
@@ -160,6 +167,7 @@ void TreeUpdater::remove_grid_fine(int ilevel) {
         }
         
         if (should_remove) {
+            nkill++;
             for (int ic = 1; ic <= n2d; ++ic) {
                 int idc = grid_.ncoarse + (ic - 1) * grid_.ngridmax + ig - 1;
                 grid_.flag1[idc] = 0;
@@ -172,6 +180,10 @@ void TreeUpdater::remove_grid_fine(int ilevel) {
             grid_.free_grid(ig);
         }
         ig = next_ig;
+    }
+    if (config_.get_bool("run_params", "verbose", false) && MpiManager::instance().rank() == 0) {
+        std::cout << "    Entering refine_fine for level  " << ilevel - 1 << std::endl;
+        std::cout << "   ==> Kill      " << nkill << " sub-grids" << std::endl;
     }
 }
 
