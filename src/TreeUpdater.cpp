@@ -465,6 +465,23 @@ void TreeUpdater::flag_fine(int ilevel, real_t ed, real_t ep, real_t ev, real_t 
     if (ilevel > lmin + 1 && icount < nsubcycle_val) {
         ensure_ref_rules(ilevel);
     }
+
+    int nflagged = 0;
+    if (ilevel == 1) {
+        for (int i = 0; i < grid_.ncoarse; ++i) {
+            if (grid_.flag1[i] == 1) nflagged++;
+        }
+    } else {
+        int ig = grid_.get_headl(myid, ilevel - 1);
+        while (ig > 0) {
+            for (int ic = 1; ic <= n2d; ++ic) {
+                int idc = grid_.ncoarse + (ic - 1) * grid_.ngridmax + ig - 1;
+                if (grid_.flag1[idc] == 1) nflagged++;
+            }
+            ig = grid_.next[ig - 1];
+        }
+    }
+    std::cout << "   ==> Flag " << nflagged << " cells (C++ level " << ilevel - 1 << ")" << std::endl;
 }
 
 

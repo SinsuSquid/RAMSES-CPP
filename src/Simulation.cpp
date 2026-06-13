@@ -319,6 +319,14 @@ void Simulation::run() {
         // 2. Call amr_step for base level (adaptive_loop.f90:185)
         amr_step(p::levelmin, 1);
 
+        // Build refinement map for coarser levels (adaptive_loop.f90:171)
+        {
+            int nexp = config_.get_int("amr_params", "nexpand", 1);
+            for (int il = p::levelmin; il >= 1; --il) {
+                updater_.flag_fine(il, err_grad_d_, err_grad_p_, err_grad_v_, err_grad_b2_, {}, nexp, 2, 2);
+            }
+        }
+
         // 3. Restriction for whole domain (adaptive_loop.f90:188)
         if (p::levelmin < p::nlevelmax) {
              for (int il = p::levelmin - 1; il >= 0; --il) {
@@ -452,7 +460,7 @@ void Simulation::run() {
 
     // 8. Compute refinement flags for the next step (flag_fine)
     int nexp = config_.get_int("amr_params", "nexpand", 1);
-    updater_.flag_fine(ilevel + 1, err_grad_d_, err_grad_p_, err_grad_v_, err_grad_b2_, {}, nexp, icount, nsub);
+    updater_.flag_fine(ilevel + 1, err_grad_d_, err_grad_p_, err_grad_v_, err_grad_b2_, {}, nexp, icount, ilevel > 0 ? nsubcycle_[ilevel - 1] : 1);
 }
 
 void Simulation::rho_fine(int ilevel) {
