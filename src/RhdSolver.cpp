@@ -2,6 +2,7 @@
 #include "ramses/RelativisticRiemannSolver.hpp"
 #include "ramses/MpiManager.hpp"
 #include "ramses/Constants.hpp"
+#include "ramses/SlopeLimiter.hpp"
 #include <cmath>
 #include <algorithm>
 
@@ -283,9 +284,7 @@ void RhdSolver::compute_slopes(int idc, const int icelln[6], int idim, real_t dq
     };
     get_nb_q(icelln[idim*2], 0, ql); get_nb_q(icelln[idim*2+1], 1, qr);
     for (int iv = 0; iv < grid_.nvar; ++iv) {
-        real_t dlft = qc[iv] - ql[iv], drgt = qr[iv] - qc[iv];
-        if (dlft * drgt <= 0.0) dq[iv] = 0.0;
-        else { real_t sgn = (dlft >= 0.0) ? 1.0 : -1.0; dq[iv] = sgn * std::min(std::abs(dlft), std::abs(drgt)); }
+        dq[iv] = SlopeLimiter::compute_slope(ql[iv], qc[iv], qr[iv], slope_type);
     }
 }
 

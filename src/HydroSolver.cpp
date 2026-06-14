@@ -4,6 +4,7 @@
 #include "ramses/Parameters.hpp"
 #include "ramses/Constants.hpp"
 #include "ramses/SolverFactory.hpp"
+#include "ramses/SlopeLimiter.hpp"
 #include <iostream>
 #include <algorithm>
 #include <cmath>
@@ -529,75 +530,17 @@ void HydroSolver::compute_slopes(int idc, const int icelln[6], int idim, real_t 
     };
     get_nb_q(icelln[idim*2], 0, ql); get_nb_q(icelln[idim*2+1], 1, qr);
 
-    // slope_type 4 (Superbee) and 5 (Ultrabee): velocity-dependent limiters, 1D only
-    // Type 5 applies ultrabee to density only; zero slope for all other vars
-    if (slope_type == 4 || slope_type == 5) {
-        real_t nu = qc[1 + idim] * dt / dx;  // Courant number: vel_component * dt/dx
-        for (int iv = 0; iv < grid_.nvar; ++iv) {
-            if (slope_type == 5 && iv != 0) { dq[iv] = 0.0; continue; }
-            real_t dlft_raw = qc[iv] - ql[iv], drgt_raw = qr[iv] - qc[iv];
-            real_t dlft_s, drgt_s;
-            if (slope_type == 4) {
-                // Superbee: symmetric scaling
-                dlft_s = 2.0 / (1.0 + nu) * dlft_raw;
-                drgt_s = 2.0 / (1.0 - nu) * drgt_raw;
-            } else {
-                // Ultrabee: one-sided scaling based on flow direction
-                if (nu >= 0.0) {
-                    dlft_s = 2.0 / (nu + 1e-10) * dlft_raw;
-                    drgt_s = 2.0 / (1.0 - nu) * drgt_raw;
-                } else {
-                    dlft_s = 2.0 / (1.0 + nu) * dlft_raw;
-                    drgt_s = 2.0 / (-nu + 1e-10) * drgt_raw;
-                }
-            }
-            real_t dcen = 0.5 * (dlft_raw + drgt_raw);
-            real_t dsgn = (dcen >= 0.0) ? 1.0 : -1.0;
-            real_t dlim = std::min(std::abs(dlft_s), std::abs(drgt_s));
-            if (dlft_s * drgt_s <= 0.0) dlim = 0.0;
-            dq[iv] = dsgn * dlim / dx;
-        }
-        return;
-    }
-
-    if (slope_type == 6) {
-        for (int iv = 0; iv < grid_.nvar; ++iv) {
-            if (iv == 0) {
-                real_t dlft = qc[iv] - ql[iv], drgt = qr[iv] - qc[iv];
-                dq[iv] = 0.5 * (dlft + drgt) / dx;
-            } else {
-                dq[iv] = 0.0;
-            }
-        }
-        return;
-    }
+    real_t nu = qc[1 + idim] * dt / dx; // Courant number for Superbee/Ultrabee
 
     for (int iv = 0; iv < grid_.nvar; ++iv) {
-        real_t dlft = qc[iv] - ql[iv], drgt = qr[iv] - qc[iv];
-        if (dlft * drgt <= 0.0) {
-            dq[iv] = 0.0;
+        if (slope_type == 5 && iv != 0) {
+            dq[iv] = 0.0; // Ultrabee applies to density only
+        } else if (slope_type == 6 && iv != 0) {
+            dq[iv] = 0.0; // Centered slope type 6 applies to density only
         } else {
-            real_t dcen = 0.5 * (dlft + drgt);
-            real_t dsgn = (dcen >= 0.0) ? 1.0 : -1.0;
-            real_t dlim = 0.0;
-            if (slope_type == 1) {
-                dlim = std::min(std::abs(dlft), std::abs(drgt));
-            } else if (slope_type == 2 || slope_type == 3) {
-                // MC (MonCen)
-                dlim = std::min({2.0 * std::abs(dlft), 2.0 * std::abs(drgt), std::abs(dcen)});
-            } else if (slope_type == 7) {
-                // van Leer
-                dlim = 2.0 * std::abs(dlft) * std::abs(drgt) / (std::abs(dlft) + std::abs(drgt));
-            } else if (slope_type == 8) {
-                // generalized MonCen (van Leer bis)
-                dlim = std::min({1.5 * std::abs(dlft), 1.5 * std::abs(drgt), std::abs(dcen)});
-            } else {
-                dlim = std::min(std::abs(dlft), std::abs(drgt));
-            }
-            dq[iv] = dsgn * dlim / dx;
+            dq[iv] = SlopeLimiter::compute_slope(ql[iv], qc[iv], qr[iv], slope_type, 1.5, nu) / dx;
         }
     }
-    // No compute_slopes prints
 }
 
 void HydroSolver::trace(const real_t q[], const real_t dq[], real_t dt, real_t dx, real_t qm[], real_t qp[], real_t gamma) {

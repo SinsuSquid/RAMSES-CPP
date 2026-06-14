@@ -2,7 +2,6 @@
 #include "ramses/MpiManager.hpp"
 #include "ramses/Parameters.hpp"
 #include "ramses/Constants.hpp"
-#include "ramses/Muscl.hpp"
 #include "ramses/SlopeLimiter.hpp"
 #include <cmath>
 #include <algorithm>
@@ -319,54 +318,209 @@ void MhdSolver::godfine1(const std::vector<int>& ind_grid, int ilevel, real_t dt
 }
 
 void MhdSolver::llf(const real_t* ql, const real_t* qr, real_t* f, real_t gamma) {
-    real_t fl[9], fr[9], cl, cr, et=1.0/(gamma-1.0); find_mhd_flux(ql, nullptr, fl, gamma); find_mhd_flux(qr, nullptr, fr, gamma); find_speed_fast(ql, cl, gamma); find_speed_fast(qr, cr, gamma);
-    real_t sm = std::max(std::abs(ql[2])+cl, std::abs(qr[2])+cr);
-    auto gc = [&](const real_t* q, real_t* c) { c[0]=q[0]; c[1]=q[0]*q[2]; c[2]=q[0]*q[4]; c[3]=q[0]*q[6]; c[4]=q[1]*et+0.5*q[0]*(q[2]*q[2]+q[4]*q[4]+q[6]*q[6])+0.5*(q[3]*q[3]+q[5]*q[5]+q[7]*q[7]); c[5]=q[3]; c[6]=q[5]; c[7]=q[7]; c[8]=q[1]*et; };
-    real_t cll[9], crr[9]; gc(ql, cll); gc(qr, crr);
-    for(int i=0; i<9; ++i) f[i] = 0.5*(fl[i]+fr[i]-sm*(crr[i]-cll[i]));
+    real_t fl[9], fr[9];
+    real_t cl, cr;
+    real_t et = 1.0 / (gamma - 1.0);
+
+    // Compute MHD fluxes and fast wave speeds
+    find_mhd_flux(ql, nullptr, fl, gamma);
+    find_mhd_flux(qr, nullptr, fr, gamma);
+    find_speed_fast(ql, cl, gamma);
+    find_speed_fast(qr, cr, gamma);
+
+    // Maximum signal speed
+    real_t sm = std::max(std::abs(ql[2]) + cl, std::abs(qr[2]) + cr);
+
+    // Helper to calculate conserved variable state from primitive state
+    auto primitive_to_conserved = [&](const real_t* q, real_t* c) {
+        c[0] = q[0];                              // density (rho)
+        c[1] = q[0] * q[2];                       // momentum x (rho*u)
+        c[2] = q[0] * q[4];                       // momentum y (rho*v)
+        c[3] = q[0] * q[6];                       // momentum z (rho*w)
+        
+        // Total energy: internal + kinetic + magnetic
+        c[4] = q[1] * et 
+             + 0.5 * q[0] * (q[2]*q[2] + q[4]*q[4] + q[6]*q[6]) 
+             + 0.5 * (q[3]*q[3] + q[5]*q[5] + q[7]*q[7]);
+             
+        c[5] = q[3];                              // magnetic field component x (Bx)
+        c[6] = q[5];                              // magnetic field component y (By)
+        c[7] = q[7];                              // magnetic field component z (Bz)
+        c[8] = q[1] * et;                         // internal energy
+    };
+
+    real_t cll[9], crr[9];
+    primitive_to_conserved(ql, cll);
+    primitive_to_conserved(qr, crr);
+
+    // Local Lax-Friedrichs flux formula
+    for (int i = 0; i < 9; ++i) {
+        f[i] = 0.5 * (fl[i] + fr[i] - sm * (crr[i] - cll[i]));
+    }
 }
 
 void MhdSolver::hlld(const real_t* ql_in, const real_t* qr_in, real_t* fgdnv, real_t gamma) {
-    real_t entho = 1.0/(gamma-1.0), half = 0.5, A = half*(ql_in[3]+qr_in[3]), sgnm = (A>=0)?1.0:-1.0;
-    real_t ql[8], qr[8]; for(int i=0; i<8; ++i){ ql[i]=ql_in[i]; qr[i]=qr_in[i]; } ql[3]=A; qr[3]=A;
-    real_t rl=ql[0],Pl=ql[1],ul=ql[2],vl=ql[4],Bl=ql[5],wl=ql[6],Cl=ql[7];
-    real_t rr=qr[0],Pr=qr[1],ur=qr[2],vr=qr[4],Br=qr[5],wr=qr[6],Cr=qr[7];
-    real_t el=half*rl*(ul*ul+vl*vl+wl*wl), emagl=half*(A*A+Bl*Bl+Cl*Cl), etl=Pl*entho+el+emagl, Ptl=Pl+emagl, vBl=ul*A+vl*Bl+wl*Cl;
-    real_t er=half*rr*(ur*ur+vr*vr+wr*wr), emagr=half*(A*A+Br*Br+Cr*Cr), etr=Pr*entho+er+emagr, Ptr=Pr+emagr, vBr=ur*A+vr*Br+wr*Cr;
-    real_t cl, cr; find_speed_fast(ql_in, cl, gamma); find_speed_fast(qr_in, cr, gamma);
-    real_t SL=std::min(ul,ur)-std::max(cl,cr), SR=std::max(ul,ur)+std::max(cl,cr);
-    real_t rcl=rl*(ul-SL), rcr=rr*(SR-ur), ust=(rcr*ur+rcl*ul+(Ptl-Ptr))/(rcr+rcl), Ptst=(rcr*Ptl+rcl*Ptr+rcl*rcr*(ul-ur))/(rcr+rcl);
-    real_t rstl=rl*(SL-ul)/(SL-ust), estl=rl*(SL-ul)*(SL-ust)-A*A, ell=rl*(SL-ul)*(SL-ul)-A*A, vstl, Bstl, wstl, Cstl;
-    if(std::abs(estl)<1e-4*A*A){ vstl=vl; Bstl=Bl; wstl=wl; Cstl=Cl; } else { vstl=vl-A*Bl*(ust-ul)/estl; Bstl=Bl*ell/estl; wstl=wl-A*Cl*(ust-ul)/estl; Cstl=Cl*ell/estl; }
-    real_t vdbstl=ust*A+vstl*Bstl+wstl*Cstl, etstl=((SL-ul)*etl-Ptl*ul+Ptst*ust+A*(vBl-vdbstl))/(SL-ust), sqrl=std::sqrt(rstl), calfl=std::abs(A)/sqrl, SAL=ust-calfl;
-    real_t rstr=rr*(SR-ur)/(SR-ust), estr=rr*(SR-ur)*(SR-ust)-A*A, err=rr*(SR-ur)*(SR-ur)-A*A, vstr, Bstr, wstr, Cstr;
-    if(std::abs(estr)<1e-4*A*A){ vstr=vr; Bstr=Br; wstr=wr; Cstr=Cr; } else { vstr=vr-A*Br*(ust-ur)/estr; Bstr=Br*err/estr; wstr=wr-A*Cr*(ust-ur)/estr; Cstr=Cr*err/estr; }
-    real_t vdbstr=ust*A+vstr*Bstr+wstr*Cstr, etstr=((SR-ur)*etr-Ptr*ur+Ptst*ust+A*(vBr-vdbstr))/(SR-ust), sqrr=std::sqrt(rstr), calfr=std::abs(A)/sqrr, SAR=ust+calfr;
-    real_t vss=(sqrl*vstl+sqrr*vstr+sgnm*(Bstr-Bstl))/(sqrl+sqrr), wss=(sqrl*wstl+sqrr*wstr+sgnm*(Cstr-Cstl))/(sqrl+sqrr), Bss=(sqrl*Bstl+sqrr*Bstr+sgnm*sqrl*sqrr*(vstr-vstl))/(sqrl+sqrr), Css=(sqrl*Cstl+sqrr*Cstr+sgnm*sqrl*sqrr*(wstr-wstl))/(sqrl+sqrr);
-    real_t vdbss=ust*A+vss*Bss+wss*Css, etssl=etstl-sgnm*sqrl*(vdbstl-vdbss), etssr=etstr+sgnm*sqrr*(vdbstr-vdbss);
-    real_t ro, uo, vo, wo, Bo, Co, Ptoto, etoto, vdb, ei, eintl=Pl*entho, eintr=Pr*entho;
-    if(SL>0){ ro=rl; uo=ul; vo=vl; wo=wl; Bo=Bl; Co=Cl; Ptoto=Ptl; etoto=etl; vdb=vBl; ei=eintl; }
-    else if(SAL>0){ ro=rstl; uo=ust; vo=vstl; wo=wstl; Bo=Bstl; Co=Cstl; Ptoto=Ptst; etoto=etstl; vdb=vdbstl; ei=eintl*(SL-ul)/(SL-ust); }
-    else if(ust>0){ ro=rstl; uo=ust; vo=vss; wo=wss; Bo=Bss; Co=Css; Ptoto=Ptst; etoto=etssl; vdb=vdbss; ei=eintl*(SL-ul)/(SL-ust); }
-    else if(SAR>0){ ro=rstr; uo=ust; vo=vss; wo=wss; Bo=Bss; Co=Css; Ptoto=Ptst; etoto=etssr; vdb=vdbss; ei=eintr*(SR-ur)/(SR-ust); }
-    else if(SR>0){ ro=rstr; uo=ust; vo=vstr; wo=wstr; Bo=Bstr; Co=Cstr; Ptoto=Ptst; etoto=etstr; vdb=vdbstr; ei=eintr*(SR-ur)/(SR-ust); }
-    else { ro=rr; uo=ur; vo=vr; wo=wr; Bo=Br; Co=Cr; Ptoto=Ptr; etoto=etr; vdb=vBr; ei=eintr; }
-    fgdnv[0]=ro*uo; fgdnv[1]=(etoto+Ptoto)*uo-A*vdb; fgdnv[2]=ro*uo*uo+Ptoto-A*A; fgdnv[3]=0; fgdnv[4]=ro*uo*vo-A*Bo; fgdnv[5]=Bo*uo-A*vo; fgdnv[6]=ro*uo*wo-A*Co; fgdnv[7]=Co*uo-A*wo; fgdnv[8]=uo*ei;
+    real_t entho = 1.0 / (gamma - 1.0);
+    real_t half = 0.5;
+    real_t A = half * (ql_in[3] + qr_in[3]);
+    real_t sgnm = (A >= 0) ? 1.0 : -1.0;
+
+    real_t ql[8], qr[8];
+    for (int i = 0; i < 8; ++i) {
+        ql[i] = ql_in[i];
+        qr[i] = qr_in[i];
+    }
+    ql[3] = A;
+    qr[3] = A;
+
+    // Extract primitive variables for left state
+    real_t rl = ql[0], Pl = ql[1], ul = ql[2], vl = ql[4], Bl = ql[5], wl = ql[6], Cl = ql[7];
+    // Extract primitive variables for right state
+    real_t rr = qr[0], Pr = qr[1], ur = qr[2], vr = qr[4], Br = qr[5], wr = qr[6], Cr = qr[7];
+
+    // Compute left state kinetic, magnetic, total energy, total pressure, and B-dot-v
+    real_t el = half * rl * (ul * ul + vl * vl + wl * wl);
+    real_t emagl = half * (A * A + Bl * Bl + Cl * Cl);
+    real_t etl = Pl * entho + el + emagl;
+    real_t Ptl = Pl + emagl;
+    real_t vBl = ul * A + vl * Bl + wl * Cl;
+
+    // Compute right state kinetic, magnetic, total energy, total pressure, and B-dot-v
+    real_t er = half * rr * (ur * ur + vr * vr + wr * wr);
+    real_t emagr = half * (A * A + Br * Br + Cr * Cr);
+    real_t etr = Pr * entho + er + emagr;
+    real_t Ptr = Pr + emagr;
+    real_t vBr = ur * A + vr * Br + wr * Cr;
+
+    // Wave speeds
+    real_t cl, cr;
+    find_speed_fast(ql_in, cl, gamma);
+    find_speed_fast(qr_in, cr, gamma);
+    real_t SL = std::min(ul, ur) - std::max(cl, cr);
+    real_t SR = std::max(ul, ur) + std::max(cl, cr);
+
+    // Compute star state velocity and total pressure
+    real_t rcl = rl * (ul - SL);
+    real_t rcr = rr * (SR - ur);
+    real_t ust = (rcr * ur + rcl * ul + (Ptl - Ptr)) / (rcr + rcl);
+    real_t Ptst = (rcr * Ptl + rcl * Ptr + rcl * rcr * (ul - ur)) / (rcr + rcl);
+
+    // Compute left star state density and field components
+    real_t rstl = rl * (SL - ul) / (SL - ust);
+    real_t estl = rl * (SL - ul) * (SL - ust) - A * A;
+    real_t ell = rl * (SL - ul) * (SL - ul) - A * A;
+    real_t vstl, Bstl, wstl, Cstl;
+    if (std::abs(estl) < 1e-4 * A * A) {
+        vstl = vl;
+        Bstl = Bl;
+        wstl = wl;
+        Cstl = Cl;
+    } else {
+        vstl = vl - A * Bl * (ust - ul) / estl;
+        Bstl = Bl * ell / estl;
+        wstl = wl - A * Cl * (ust - ul) / estl;
+        Cstl = Cl * ell / estl;
+    }
+
+    // Left star state energies and Alfven speed wave checks
+    real_t vdbstl = ust * A + vstl * Bstl + wstl * Cstl;
+    real_t etstl = ((SL - ul) * etl - Ptl * ul + Ptst * ust + A * (vBl - vdbstl)) / (SL - ust);
+    real_t sqrl = std::sqrt(rstl);
+    real_t calfl = std::abs(A) / sqrl;
+    real_t SAL = ust - calfl;
+
+    // Compute right star state density and field components
+    real_t rstr = rr * (SR - ur) / (SR - ust);
+    real_t estr = rr * (SR - ur) * (SR - ust) - A * A;
+    real_t err = rr * (SR - ur) * (SR - ur) - A * A;
+    real_t vstr, Bstr, wstr, Cstr;
+    if (std::abs(estr) < 1e-4 * A * A) {
+        vstr = vr;
+        Bstr = Br;
+        wstr = wr;
+        Cstr = Cr;
+    } else {
+        vstr = vr - A * Br * (ust - ur) / estr;
+        Bstr = Br * err / estr;
+        wstr = wr - A * Cr * (ust - ur) / estr;
+        Cstr = Cr * err / estr;
+    }
+
+    // Right star state energies and Alfven speed wave checks
+    real_t vdbstr = ust * A + vstr * Bstr + wstr * Cstr;
+    real_t etstr = ((SR - ur) * etr - Ptr * ur + Ptst * ust + A * (vBr - vdbstr)) / (SR - ust);
+    real_t sqrr = std::sqrt(rstr);
+    real_t calfr = std::abs(A) / sqrr;
+    real_t SAR = ust + calfr;
+
+    // Double-star state velocities and magnetic fields
+    real_t vss = (sqrl * vstl + sqrr * vstr + sgnm * (Bstr - Bstl)) / (sqrl + sqrr);
+    real_t wss = (sqrl * wstl + sqrr * wstr + sgnm * (Cstr - Cstl)) / (sqrl + sqrr);
+    real_t Bss = (sqrl * Bstl + sqrr * Bstr + sgnm * sqrl * sqrr * (vstr - vstl)) / (sqrl + sqrr);
+    real_t Css = (sqrl * Cstl + sqrr * Cstr + sgnm * sqrl * sqrr * (wstr - wstl)) / (sqrl + sqrr);
+    real_t vdbss = ust * A + vss * Bss + wss * Css;
+    real_t etssl = etstl - sgnm * sqrl * (vdbstl - vdbss);
+    real_t etssr = etstr + sgnm * sqrr * (vdbstr - vdbss);
+
+    // Resolve final state based on SL, SAL, ust, SAR, SR wave speeds
+    real_t ro, uo, vo, wo, Bo, Co, Ptoto, etoto, vdb, ei;
+    real_t eintl = Pl * entho;
+    real_t eintr = Pr * entho;
+
+    if (SL > 0) {
+        ro = rl; uo = ul; vo = vl; wo = wl; Bo = Bl; Co = Cl; Ptoto = Ptl; etoto = etl; vdb = vBl; ei = eintl;
+    } else if (SAL > 0) {
+        ro = rstl; uo = ust; vo = vstl; wo = wstl; Bo = Bstl; Co = Cstl; Ptoto = Ptst; etoto = etstl; vdb = vdbstl; ei = eintl * (SL - ul) / (SL - ust);
+    } else if (ust > 0) {
+        ro = rstl; uo = ust; vo = vss; wo = wss; Bo = Bss; Co = Css; Ptoto = Ptst; etoto = etssl; vdb = vdbss; ei = eintl * (SL - ul) / (SL - ust);
+    } else if (SAR > 0) {
+        ro = rstr; uo = ust; vo = vss; wo = wss; Bo = Bss; Co = Css; Ptoto = Ptst; etoto = etssr; vdb = vdbss; ei = eintr * (SR - ur) / (SR - ust);
+    } else if (SR > 0) {
+        ro = rstr; uo = ust; vo = vstr; wo = wstr; Bo = Bstr; Co = Cstr; Ptoto = Ptst; etoto = etstr; vdb = vdbstr; ei = eintr * (SR - ur) / (SR - ust);
+    } else {
+        ro = rr; uo = ur; vo = vr; wo = wr; Bo = Br; Co = Cr; Ptoto = Ptr; etoto = etr; vdb = vBr; ei = eintr;
+    }
+
+    // Set Godunov flux
+    fgdnv[0] = ro * uo;
+    fgdnv[1] = (etoto + Ptoto) * uo - A * vdb;
+    fgdnv[2] = ro * uo * uo + Ptoto - A * A;
+    fgdnv[3] = 0;
+    fgdnv[4] = ro * uo * vo - A * Bo;
+    fgdnv[5] = Bo * uo - A * vo;
+    fgdnv[6] = ro * uo * wo - A * Co;
+    fgdnv[7] = Co * uo - A * wo;
+    fgdnv[8] = uo * ei;
 }
 
 void MhdSolver::find_mhd_flux(const real_t* q, real_t* c, real_t* f, real_t gamma) {
-    real_t et = 1.0/(gamma-1.0), d=q[0], p=q[1], u=q[2], A=q[3], v=q[4], B=q[5], w=q[6], C=q[7];
-    real_t ek=0.5*d*(u*u+v*v+w*w), em=0.5*(A*A+B*B+C*C), etot=p*et+ek+em, pt=p+em;
-    f[0]=d*u; f[1]=(etot+pt)*u-A*(A*u+B*v+C*w); f[2]=d*u*u+pt-A*A; f[3]=0; f[4]=d*u*v-A*B; f[5]=B*u-A*v; f[6]=d*u*w-A*C; f[7]=C*u-A*w; f[8]=p*et*u;
+    real_t et = 1.0 / (gamma - 1.0);
+    real_t d = q[0], p = q[1], u = q[2], A = q[3], v = q[4], B = q[5], w = q[6], C = q[7];
+    real_t ek = 0.5 * d * (u * u + v * v + w * w);
+    real_t em = 0.5 * (A * A + B * B + C * C);
+    real_t etot = p * et + ek + em;
+    real_t pt = p + em;
+    
+    f[0] = d * u;
+    f[1] = (etot + pt) * u - A * (A * u + B * v + C * w);
+    f[2] = d * u * u + pt - A * A;
+    f[3] = 0;
+    f[4] = d * u * v - A * B;
+    f[5] = B * u - A * v;
+    f[6] = d * u * w - A * C;
+    f[7] = C * u - A * w;
+    f[8] = p * et * u;
 }
 
 void MhdSolver::find_speed_fast(const real_t* q, real_t& v, real_t gamma) {
-    real_t d=q[0], p=q[1], A=q[3], B=q[5], C=q[7], b2=A*A+B*B+C*C, c2=gamma*p/d;
+    real_t d = q[0], p = q[1], A = q[3], B = q[5], C = q[7];
+    real_t b2 = A * A + B * B + C * C;
+    real_t c2 = gamma * p / d;
     for (int ie = 0; ie < nener_; ++ie) {
         c2 += grid_.gamma_rad[ie] * q[8 + ie] / d;
     }
-    real_t d2=0.5*(b2/d+c2);
-    v = std::sqrt(d2 + std::sqrt(std::max(0.0, d2*d2-c2*A*A/d)));
+    real_t d2 = 0.5 * (b2 / d + c2);
+    v = std::sqrt(d2 + std::sqrt(std::max(0.0, d2 * d2 - c2 * A * A / d)));
 }
 
 void MhdSolver::get_diagnostics(int il, real_t dx, real_t& mi, real_t& mv, real_t& mb) {}

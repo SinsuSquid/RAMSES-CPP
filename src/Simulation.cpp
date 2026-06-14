@@ -366,7 +366,9 @@ void Simulation::run() {
         std::cout << "Simulation finished in " << std::fixed << std::setprecision(2) << total_duration << " seconds." << std::endl;
         std::cout << "Total steps: " << nstep_ << " Final time: " << std::scientific << std::setprecision(6) << t_ << std::endl;
     }
-}void Simulation::amr_step(int ilevel, int icount) {
+}
+
+void Simulation::amr_step(int ilevel, int icount) {
     if (ilevel > grid_.nlevelmax) return;
     if (grid_.count_grids_at_level(ilevel) == 0 && ilevel > 0) return;
 

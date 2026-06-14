@@ -9,6 +9,7 @@
 #include <cstring>
 #include <sys/stat.h>
 #include <algorithm>
+#include <cmath>
 
 namespace ramses {
 

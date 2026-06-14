@@ -53,7 +53,6 @@ set(LIB_SRCS
     src/RiemannSolver.cpp
     src/RelativisticRiemannSolver.cpp
     src/SlopeLimiter.cpp
-    src/Muscl.cpp
     src/PoissonSolver.cpp
     src/MhdSolver.cpp
     src/RtSolver.cpp
