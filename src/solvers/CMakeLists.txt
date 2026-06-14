@@ -1,0 +1,6 @@
+add_subdirectory(hydro)
+add_subdirectory(mhd)
+add_subdirectory(rhd)
+add_subdirectory(rt)
+add_subdirectory(gravity)
+add_subdirectory(physics)

@@ -29,59 +29,23 @@ set(GRACKLE OFF CACHE BOOL "Enable Grackle cooling library")
 set(USE_TURB OFF CACHE BOOL "Enable FFTW-based turbulence driving")
 set(NVECTOR 32 CACHE STRING "Size of vector cache")
 
-# Source files for the library
-set(LIB_SRCS
-    # Core
-    src/core/AmrGrid.cpp
-    src/core/Config.cpp
-    src/core/Constants.cpp
-    src/core/Parameters.cpp
-    src/core/MpiManager.cpp
-    src/core/Simulation.cpp
-    src/core/TreeUpdater.cpp
-    src/core/Hilbert.cpp
-    src/core/LoadBalancer.cpp
-    src/core/SolverFactory.cpp
-    src/core/Cosmology.cpp
-    
-    # Solvers
-    src/solvers/hydro/HydroSolver.cpp
-    src/solvers/hydro/RiemannSolver.cpp
-    src/solvers/hydro/SlopeLimiter.cpp
-    src/solvers/mhd/MhdSolver.cpp
-    src/solvers/rhd/RhdSolver.cpp
-    src/solvers/rhd/RelativisticRiemannSolver.cpp
-    src/solvers/rt/RtSolver.cpp
-    src/solvers/rt/RtChemistry.cpp
-    src/solvers/gravity/PoissonSolver.cpp
-    src/solvers/physics/CoolingSolver.cpp
-    src/solvers/physics/StarSolver.cpp
-    src/solvers/physics/FeedbackSolver.cpp
-    src/solvers/physics/SinkSolver.cpp
-    src/solvers/physics/TurbulenceSolver.cpp
-    src/solvers/physics/ClumpFinder.cpp
-    src/solvers/physics/EquationOfState.cpp
+# Build library and executable for specified dimension only (from config.txt or default)
+set(d ${NDIM})
+set(LIB_NAME ramses_lib_${d}d)
 
-    # Particles
-    src/particles/ParticleSolver.cpp
-    src/particles/ParticleSystem.cpp
-
-    # IO / Diagnostics
-    src/io/RamsesReader.cpp
-    src/io/RamsesWriter.cpp
-    src/io/Hdf5Writer.cpp
-    src/io/LightCone.cpp
-    
-    # Root Initialization
-    src/Initializer.cpp
-)
+# Initialize the library target
+add_library(${LIB_NAME} STATIC)
 
 # Custom Patches Discovery
 file(GLOB CUSTOM_PATCH_SRCS "patch/*.cpp")
 if(CUSTOM_PATCH_SRCS)
     message(STATUS "[RAMSES-CPP] Found custom C++ patches: ${CUSTOM_PATCH_SRCS}")
     add_definitions(-DRAMSES_USE_CUSTOM_PATCHES)
+    target_sources(${LIB_NAME} PRIVATE ${CUSTOM_PATCH_SRCS})
 endif()
+
+# Traverse subdirectories to add source files
+add_subdirectory(src)
 
 # Global definitions from parameters
 set(PARAM_DEFS "")
@@ -105,10 +69,6 @@ include_directories(
     include/ramses/io
 )
 
-# Build library and executable for specified dimension only (from config.txt or default)
-set(d ${NDIM})
-set(LIB_NAME ramses_lib_${d}d)
-add_library(${LIB_NAME} STATIC ${LIB_SRCS} ${CUSTOM_PATCH_SRCS})
 target_compile_definitions(${LIB_NAME} PUBLIC NDIM=${d} NPRE=${NPRE} ${PARAM_DEFS})
 
 if(MPI)
