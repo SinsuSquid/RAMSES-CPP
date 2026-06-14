@@ -30,25 +30,37 @@ void RiemannSolver::solve_llf(const real_t ql[], const real_t qr[], real_t flux[
 }
 
 void RiemannSolver::solve_hll(const real_t ql[], const real_t qr[], real_t flux[], real_t gamma, int nener, const std::vector<real_t>& gamma_rad) {
+    // 1. Compute flux vectors for the left and right states
     real_t fl[20], fr[20];
     compute_flux(ql, fl, gamma, nener, gamma_rad);
     compute_flux(qr, fr, gamma, nener, gamma_rad);
+
+    // 2. Compute conserved variable states for the left and right states
     real_t ul_vec[20], ur_vec[20];
     prim_to_cons(ql, ul_vec, gamma, nener, gamma_rad);
     prim_to_cons(qr, ur_vec, gamma, nener, gamma_rad);
 
+    // 3. Compute sound speeds for the left and right states
     int ipress = NDIM + 1;
     real_t al = std::sqrt(get_cs2(ql[0], ql[ipress], gamma, ql, nener, gamma_rad));
     real_t ar = std::sqrt(get_cs2(qr[0], qr[ipress], gamma, qr, nener, gamma_rad));
 
+    // 4. Compute left and right wave propagation speed bounds:
+    //    S_L = min(0, u_L - c_L, u_R - c_R)
+    //    S_R = max(0, u_L + c_L, u_R + c_R)
     real_t sl = std::min(0.0, std::min(ql[1] - al, qr[1] - ar));
     real_t sr = std::max(0.0, std::max(ql[1] + al, qr[1] + ar));
 
+    // 5. Evaluate the HLL flux formula:
+    //    F_HLL = (S_R * F_L - S_L * F_R + S_L * S_R * (U_R - U_L)) / (S_R - S_L)
     if (sr - sl < 1e-20) {
-        for (int i = 0; i < NDIM + 2; ++i) flux[i] = 0.5 * (fl[i] + fr[i]);
-    } else {
         for (int i = 0; i < NDIM + 2; ++i) {
-            flux[i] = (sr * fl[i] - sl * fr[i] + sr * sl * (ur_vec[i] - ul_vec[i])) / (sr - sl);
+            flux[i] = 0.5 * (fl[i] + fr[i]);
+        }
+    } else {
+        real_t inv_srs = 1.0 / (sr - sl);
+        for (int i = 0; i < NDIM + 2; ++i) {
+            flux[i] = (sr * fl[i] - sl * fr[i] + sr * sl * (ur_vec[i] - ul_vec[i])) * inv_srs;
         }
     }
 }
@@ -57,8 +69,9 @@ void RiemannSolver::solve_hllc(const real_t ql[], const real_t qr[], real_t flux
     const real_t smallc = 1e-10;
     const real_t smallr = smallc;
     const real_t smallp = smallc * smallc / gamma;
-
     int ipress = NDIM + 1;
+
+    // 1. Extract left state variables (capped for safety)
     real_t rl = std::max(ql[0], smallr);
     real_t ul = ql[1];
     real_t pl = std::max(ql[ipress], rl * smallp);
@@ -66,6 +79,7 @@ void RiemannSolver::solve_hllc(const real_t ql[], const real_t qr[], real_t flux
         pl += ql[ipress + 1 + ie];
     }
 
+    // 2. Extract right state variables (capped for safety)
     real_t rr = std::max(qr[0], smallr);
     real_t ur = qr[1];
     real_t pr = std::max(qr[ipress], rr * smallp);
@@ -73,37 +87,59 @@ void RiemannSolver::solve_hllc(const real_t ql[], const real_t qr[], real_t flux
         pr += qr[ipress + 1 + ie];
     }
 
+    // 3. Compute acoustic sound speed
     real_t cl = std::sqrt(get_cs2(rl, ql[ipress], gamma, ql, nener, gamma_rad));
     real_t cr = std::sqrt(get_cs2(rr, qr[ipress], gamma, qr, nener, gamma_rad));
 
+    // 4. Compute left and right wave speeds:
+    //    S_L = min(u_L, u_R) - max(c_L, c_R)
+    //    S_R = max(u_L, u_R) + max(c_L, c_R)
     real_t sl = std::min(ul, ur) - std::max(cl, cr);
     real_t sr = std::max(ul, ur) + std::max(cl, cr);
 
+    // 5. Check supersonic flow conditions
     if (sl > 0.0) {
+        // Entirely supersonic flow to the right: return left flux
         compute_flux(ql, flux, gamma, nener, gamma_rad);
     } else if (sr < 0.0) {
+        // Entirely supersonic flow to the left: return right flux
         compute_flux(qr, flux, gamma, nener, gamma_rad);
     } else {
+        // 6. Compute contact wave speed S* (ustar) and contact pressure p* (pstar)
+        //    rcl = rho_L * (u_L - S_L)
+        //    rcr = rho_R * (S_R - u_R)
+        //    ustar = (rcr * u_R + rcl * u_L + (p_L - p_R)) / (rcr + rcl)
+        //    pstar = (rcr * p_L + rcl * p_R + rcl * rcr * (u_L - u_R)) / (rcr + rcl)
         real_t rcl = rl * (ul - sl);
         real_t rcr = rr * (sr - ur);
         real_t div = rcr + rcl;
+        
         if (div < 1e-5) {
+            // Fallback to average flux if denominator is too small
             real_t fl_fallback[20], fr_fallback[20];
             compute_flux(ql, fl_fallback, gamma, nener, gamma_rad);
             compute_flux(qr, fr_fallback, gamma, nener, gamma_rad);
-            for (int i = 0; i < NDIM + 2; ++i) flux[i] = 0.5 * (fl_fallback[i] + fr_fallback[i]);
+            for (int i = 0; i < NDIM + 2; ++i) {
+                flux[i] = 0.5 * (fl_fallback[i] + fr_fallback[i]);
+            }
             return;
         }
+
         real_t ustar = (rcr * ur + rcl * ul + (pl - pr)) / div;
         ustar = std::max(-1e6, std::min(1e6, ustar));
         real_t pstar = (rcr * pl + rcl * pr + rcl * rcr * (ul - ur)) / div;
         pstar = std::max(pstar, 0.0);
 
+        // 7. Reconstruct star state variables and fluxes
         if (ustar > 0.0) {
+            // Left star state (between contact S* and left wave S_L)
             real_t rstarl = rl * (sl - ul) / (std::min(sl - ustar, -1e-10));
             real_t qstarl[20] = {0};
-            qstarl[0] = rstarl; qstarl[1] = ustar;
-            for(int i=2; i<=NDIM; ++i) qstarl[i] = ql[i];
+            qstarl[0] = rstarl;
+            qstarl[1] = ustar;
+            for (int i = 2; i <= NDIM; ++i) {
+                qstarl[i] = ql[i];
+            }
             
             real_t sum_prad_star = 0.0;
             for (int ie = 0; ie < nener; ++ie) {
@@ -118,12 +154,20 @@ void RiemannSolver::solve_hllc(const real_t ql[], const real_t qr[], real_t flux
             prim_to_cons(ql, ul_vec, gamma, nener, gamma_rad);
             prim_to_cons(qstarl, ustarl_vec, gamma, nener, gamma_rad);
             ustarl_vec[ipress] = ((sl - ul) * ul_vec[ipress] - pl * ul + pstar * ustar) / (std::min(sl - ustar, -1e-10));
-            for (int i = 0; i < NDIM + 2; ++i) flux[i] = fl_arr[i] + sl * (ustarl_vec[i] - ul_vec[i]);
+            
+            // F_L^* = F_L + S_L * (U_L^* - U_L)
+            for (int i = 0; i < NDIM + 2; ++i) {
+                flux[i] = fl_arr[i] + sl * (ustarl_vec[i] - ul_vec[i]);
+            }
         } else {
+            // Right star state (between contact S* and right wave S_R)
             real_t rstarr = rr * (sr - ur) / (std::max(sr - ustar, 1e-10));
             real_t qstarr[20] = {0};
-            qstarr[0] = rstarr; qstarr[1] = ustar;
-            for(int i=2; i<=NDIM; ++i) qstarr[i] = qr[i];
+            qstarr[0] = rstarr;
+            qstarr[1] = ustar;
+            for (int i = 2; i <= NDIM; ++i) {
+                qstarr[i] = qr[i];
+            }
 
             real_t sum_prad_star = 0.0;
             for (int ie = 0; ie < nener; ++ie) {
@@ -138,7 +182,11 @@ void RiemannSolver::solve_hllc(const real_t ql[], const real_t qr[], real_t flux
             prim_to_cons(qr, ur_vec, gamma, nener, gamma_rad);
             prim_to_cons(qstarr, ustarr_vec, gamma, nener, gamma_rad);
             ustarr_vec[ipress] = ((sr - ur) * ur_vec[ipress] - pr * ur + pstar * ustar) / (std::max(sr - ustar, 1e-10));
-            for (int i = 0; i < NDIM + 2; ++i) flux[i] = fr_arr[i] + sr * (ustarr_vec[i] - ur_vec[i]);
+            
+            // F_R^* = F_R + S_R * (U_R^* - U_R)
+            for (int i = 0; i < NDIM + 2; ++i) {
+                flux[i] = fr_arr[i] + sr * (ustarr_vec[i] - ur_vec[i]);
+            }
         }
     }
 }

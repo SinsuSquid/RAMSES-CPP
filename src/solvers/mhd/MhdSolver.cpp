@@ -361,9 +361,20 @@ void MhdSolver::llf(const real_t* ql, const real_t* qr, real_t* f, real_t gamma)
 }
 
 void MhdSolver::hlld(const real_t* ql_in, const real_t* qr_in, real_t* fgdnv, real_t gamma) {
+    /**
+     * HLLD (Harten-Lax-van Leer-Divergence) Riemann Solver for Ideal MHD (Miyoshi & Kusano 2005).
+     * 
+     * HLLD resolves 5 wave modes:
+     * - Fast MHD waves: S_L (left) and S_R (right)
+     * - Alfven waves: S_AL (left star) and S_AR (right star)
+     * - Contact/entropy wave: S*
+     * 
+     * These partition the space into 6 states:
+     * Left (L) -> Left Star (L*) -> Left Double-Star (L**) -> Right Double-Star (R**) -> Right Star (R*) -> Right (R)
+     */
     real_t entho = 1.0 / (gamma - 1.0);
     real_t half = 0.5;
-    real_t A = half * (ql_in[3] + qr_in[3]);
+    real_t A = half * (ql_in[3] + qr_in[3]); // Normal magnetic field B_n
     real_t sgnm = (A >= 0) ? 1.0 : -1.0;
 
     real_t ql[8], qr[8];
@@ -374,8 +385,11 @@ void MhdSolver::hlld(const real_t* ql_in, const real_t* qr_in, real_t* fgdnv, re
     ql[3] = A;
     qr[3] = A;
 
-    // Extract primitive variables for left state
+    // Extract primitive variables for left state:
+    // rl: density, Pl: pressure, ul: normal velocity, vl: transverse velocity 1, Bl: transverse field 1
+    // wl: transverse velocity 2, Cl: transverse field 2
     real_t rl = ql[0], Pl = ql[1], ul = ql[2], vl = ql[4], Bl = ql[5], wl = ql[6], Cl = ql[7];
+    
     // Extract primitive variables for right state
     real_t rr = qr[0], Pr = qr[1], ur = qr[2], vr = qr[4], Br = qr[5], wr = qr[6], Cr = qr[7];
 
@@ -393,20 +407,20 @@ void MhdSolver::hlld(const real_t* ql_in, const real_t* qr_in, real_t* fgdnv, re
     real_t Ptr = Pr + emagr;
     real_t vBr = ur * A + vr * Br + wr * Cr;
 
-    // Wave speeds
+    // 1. Fast Wave Speeds S_L and S_R
     real_t cl, cr;
     find_speed_fast(ql_in, cl, gamma);
     find_speed_fast(qr_in, cr, gamma);
     real_t SL = std::min(ul, ur) - std::max(cl, cr);
     real_t SR = std::max(ul, ur) + std::max(cl, cr);
 
-    // Compute star state velocity and total pressure
+    // 2. Contact Star State Velocity (S*) and Total Pressure (p*)
     real_t rcl = rl * (ul - SL);
     real_t rcr = rr * (SR - ur);
     real_t ust = (rcr * ur + rcl * ul + (Ptl - Ptr)) / (rcr + rcl);
     real_t Ptst = (rcr * Ptl + rcl * Ptr + rcl * rcr * (ul - ur)) / (rcr + rcl);
 
-    // Compute left star state density and field components
+    // 3. Left Star (*) State density and fields
     real_t rstl = rl * (SL - ul) / (SL - ust);
     real_t estl = rl * (SL - ul) * (SL - ust) - A * A;
     real_t ell = rl * (SL - ul) * (SL - ul) - A * A;
@@ -423,14 +437,14 @@ void MhdSolver::hlld(const real_t* ql_in, const real_t* qr_in, real_t* fgdnv, re
         Cstl = Cl * ell / estl;
     }
 
-    // Left star state energies and Alfven speed wave checks
+    // Left star state energies and Alfven speed wave SAL
     real_t vdbstl = ust * A + vstl * Bstl + wstl * Cstl;
     real_t etstl = ((SL - ul) * etl - Ptl * ul + Ptst * ust + A * (vBl - vdbstl)) / (SL - ust);
     real_t sqrl = std::sqrt(rstl);
     real_t calfl = std::abs(A) / sqrl;
     real_t SAL = ust - calfl;
 
-    // Compute right star state density and field components
+    // 4. Right Star (*) State density and fields
     real_t rstr = rr * (SR - ur) / (SR - ust);
     real_t estr = rr * (SR - ur) * (SR - ust) - A * A;
     real_t err = rr * (SR - ur) * (SR - ur) - A * A;
@@ -447,14 +461,14 @@ void MhdSolver::hlld(const real_t* ql_in, const real_t* qr_in, real_t* fgdnv, re
         Cstr = Cr * err / estr;
     }
 
-    // Right star state energies and Alfven speed wave checks
+    // Right star state energies and Alfven speed wave SAR
     real_t vdbstr = ust * A + vstr * Bstr + wstr * Cstr;
     real_t etstr = ((SR - ur) * etr - Ptr * ur + Ptst * ust + A * (vBr - vdbstr)) / (SR - ust);
     real_t sqrr = std::sqrt(rstr);
     real_t calfr = std::abs(A) / sqrr;
     real_t SAR = ust + calfr;
 
-    // Double-star state velocities and magnetic fields
+    // 5. Double-Star (**) State velocities and fields
     real_t vss = (sqrl * vstl + sqrr * vstr + sgnm * (Bstr - Bstl)) / (sqrl + sqrr);
     real_t wss = (sqrl * wstl + sqrr * wstr + sgnm * (Cstr - Cstl)) / (sqrl + sqrr);
     real_t Bss = (sqrl * Bstl + sqrr * Bstr + sgnm * sqrl * sqrr * (vstr - vstl)) / (sqrl + sqrr);
@@ -463,26 +477,80 @@ void MhdSolver::hlld(const real_t* ql_in, const real_t* qr_in, real_t* fgdnv, re
     real_t etssl = etstl - sgnm * sqrl * (vdbstl - vdbss);
     real_t etssr = etstr + sgnm * sqrr * (vdbstr - vdbss);
 
-    // Resolve final state based on SL, SAL, ust, SAR, SR wave speeds
+    // 6. Select final state variables based on relative position of waves (Riemann fan)
     real_t ro, uo, vo, wo, Bo, Co, Ptoto, etoto, vdb, ei;
     real_t eintl = Pl * entho;
     real_t eintr = Pr * entho;
 
     if (SL > 0) {
-        ro = rl; uo = ul; vo = vl; wo = wl; Bo = Bl; Co = Cl; Ptoto = Ptl; etoto = etl; vdb = vBl; ei = eintl;
+        ro = rl;
+        uo = ul;
+        vo = vl;
+        wo = wl;
+        Bo = Bl;
+        Co = Cl;
+        Ptoto = Ptl;
+        etoto = etl;
+        vdb = vBl;
+        ei = eintl;
     } else if (SAL > 0) {
-        ro = rstl; uo = ust; vo = vstl; wo = wstl; Bo = Bstl; Co = Cstl; Ptoto = Ptst; etoto = etstl; vdb = vdbstl; ei = eintl * (SL - ul) / (SL - ust);
+        ro = rstl;
+        uo = ust;
+        vo = vstl;
+        wo = wstl;
+        Bo = Bstl;
+        Co = Cstl;
+        Ptoto = Ptst;
+        etoto = etstl;
+        vdb = vdbstl;
+        ei = eintl * (SL - ul) / (SL - ust);
     } else if (ust > 0) {
-        ro = rstl; uo = ust; vo = vss; wo = wss; Bo = Bss; Co = Css; Ptoto = Ptst; etoto = etssl; vdb = vdbss; ei = eintl * (SL - ul) / (SL - ust);
+        ro = rstl;
+        uo = ust;
+        vo = vss;
+        wo = wss;
+        Bo = Bss;
+        Co = Css;
+        Ptoto = Ptst;
+        etoto = etssl;
+        vdb = vdbss;
+        ei = eintl * (SL - ul) / (SL - ust);
     } else if (SAR > 0) {
-        ro = rstr; uo = ust; vo = vss; wo = wss; Bo = Bss; Co = Css; Ptoto = Ptst; etoto = etssr; vdb = vdbss; ei = eintr * (SR - ur) / (SR - ust);
+        ro = rstr;
+        uo = ust;
+        vo = vss;
+        wo = wss;
+        Bo = Bss;
+        Co = Css;
+        Ptoto = Ptst;
+        etoto = etssr;
+        vdb = vdbss;
+        ei = eintr * (SR - ur) / (SR - ust);
     } else if (SR > 0) {
-        ro = rstr; uo = ust; vo = vstr; wo = wstr; Bo = Bstr; Co = Cstr; Ptoto = Ptst; etoto = etstr; vdb = vdbstr; ei = eintr * (SR - ur) / (SR - ust);
+        ro = rstr;
+        uo = ust;
+        vo = vstr;
+        wo = wstr;
+        Bo = Bstr;
+        Co = Cstr;
+        Ptoto = Ptst;
+        etoto = etstr;
+        vdb = vdbstr;
+        ei = eintr * (SR - ur) / (SR - ust);
     } else {
-        ro = rr; uo = ur; vo = vr; wo = wr; Bo = Br; Co = Cr; Ptoto = Ptr; etoto = etr; vdb = vBr; ei = eintr;
+        ro = rr;
+        uo = ur;
+        vo = vr;
+        wo = wr;
+        Bo = Br;
+        Co = Cr;
+        Ptoto = Ptr;
+        etoto = etr;
+        vdb = vBr;
+        ei = eintr;
     }
 
-    // Set Godunov flux
+    // 7. Compute intercell Godunov flux
     fgdnv[0] = ro * uo;
     fgdnv[1] = (etoto + Ptoto) * uo - A * vdb;
     fgdnv[2] = ro * uo * uo + Ptoto - A * A;
