@@ -544,6 +544,31 @@ void HydroSolver::compute_slopes(int idc, const int icelln[6], int idim, real_t 
 }
 
 void HydroSolver::trace(const real_t q[], const real_t dq[], real_t dt, real_t dx, real_t qm[], real_t qp[], real_t gamma) {
+    /**
+     * MUSCL-Hancock Trace Step for Euler equations in primitive variables W = (rho, u, p)^T.
+     * 
+     * 1. Governing equations for the time evolution of W:
+     *    dW/dt + A(W) * dW/dx = S(W)
+     * 
+     *    where the primitive Jacobian A(W) is:
+     *    A(W) = [   u      rho       0    ]
+     *           [   0       u      1/rho  ]
+     *           [   0    rho*cs^2    u    ]
+     * 
+     * 2. Primitive time derivatives:
+     *    d(rho)/dt = - u * d(rho)/dx - rho * d(u)/dx
+     *                (corresponds to sr0, with dq[0] = d(rho)/dx and dq[1] = d(u)/dx)
+     * 
+     *    d(u)/dt   = - u * d(u)/dx - (1/rho) * d(p)/dx - (1/rho) * sum( d(p_e)/dx )
+     *                (corresponds to su0, with dq[NDIM+1] = d(p)/dx and extra thermal/non-thermal components p_e)
+     * 
+     *    d(p)/dt   = - u * d(p)/dx - rho * cs^2 * d(u)/dx
+     *                (corresponds to sp0, with dq[NDIM+1] = d(p)/dx)
+     * 
+     * 3. Reconstruct states at cell interfaces for a half time step dt/2 (MUSCL-Hancock):
+     *    W_L (qp) = W - 0.5 * dx * dW/dx + 0.5 * dt * dW/dt   (left interface: x - dx/2)
+     *    W_R (qm) = W + 0.5 * dx * dW/dx + 0.5 * dt * dW/dt   (right interface: x + dx/2)
+     */
     real_t r = std::max(q[0], 1e-10), u = q[1], p = std::max(q[NDIM+1], r * 1e-20);
     real_t sr0 = -u * dq[0] - dq[1] * r;
     real_t su0 = -u * dq[1] - dq[NDIM+1] / r;

@@ -289,11 +289,23 @@ void RhdSolver::compute_slopes(int idc, const int icelln[6], int idim, real_t dq
 }
 
 void RhdSolver::trace(const real_t q[], const real_t dq[], real_t dtdx, real_t qm[], real_t qp[], real_t gamma) {
-    // Simplified RHD trace (primitive reconstruction + dtdx correction)
-    // For full second-order accuracy, RHD needs a more complex characteristic tracing.
-    // Here we use a standard MUSCL-Hancock simplification as seen in legacy umuscl.f90
+    /**
+     * Reconstruct primitive states at cell interfaces.
+     * 
+     * In relativistic hydrodynamics (RHD), a full characteristic-based trace step
+     * including the time correction (dt/2) * dW/dt requires projecting primitive variables
+     * onto characteristic fields.
+     * 
+     * Here, a standard MUSCL-Hancock spatial reconstruction is performed directly to 
+     * the interfaces without the full time-derivative source term:
+     * 
+     * W_L (qp) = W - 0.5 * dW   (left interface: x - dx/2)
+     * W_R (qm) = W + 0.5 * dW   (right interface: x + dx/2)
+     * 
+     * where dW = dq is the limited difference vector computed by compute_slopes.
+     */
     for (int iv = 0; iv < grid_.nvar; ++iv) {
-        qp[iv] = q[iv] - 0.5 * dq[iv]; // Simplified
+        qp[iv] = q[iv] - 0.5 * dq[iv];
         qm[iv] = q[iv] + 0.5 * dq[iv];
     }
 }
