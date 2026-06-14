@@ -6,7 +6,7 @@ This document provides a deep dive into the design and implementation of the Ada
 
 ## 🏗️ The AMR Octree Structure
 
-RAMSES-CPP utilizes a fully distributed octree structure to represent the grid refinement levels. The core class managing this tree is [AmrGrid](file:///home/bgkang/Projects/RAMSES-CPP/include/ramses/AmrGrid.hpp).
+RAMSES-CPP utilizes a fully distributed octree structure to represent the grid refinement levels. The core class managing this tree is [AmrGrid](file:///home/bgkang/Projects/RAMSES-CPP/include/ramses/core/AmrGrid.hpp).
 
 In an octree simulation:
 * **Octs:** The basic unit of refinement is an "oct" (or grid). An oct always contains $2^{\text{NDIM}}$ cells (e.g., 2 cells in 1D, 4 cells in 2D, and 8 cells in 3D).
@@ -55,7 +55,7 @@ This column-major flat array layout ensures that when looping over cells for a s
 
 One of the major modernization upgrades in RAMSES-CPP is the elimination of fixed compilation limits on grid memory. In legacy RAMSES, running out of grid memory (`ngridmax` overflow) crashes the simulation.
 
-RAMSES-CPP implements **automatic dynamic allocation** in [AmrGrid::resize_grids(int new_ngridmax)](file:///home/bgkang/Projects/RAMSES-CPP/src/AmrGrid.cpp).
+RAMSES-CPP implements **automatic dynamic allocation** in [AmrGrid::resize_grids(int new_ngridmax)](file:///home/bgkang/Projects/RAMSES-CPP/src/core/AmrGrid.cpp).
 
 ### The Resizing Algorithm
 When a refinement burst occurs and the number of active octs exceeds `ngridmax`:

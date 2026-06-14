@@ -4,6 +4,17 @@ This document tracks the milestones, architecture updates, and physics solver in
 
 ---
 
+## 🚩 Phase 49: Codebase Reorganization, EoS Unification, and Build System Modularization (Completed) 🚀✨
+**Commit:** `3abc824`
+* **Logical Codebase Reorganization**: Grouped the flat directory structure of C++ headers (`include/ramses/`) and source files (`src/`) into cohesive logical modules (`core/`, `solvers/hydro/`, `solvers/mhd/`, `solvers/rhd/`, `solvers/rt/`, `solvers/gravity/`, `solvers/physics/`, `particles/`, `io/`) using `git mv` to preserve git history.
+* **Unified Equation of State (EoS) & Thermodynamics**: Created [EquationOfState.hpp](file:///home/bgkang/Projects/RAMSES-CPP/include/ramses/solvers/physics/EquationOfState.hpp) and [EquationOfState.cpp](file:///home/bgkang/Projects/RAMSES-CPP/src/solvers/physics/EquationOfState.cpp). Consolidated all pressure, sound speed, and enthalpy calculations across all solvers (Hydro, MHD, and RHD) into this unified class, eliminating arithmetic duplicates.
+* **Relativistic Riemann Solver Indexing Correction**: Reformatted [RelativisticRiemannSolver.cpp](file:///home/bgkang/Projects/RAMSES-CPP/src/solvers/rhd/RelativisticRiemannSolver.cpp) and resolved a critical indexing mismatch bug where the HLL and HLLC Riemann solvers used the 0-based Fortran variable layout (pressure at index `1`, velocities at `2, 3, 4`), while the inputs passed from C++ are in the C++ rotated layout (velocities at `1, 2, 3`, pressure at `4`).
+* **Riemann Solvers Formatting & Physics Comments**: Reformatted the HLL, HLLC, and HLLD solvers in [RiemannSolver.cpp](file:///home/bgkang/Projects/RAMSES-CPP/src/solvers/hydro/RiemannSolver.cpp) and [MhdSolver.cpp](file:///home/bgkang/Projects/RAMSES-CPP/src/solvers/mhd/MhdSolver.cpp) with clean spacing, expanded one-liner loops, and added detailed physics comment blocks explaining their wave propagation bounds.
+* **Documented MUSCL-Hancock Trace Steps**: Added explicit comment blocks containing mathematical equations to [HydroSolver::trace](file:///home/bgkang/Projects/RAMSES-CPP/src/solvers/hydro/HydroSolver.cpp#L546) and [RhdSolver::trace](file:///home/bgkang/Projects/RAMSES-CPP/src/solvers/rhd/RhdSolver.cpp#L291) detailing the cell interface reconstructions.
+* **Modular CMake Build System**: Replaced the flat source files list in the root [CMakeLists.txt](file:///home/bgkang/Projects/RAMSES-CPP/CMakeLists.txt) with a modular `add_subdirectory(src)` call, creating nested `CMakeLists.txt` files inside subfolders using `target_sources()` to specify local source files.
+
+---
+
 ## 🚩 Phase 48: Advect1d AMR & Solver Realignment (Completed) 🚀✨
 **Commit:** `64601ad`
 * **Initial Grid Refinement:** Extended the C++ further refinement iterations in [Simulation.cpp](file:///home/bgkang/Projects/RAMSES-CPP/src/Simulation.cpp#L219) from `lmax` to `lmax + 2`. This aligned C++ with the combined refinement sweeps of Fortran's `init_refine` and `init_refine_2`, achieving bit-perfect grid matching in Snapshot 1.

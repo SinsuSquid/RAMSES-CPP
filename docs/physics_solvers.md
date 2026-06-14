@@ -6,7 +6,7 @@ This document describes the polymorphic architecture, Riemann solvers, and algor
 
 ## 🏗️ Solver Factory & Polymorphic Design
 
-RAMSES-CPP delegates the instantiation of physics solvers to the [SolverFactory](file:///home/bgkang/Projects/RAMSES-CPP/include/ramses/SolverFactory.hpp). Based on the compilation configurations and user-defined flags (`SOLVER`, `RT`), the factory instantiates the appropriate derived solver classes.
+RAMSES-CPP delegates the instantiation of physics solvers to the [SolverFactory](file:///home/bgkang/Projects/RAMSES-CPP/include/ramses/core/SolverFactory.hpp). Based on the compilation configurations and user-defined flags (`SOLVER`, `RT`), the factory instantiates the appropriate derived solver classes.
 
 ```mermaid
 classDiagram
@@ -37,7 +37,7 @@ classDiagram
 
 ## 🌊 Hydrodynamics Solver (`HydroSolver`)
 
-The [HydroSolver](file:///home/bgkang/Projects/RAMSES-CPP/include/ramses/HydroSolver.hpp) implements a second-order Godunov method (MUSCL-Hancock) to solve the Euler equations of gas dynamics:
+The [HydroSolver](file:///home/bgkang/Projects/RAMSES-CPP/include/ramses/solvers/hydro/HydroSolver.hpp) implements a second-order Godunov method (MUSCL-Hancock) to solve the Euler equations of gas dynamics:
 
 $$\frac{\partial}{\partial t} \begin{pmatrix} \rho \\ \rho \mathbf{v} \\ E \end{pmatrix} + \nabla \cdot \begin{pmatrix} \rho \mathbf{v} \\ \rho \mathbf{v} \otimes \mathbf{v} + P \mathbf{I} \\ (E + P)\mathbf{v} \end{pmatrix} = 0$$
 
@@ -55,7 +55,7 @@ $$\frac{\partial}{\partial t} \begin{pmatrix} \rho \\ \rho \mathbf{v} \\ E \end{
 
 ## 🧲 Magnetohydrodynamics Solver (`MhdSolver`)
 
-The [MhdSolver](file:///home/bgkang/Projects/RAMSES-CPP/include/ramses/MhdSolver.hpp) solves the equations of ideal Magnetohydrodynamics (MHD) using a **staggered grid representation** (Flux-CT):
+The [MhdSolver](file:///home/bgkang/Projects/RAMSES-CPP/include/ramses/solvers/mhd/MhdSolver.hpp) solves the equations of ideal Magnetohydrodynamics (MHD) using a **staggered grid representation** (Flux-CT):
 
 ### 1. Constrained Transport (Flux-CT)
 * Fluid variables ($\rho, P, \mathbf{v}$) are stored at cell centers.
@@ -71,7 +71,7 @@ The [MhdSolver](file:///home/bgkang/Projects/RAMSES-CPP/include/ramses/MhdSolver
 
 ## 🌌 Self-Gravity Module (`PoissonSolver`)
 
-The [PoissonSolver](file:///home/bgkang/Projects/RAMSES-CPP/include/ramses/PoissonSolver.hpp) solves the comoving self-gravity equation on the AMR grid:
+The [PoissonSolver](file:///home/bgkang/Projects/RAMSES-CPP/include/ramses/solvers/gravity/PoissonSolver.hpp) solves the comoving self-gravity equation on the AMR grid:
 
 $$\nabla^2 \phi = 4\pi G \rho_{\text{physical}}$$
 

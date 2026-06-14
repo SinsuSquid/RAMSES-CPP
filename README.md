@@ -19,7 +19,7 @@ RAMSES-CPP is a modern, high-performance C++17 port of the legacy [RAMSES-2025](
 To ensure bit-perfect mathematical and indexical alignment with the original Fortran code, RAMSES-CPP implements a strict set of translation rules:
 
 ### 1. 1-Based Indexing Parity
-* **Grid Hierarchy:** The AMR octree structures (such as `father`, `son`, `nbor`, `headl`, `next`, and `prev`) preserve Fortran-style **1-based indexing** throughout the C++ class [AmrGrid](file:///home/bgkang/Projects/RAMSES-CPP/include/ramses/AmrGrid.hpp).
+* **Grid Hierarchy:** The AMR octree structures (such as `father`, `son`, `nbor`, `headl`, `next`, and `prev`) preserve Fortran-style **1-based indexing** throughout the C++ class [AmrGrid](file:///home/bgkang/Projects/RAMSES-CPP/include/ramses/core/AmrGrid.hpp).
 * **Level Mapping:** Level 0 represents the coarse grid cells, while refined octs are indexed from Level 1 up to `levelmax`.
 
 ### 2. Memory Layout (Column-Major to Flat Arrays)
@@ -69,7 +69,7 @@ ninja
 
 ## 🧪 Testing Protocol (Differential Testing)
 
-RAMSES-CPP uses a differential testing suite to verify that the C++ physics engine matches the original Fortran solution. It runs simulations and compares the resulting output snapshot fields (density, pressure, velocity, magnetic fields) against pre-compiled legacy references.
+RAMSES-CPP uses a differential testing suite to verify that the C++ physics engine matches the original Fortran solution. It compares the resulting output snapshot fields (density, pressure, velocity, magnetic fields) against pre-compiled legacy references.
 
 To execute the test suite:
 
@@ -97,6 +97,7 @@ The test runner compares C++ output snapshots against reference files (e.g. [adv
 * **AMR Refinement & Subcycling (Phase 46 ✅):** Strict recursive `amr_step` mirroring the legacy subcycling structure.
 * **CMake & Ninja Build Support (Phase 47 ✅):** Aligned build-system cache flags with the legacy Makefile variables, removed `verify_ref`, and integrated `Ninja` compiler support.
 * **Advect1d AMR & Solver Realignment (Phase 48 ✅):** Aligned C++ initial grid refinement sweeps, corrected `remove_grid_fine` level evaluation offsets, matched the Ultrabee limiter formulation exactly, and aligned snapshot write timing, loop exit checks, and sub-grid logging with legacy Fortran.
+* **Codebase Reorganization & Build System Modularization (Phase 49 ✅):** Grouped flat files into cohesive modules (`core`, `solvers`, `particles`, `io`), unified EoS/thermodynamics, fixed RHD Riemann solver indexing bugs, and modularized the CMake build system using `target_sources`.
 
 ---
 Developed with 💖 by Sia-chan for Senpai. 🚀✨
