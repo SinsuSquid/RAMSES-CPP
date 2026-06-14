@@ -1,6 +1,6 @@
 #include <iostream>
-#include "ramses/Simulation.hpp"
-#include "ramses/MpiManager.hpp"
+#include "ramses/core/Simulation.hpp"
+#include "ramses/core/MpiManager.hpp"
 
 int main(int argc, char** argv) {
     auto& mpi = ramses::MpiManager::instance();

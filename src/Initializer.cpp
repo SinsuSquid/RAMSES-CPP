@@ -1,8 +1,8 @@
 #include "ramses/Initializer.hpp"
-#include "ramses/AmrGrid.hpp"
-#include "ramses/Constants.hpp"
-#include "ramses/Parameters.hpp"
-#include "ramses/MpiManager.hpp"
+#include "ramses/core/AmrGrid.hpp"
+#include "ramses/core/Constants.hpp"
+#include "ramses/core/Parameters.hpp"
+#include "ramses/core/MpiManager.hpp"
 #include <iostream>
 #include <vector>
 #include <algorithm>

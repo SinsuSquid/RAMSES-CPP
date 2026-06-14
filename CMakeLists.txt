@@ -31,39 +31,48 @@ set(NVECTOR 32 CACHE STRING "Size of vector cache")
 
 # Source files for the library
 set(LIB_SRCS
-    src/AmrGrid.cpp
-    src/Config.cpp
-    src/Constants.cpp
-    src/CoolingSolver.cpp
-    src/TurbulenceSolver.cpp
-    src/SinkSolver.cpp
-    src/StarSolver.cpp
-    src/FeedbackSolver.cpp
-    src/ClumpFinder.cpp
-    src/LightCone.cpp
-    src/Hdf5Writer.cpp
-    src/HydroSolver.cpp
-    src/RhdSolver.cpp
+    # Core
+    src/core/AmrGrid.cpp
+    src/core/Config.cpp
+    src/core/Constants.cpp
+    src/core/Parameters.cpp
+    src/core/MpiManager.cpp
+    src/core/Simulation.cpp
+    src/core/TreeUpdater.cpp
+    src/core/Hilbert.cpp
+    src/core/LoadBalancer.cpp
+    src/core/SolverFactory.cpp
+    src/core/Cosmology.cpp
+    
+    # Solvers
+    src/solvers/hydro/HydroSolver.cpp
+    src/solvers/hydro/RiemannSolver.cpp
+    src/solvers/hydro/SlopeLimiter.cpp
+    src/solvers/mhd/MhdSolver.cpp
+    src/solvers/rhd/RhdSolver.cpp
+    src/solvers/rhd/RelativisticRiemannSolver.cpp
+    src/solvers/rt/RtSolver.cpp
+    src/solvers/rt/RtChemistry.cpp
+    src/solvers/gravity/PoissonSolver.cpp
+    src/solvers/physics/CoolingSolver.cpp
+    src/solvers/physics/StarSolver.cpp
+    src/solvers/physics/FeedbackSolver.cpp
+    src/solvers/physics/SinkSolver.cpp
+    src/solvers/physics/TurbulenceSolver.cpp
+    src/solvers/physics/ClumpFinder.cpp
+
+    # Particles
+    src/particles/ParticleSolver.cpp
+    src/particles/ParticleSystem.cpp
+
+    # IO / Diagnostics
+    src/io/RamsesReader.cpp
+    src/io/RamsesWriter.cpp
+    src/io/Hdf5Writer.cpp
+    src/io/LightCone.cpp
+    
+    # Root Initialization
     src/Initializer.cpp
-    src/RamsesReader.cpp
-    src/RamsesWriter.cpp
-    src/Simulation.cpp
-    src/TreeUpdater.cpp
-    src/Hilbert.cpp
-    src/RiemannSolver.cpp
-    src/RelativisticRiemannSolver.cpp
-    src/SlopeLimiter.cpp
-    src/PoissonSolver.cpp
-    src/MhdSolver.cpp
-    src/RtSolver.cpp
-    src/RtChemistry.cpp
-    src/MpiManager.cpp
-    src/Parameters.cpp
-    src/ParticleSolver.cpp
-    src/ParticleSystem.cpp
-    src/Cosmology.cpp
-    src/LoadBalancer.cpp
-    src/SolverFactory.cpp
 )
 
 # Custom Patches Discovery
@@ -81,7 +90,19 @@ foreach(param NX NY NZ NGROUPS NIONS NMETALS NENER NPSCAL)
     endif()
 endforeach()
 
-include_directories(include)
+include_directories(
+    include
+    include/ramses
+    include/ramses/core
+    include/ramses/solvers/hydro
+    include/ramses/solvers/mhd
+    include/ramses/solvers/rhd
+    include/ramses/solvers/rt
+    include/ramses/solvers/gravity
+    include/ramses/solvers/physics
+    include/ramses/particles
+    include/ramses/io
+)
 
 # Build library and executable for specified dimension only (from config.txt or default)
 set(d ${NDIM})
