@@ -60,6 +60,7 @@ set(LIB_SRCS
     src/solvers/physics/SinkSolver.cpp
     src/solvers/physics/TurbulenceSolver.cpp
     src/solvers/physics/ClumpFinder.cpp
+    src/solvers/physics/EquationOfState.cpp
 
     # Particles
     src/particles/ParticleSolver.cpp

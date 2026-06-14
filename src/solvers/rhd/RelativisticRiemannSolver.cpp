@@ -1,4 +1,5 @@
 #include "ramses/solvers/rhd/RelativisticRiemannSolver.hpp"
+#include "ramses/solvers/physics/EquationOfState.hpp"
 #include <cmath>
 #include <algorithm>
 
@@ -268,16 +269,8 @@ void RelativisticRiemannSolver::find_rhd_flux(const real_t q[], real_t u[], real
     real_t v2 = vx*vx + vy*vy + vz*vz;
     real_t lor = 1.0 / std::sqrt(1.0 - v2);
 
-    // Compute specific enthalpy (enth):
-    // For Ideal gas EoS:  h = d + p * [gamma / (gamma - 1)]
-    // For Taub-Mathews:   h = d * (2.5 * tau + 1.5 * sqrt(tau^2 + 4/9))  with tau = p/d
-    real_t enth;
-    if (eos == "TM") {
-        real_t tau = p / d;
-        enth = d * (2.5 * tau + 1.5 * std::sqrt(tau*tau + 4.0/9.0));
-    } else {
-        enth = d + p / (gamma - 1.0) + p;
-    }
+    // Compute specific enthalpy (enth) using the unified EquationOfState
+    real_t enth = EquationOfState::get_rhd_enthalpy(d, p, gamma, eos);
 
     // Conserved variable vector:
     // u[0] = D = d * lor                     (conserved density)
@@ -323,16 +316,8 @@ void RelativisticRiemannSolver::find_speed_fast(const real_t q[], real_t& cs, re
     real_t d = q[0];
     real_t p = q[4];
 
-    // Compute sound speed cs:
-    // cs^2 = gamma * p / (rho * h)
-    if (eos == "TM") {
-        real_t tau = p / d;
-        real_t enth = 2.5 * tau + 1.5 * std::sqrt(tau*tau + 4.0/9.0);
-        cs = std::sqrt(tau / (3.0 * enth) * (5.0 * enth - 8.0 * tau) / (enth - tau));
-    } else {
-        real_t enth = d + p / (gamma - 1.0) + p;
-        cs = std::sqrt(gamma * p / enth);
-    }
+    // Compute sound speed cs using the unified EquationOfState
+    cs = EquationOfState::get_rhd_sound_speed(d, p, gamma, eos);
 }
 
 } // namespace ramses

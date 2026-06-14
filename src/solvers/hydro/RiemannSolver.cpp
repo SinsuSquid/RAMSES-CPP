@@ -1,4 +1,5 @@
 #include "ramses/solvers/hydro/RiemannSolver.hpp"
+#include "ramses/solvers/physics/EquationOfState.hpp"
 #include "ramses/core/Parameters.hpp"
 #include "ramses/core/Constants.hpp"
 #include <iostream>
@@ -8,23 +9,7 @@
 namespace ramses {
 
 real_t RiemannSolver::get_cs2(real_t d, real_t p, real_t gamma, const real_t q[], int nener, const std::vector<real_t>& gamma_rad) {
-    if (params::barotropic_eos) {
-        real_t T2 = params::T_eos / params::mu_gas * (constants::kB / constants::mH);
-        real_t v2_unit = params::units_velocity * params::units_velocity;
-        if (params::barotropic_eos_form == "isothermal") return T2 / v2_unit;
-        if (params::barotropic_eos_form == "polytrope") return params::polytrope_index * T2 * std::pow(d * params::units_density / params::polytrope_rho, params::polytrope_index - 1.0) / v2_unit;
-        if (params::barotropic_eos_form == "double_polytrope") {
-            real_t fac = std::pow(d * params::units_density / params::polytrope_rho, params::polytrope_index - 1.0);
-            return T2 * (1.0 + params::polytrope_index * fac) / v2_unit;
-        }
-    }
-    real_t cs2 = gamma * p;
-    if (q != nullptr) {
-        for (int ie = 0; ie < nener; ++ie) {
-            cs2 += gamma_rad[ie] * q[NDIM + 2 + ie];
-        }
-    }
-    return std::clamp(cs2 / std::max(d, 1e-10), 1e-2, 1e12);
+    return EquationOfState::get_cs2(d, p, gamma, q, nener, gamma_rad);
 }
 
 void RiemannSolver::solve_llf(const real_t ql[], const real_t qr[], real_t flux[], real_t gamma, int nener, const std::vector<real_t>& gamma_rad) {

@@ -1,4 +1,5 @@
 #include "ramses/solvers/rhd/RhdSolver.hpp"
+#include "ramses/solvers/physics/EquationOfState.hpp"
 #include "ramses/solvers/rhd/RelativisticRiemannSolver.hpp"
 #include "ramses/core/MpiManager.hpp"
 #include "ramses/core/Constants.hpp"
@@ -203,8 +204,7 @@ void RhdSolver::ctoprim(const real_t u[], real_t q[], real_t gamma) {
     real_t R, lor, u2, xsi;
     if (M == 0) {
         q[0] = D; q[1] = 0; q[2] = 0; q[3] = 0;
-        if (eos == "TM") q[4] = (E*E - D*D) / (3.0 * E);
-        else q[4] = (E - D) * (gamma - 1.0);
+        q[4] = EquationOfState::get_rhd_pressure_zero_momentum(D, E, gamma, eos);
     } else {
         newton_raphson_mignone(D, M, E, gamma, R);
         u2 = M*M / (R*R - M*M);
@@ -212,12 +212,7 @@ void RhdSolver::ctoprim(const real_t u[], real_t q[], real_t gamma) {
         q[0] = D / lor;
         q[1] = Mx / R; q[2] = My / R; q[3] = Mz / R;
         xsi = ((R - D) - u2 / (lor + 1.0) * D) / (lor*lor);
-        if (eos == "TM") {
-            real_t rho = q[0];
-            q[4] = (2.0 * xsi * (xsi + 2.0 * rho)) / (5.0 * (xsi + rho) + std::sqrt(9.0*xsi*xsi + 18.0*rho*xsi + 25.0*rho*rho));
-        } else {
-            q[4] = (gamma - 1.0) / gamma * xsi;
-        }
+        q[4] = EquationOfState::get_rhd_pressure_from_xsi(xsi, q[0], gamma, eos);
     }
     // Passive scalars
     for (int n = 5; n < grid_.nvar; ++n) q[n] = u[n] / (D);
@@ -234,13 +229,8 @@ void RhdSolver::newton_raphson_mignone(real_t D, real_t M, real_t E, real_t gamm
         real_t u2 = M * M / (std::pow(R_val + D, 2) - M * M);
         real_t lor = std::sqrt(1.0 + u2);
         real_t xsi = (R_val - u2 / (lor + 1.0) * D) / (lor * lor);
-        real_t P;
-        if (eos == "TM") {
-            real_t rho = D / lor;
-            P = (2.0 * xsi * (xsi + 2.0 * rho)) / (5.0 * (xsi + rho) + std::sqrt(9.0*xsi*xsi + 18.0*rho*xsi + 25.0*rho*rho));
-        } else {
-            P = (gamma - 1.0) / gamma * xsi;
-        }
+        real_t rho = D / lor;
+        real_t P = EquationOfState::get_rhd_pressure_from_xsi(xsi, rho, gamma, eos);
         return R_val - P - Eprim;
     };
 
@@ -251,7 +241,7 @@ void RhdSolver::newton_raphson_mignone(real_t D, real_t M, real_t E, real_t gamm
         if (eos == "TM") {
             real_t xsi = (R_val - u2 / (lor + 1.0) * D) / (lor * lor);
             real_t rho = D / lor;
-            real_t P = (2.0 * xsi * (xsi + 2.0 * rho)) / (5.0 * (xsi + rho) + std::sqrt(9.0*xsi*xsi + 18.0*rho*xsi + 25.0*rho*rho));
+            real_t P = EquationOfState::get_rhd_pressure_from_xsi(xsi, rho, gamma, eos);
             real_t dpdxsi = (2.0*xsi + 2.0*rho - 5.0*P) / (5.0*rho + 5.0*xsi - 8.0*P);
             real_t dpdrho = (2.0*xsi - 5.0*P) / (5.0*rho + 5.0*xsi - 8.0*P);
             real_t dv2dR = -2.0 * M * M / std::pow(R_val + D, 3);

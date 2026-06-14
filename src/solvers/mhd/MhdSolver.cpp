@@ -1,4 +1,5 @@
 #include "ramses/solvers/mhd/MhdSolver.hpp"
+#include "ramses/solvers/physics/EquationOfState.hpp"
 #include "ramses/core/MpiManager.hpp"
 #include "ramses/core/Parameters.hpp"
 #include "ramses/core/Constants.hpp"
@@ -79,7 +80,7 @@ real_t MhdSolver::compute_courant_step(int ilevel, real_t dx, real_t gamma, real
                 for (int ie = 0; ie < nener_; ++ie) {
                     e_nonthermal += grid_.uold(idc, iener + 1 + ie);
                 }
-                real_t p = std::max((etot-ekin-emag-e_nonthermal)*(gamma-1.0), d*1e-10);
+                real_t p = EquationOfState::get_pressure(d, etot - ekin - emag - e_nonthermal, gamma);
                 real_t q_mhd[64] = {0};
                 q_mhd[0] = d; q_mhd[1] = p; q_mhd[2] = u;
                 q_mhd[3] = 0.5*(A+grid_.uold(idc,grid_.nvar-2));
@@ -168,7 +169,7 @@ void MhdSolver::ctoprim(const real_t u[64], real_t q[64], real_t bf[3][2], real_
         q[iv] = u[iv] * (grid_.gamma_rad[ie] - 1.0);
         e_nonthermal += u[iv];
     }
-    q[4] = std::max((u[4] - ek - em - e_nonthermal) * (gamma - 1.0), d * 1e-10);
+    q[4] = EquationOfState::get_pressure(d, u[4] - ek - em - e_nonthermal, gamma);
     q[5]=0.5*(bf[0][0]+bf[0][1]); q[6]=0.5*(bf[1][0]+bf[1][1]); q[7]=0.5*(bf[2][0]+bf[2][1]);
     for (int iv = 8 + nener_; iv < nvp; ++iv) q[iv] = u[iv] / d;
 }

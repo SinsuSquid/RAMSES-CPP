@@ -1,4 +1,5 @@
 #include "ramses/solvers/hydro/HydroSolver.hpp"
+#include "ramses/solvers/physics/EquationOfState.hpp"
 #include "ramses/core/MpiManager.hpp"
 #include "ramses/solvers/hydro/RiemannSolver.hpp"
 #include "ramses/core/Parameters.hpp"
@@ -495,22 +496,11 @@ void HydroSolver::ctoprim(const real_t u[], real_t q[], real_t gamma) {
     int iener = NDIM + 1; // 0-based index in local array
     
     if (params::barotropic_eos) {
-        // Calculate pressure from density only
-        real_t nH = d * params::units_density / (params::mu_gas * constants::mH);
-        real_t T2 = params::T_eos / params::mu_gas * (constants::kB / constants::mH);
-        real_t temp_mu = T2;
-        if (params::barotropic_eos_form == "polytrope") {
-            temp_mu = T2 * std::pow(d * params::units_density / params::polytrope_rho, params::polytrope_index - 1.0);
-        } else if (params::barotropic_eos_form == "double_polytrope") {
-            temp_mu = T2 * (1.0 + std::pow(d * params::units_density / params::polytrope_rho, params::polytrope_index - 1.0));
-        }
-        q[iener] = d * temp_mu / (params::units_velocity * params::units_velocity);
+        q[iener] = EquationOfState::get_barotropic_pressure(d);
     } else {
         real_t e_thermal_dens = u[iener] - 0.5 * d * v2;
         for (int ie = 0; ie < nener_; ++ie) e_thermal_dens -= u[iener + 1 + ie];
-        q[iener] = std::max(e_thermal_dens * (gamma - 1.0), d * 1e-10);
-        // Cap pressure to prevent sound speed explosion in vacuum
-        q[iener] = std::min(q[iener], d * 1e6);
+        q[iener] = EquationOfState::get_pressure(d, e_thermal_dens, gamma);
     }
     
     for (int iv = iener + 1; iv < grid_.nvar; ++iv) { if (iv < iener + 1 + nener_) q[iv] = u[iv] * (grid_.gamma_rad[iv - (iener + 1)] - 1.0); else q[iv] = u[iv] / d; }
@@ -735,11 +725,7 @@ void HydroSolver::interpol_hydro(const real_t u1[7][64], real_t u2[8][64]) {
             real_t d = std::max(q2[i][0], 1e-10);
             real_t p = 0;
             if (params::barotropic_eos) {
-                real_t T2 = params::T_eos / params::mu_gas * (constants::kB / constants::mH);
-                real_t temp_mu = T2;
-                if (params::barotropic_eos_form == "polytrope") temp_mu = T2 * std::pow(d * params::units_density / params::polytrope_rho, params::polytrope_index - 1.0);
-                else if (params::barotropic_eos_form == "double_polytrope") temp_mu = T2 * (1.0 + std::pow(d * params::units_density / params::polytrope_rho, params::polytrope_index - 1.0));
-                p = d * temp_mu / (params::units_velocity * params::units_velocity);
+                p = EquationOfState::get_barotropic_pressure(d);
             } else {
                 p = std::max(q2[i][iener], 1e-20);
             }
@@ -777,11 +763,7 @@ real_t HydroSolver::compute_courant_step(int ilevel, real_t dx, real_t gamma, re
             real_t p = 0;
             real_t sum_gamma_p = 0.0;
             if (params::barotropic_eos) {
-                real_t T2 = params::T_eos / params::mu_gas * (constants::kB / constants::mH);
-                real_t temp_mu = T2;
-                if (params::barotropic_eos_form == "polytrope") temp_mu = T2 * std::pow(d * params::units_density / params::polytrope_rho, params::polytrope_index - 1.0);
-                else if (params::barotropic_eos_form == "double_polytrope") temp_mu = T2 * (1.0 + std::pow(d * params::units_density / params::polytrope_rho, params::polytrope_index - 1.0));
-                p = d * temp_mu / (params::units_velocity * params::units_velocity);
+                p = EquationOfState::get_barotropic_pressure(d);
             } else {
                 real_t e_nonthermal = 0.0;
                 for (int ie = 0; ie < nener_; ++ie) {
@@ -820,11 +802,7 @@ real_t HydroSolver::compute_courant_step(int ilevel, real_t dx, real_t gamma, re
                 real_t p = 0;
                 real_t sum_gamma_p = 0.0;
                 if (params::barotropic_eos) {
-                    real_t T2 = params::T_eos / params::mu_gas * (constants::kB / constants::mH);
-                    real_t temp_mu = T2;
-                    if (params::barotropic_eos_form == "polytrope") temp_mu = T2 * std::pow(d * params::units_density / params::polytrope_rho, params::polytrope_index - 1.0);
-                    else if (params::barotropic_eos_form == "double_polytrope") temp_mu = T2 * (1.0 + std::pow(d * params::units_density / params::polytrope_rho, params::polytrope_index - 1.0));
-                    p = d * temp_mu / (params::units_velocity * params::units_velocity);
+                    p = EquationOfState::get_barotropic_pressure(d);
                 } else {
                     real_t e_nonthermal = 0.0;
                     for (int ie = 0; ie < nener_; ++ie) {
@@ -904,11 +882,7 @@ void HydroSolver::synchro_hydro_fine(int ilevel, real_t dt) {
         
         real_t e_int = 0;
         if (params::barotropic_eos) {
-            real_t T2 = params::T_eos / params::mu_gas * (constants::kB / constants::mH);
-            real_t temp_mu = T2;
-            if (params::barotropic_eos_form == "polytrope") temp_mu = T2 * std::pow(d * params::units_density / params::polytrope_rho, params::polytrope_index - 1.0);
-            else if (params::barotropic_eos_form == "double_polytrope") temp_mu = T2 * (1.0 + std::pow(d * params::units_density / params::polytrope_rho, params::polytrope_index - 1.0));
-            real_t p = d * temp_mu / (params::units_velocity * params::units_velocity);
+            real_t p = EquationOfState::get_barotropic_pressure(d);
             e_int = p / (gam - 1.0);
         } else {
             e_int = std::max(grid_.uold(idc, iener) - 0.5*d*v2_old - e_nonthermal, d * 1e-10 / (gam - 1.0));
