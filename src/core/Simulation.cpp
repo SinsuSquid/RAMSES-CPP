@@ -308,9 +308,11 @@ void Simulation::run() {
     while (!finished_) {
         auto t_step_start = std::chrono::high_resolution_clock::now();
 
-        // 1. Refine coarse domain (adaptive_loop.f90:158)
+        // 1. Refine coarse domain (adaptive_loop.f90:96-126)
+        // Fortran: outer loop calls refine_fine(il) for il=1..levelmin-1 ONLY;
+        // refine_fine(levelmin) is called inside amr_step, not here.
         if (p::levelmin < p::nlevelmax) {
-             for (int il = 1; il <= p::levelmin; ++il) {
+             for (int il = 1; il <= p::levelmin - 1; ++il) {
                  updater_.make_grid_fine(il); // refine_fine
              }
              grid_.synchronize_level_counts();
