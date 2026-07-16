@@ -17,9 +17,6 @@ void MpiManager::init(int argc, char** argv) {
     size_ = 1;
 #endif
     
-    if (is_master()) {
-        std::cout << "[MPI] Initialized. Rank=" << rank_ << " Size=" << size_ << std::endl;
-    }
 }
 
 void MpiManager::finalize() {

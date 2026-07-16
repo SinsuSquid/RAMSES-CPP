@@ -155,7 +155,7 @@ void Initializer::region_condinit(int ilevel) {
 }
 
 void Initializer::load_grafic() {
-    std::cout << "[Initializer] Loading Grafic ICs..." << std::endl;
+    std::cout << "Loading Grafic ICs..." << std::endl;
 }
 
 void Initializer::init_tracers() {
@@ -164,7 +164,7 @@ void Initializer::init_tracers() {
 
     if (p::tracer_feed_fmt == "inplace") {
         if (MpiManager::instance().rank() == 0) {
-            std::cout << "[Initializer] Creating tracers 'inplace' based on gas density..." << std::endl;
+            std::cout << "Creating tracers 'inplace' based on gas density..." << std::endl;
         }
 
         int myid = MpiManager::instance().rank() + 1;
@@ -223,7 +223,7 @@ void Initializer::init_tracers() {
         }
     } else {
         if (MpiManager::instance().rank() == 0) {
-            std::cout << "[Initializer] Warning: tracer_feed_fmt '" << p::tracer_feed_fmt << "' not implemented yet." << std::endl;
+            std::cout << "Warning: tracer_feed_fmt '" << p::tracer_feed_fmt << "' not implemented yet." << std::endl;
         }
     }
 }
