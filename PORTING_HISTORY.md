@@ -4,6 +4,12 @@ This document tracks the milestones, architecture updates, and physics solver in
 
 ---
 
+## 🚩 Phase 50: 27-Cell Neighbor Lookup Fix (Completed) 🚀✨
+* **Fixed Neighbor Chaining in `get_27_cell_neighbors`**: Replaced the fragile orthogonal lookup chaining algorithm in [AmrGrid.cpp](file:///home/bgkang/Projects/RAMSES-CPP/src/core/AmrGrid.cpp) with a robust coordinate-based neighbor lookup.
+* **Fixed `find_cell_by_coords` traversal**: Fixed a major off-by-one level descent bug in [AmrGrid.cpp](file:///home/bgkang/Projects/RAMSES-CPP/src/core/AmrGrid.cpp) that caused grid search to terminate prematurely, and added `NDIM` dimension guards to prevent reading out-of-bounds uninitialized coordinates.
+
+---
+
 ## 🚩 Phase 49: Codebase Reorganization, EoS Unification, and Build System Modularization (Completed) 🚀✨
 **Commit:** `3abc824`
 * **Logical Codebase Reorganization**: Grouped the flat directory structure of C++ headers (`include/ramses/`) and source files (`src/`) into cohesive logical modules (`core/`, `solvers/hydro/`, `solvers/mhd/`, `solvers/rhd/`, `solvers/rt/`, `solvers/gravity/`, `solvers/physics/`, `particles/`, `io/`) using `git mv` to preserve git history.

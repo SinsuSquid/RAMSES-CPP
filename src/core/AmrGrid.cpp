@@ -369,13 +369,13 @@ int AmrGrid::find_cell_by_coords(const real_t x[3], int level) const {
     int curr_cell = iz * nx * ny + iy * nx + ix + 1;
 
     int curr_level = 1;
-    while (curr_level < level && son[curr_cell - 1] > 0) {
+    while (curr_level <= level && son[curr_cell - 1] > 0) {
         int ig = son[curr_cell - 1];
         curr_level++;
         real_t dx = boxlen / (real_t)(nx * (1 << (curr_level - 1)));
-        int ixc = (x[0] > xg[0 * ngridmax + ig - 1]) ? 1 : 0;
-        int iyc = (x[1] > xg[1 * ngridmax + ig - 1]) ? 1 : 0;
-        int izc = (x[2] > xg[2 * ngridmax + ig - 1]) ? 1 : 0;
+        int ixc = (NDIM >= 1 && x[0] > xg[0 * ngridmax + ig - 1]) ? 1 : 0;
+        int iyc = (NDIM >= 2 && x[1] > xg[1 * ngridmax + ig - 1]) ? 1 : 0;
+        int izc = (NDIM >= 3 && x[2] > xg[2 * ngridmax + ig - 1]) ? 1 : 0;
         int ic = izc * 4 + iyc * 2 + ixc + 1;
         curr_cell = ncoarse + (ic - 1) * ngridmax + ig;
     }
@@ -471,32 +471,36 @@ void AmrGrid::get_27_cell_neighbors(int icell, int nbors[27]) const {
     for (int i = 0; i < 27; ++i) nbors[i] = 0;
     if (icell <= 0 || icell > ncell) return;
 
-    auto get_neighbor = [&](int cell, int dir) -> int {
-        if (cell <= 0 || cell > ncell) return 0;
-        int nbs[6] = {0};
-        if (cell <= ncoarse) {
-            get_nbor_cells_coarse(cell, nbs);
-        } else {
-            int ig = ((cell - ncoarse - 1) % ngridmax) + 1;
-            int ic = ((cell - ncoarse - 1) / ngridmax) + 1;
-            int ign[7]; get_nbor_grids(ig, ign);
-            get_nbor_cells_exact(ign, ic, nbs);
-        }
-        return (dir >= 0 && dir < 6) ? nbs[dir] : 0;
-    };
+    int level = get_cell_level(icell);
+    real_t xc[3];
+    get_cell_center(icell, xc);
+
+    real_t dx_level = boxlen / (real_t)(nx * (1 << level));
 
     for (int dz = -1; dz <= 1; ++dz) {
+        if (NDIM < 3 && dz != 0) continue;
         for (int dy = -1; dy <= 1; ++dy) {
+            if (NDIM < 2 && dy != 0) continue;
             for (int dx = -1; dx <= 1; ++dx) {
-                int current = icell;
-                if (dx == -1) current = get_neighbor(current, 0);
-                else if (dx == 1) current = get_neighbor(current, 1);
-                if (dy == -1) current = get_neighbor(current, 2);
-                else if (dy == 1) current = get_neighbor(current, 3);
-                if (dz == -1) current = get_neighbor(current, 4);
-                else if (dz == 1) current = get_neighbor(current, 5);
-                int index = (dx + 1) * 9 + (dy + 1) * 3 + (dz + 1);
-                nbors[index] = current;
+                real_t x_nb[3] = { xc[0], xc[1], xc[2] };
+                if (NDIM >= 1) x_nb[0] += dx * dx_level;
+                if (NDIM >= 2) x_nb[1] += dy * dx_level;
+                if (NDIM >= 3) x_nb[2] += dz * dx_level;
+
+                // Handle periodic boundary wrapping
+                for (int d = 0; d < NDIM; ++d) {
+                    if (x_nb[d] < 0.0) {
+                        x_nb[d] += boxlen;
+                    } else if (x_nb[d] >= boxlen) {
+                        x_nb[d] -= boxlen;
+                    }
+                }
+
+                int nb_cell = find_cell_by_coords(x_nb, level);
+                if (get_cell_level(nb_cell) == level) {
+                    int index = (dx + 1) * 9 + (dy + 1) * 3 + (dz + 1);
+                    nbors[index] = nb_cell;
+                }
             }
         }
     }

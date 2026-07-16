@@ -59,10 +59,22 @@ cd tests && timeout 10m ./run_test_suite.sh
 # Run a specific test category
 cd tests && timeout 10m ./run_test_suite.sh -t hydro
 cd tests && timeout 10m ./run_test_suite.sh -t mhd
+
+# Run a single test specifically (e.g. advect1d is test 1) and keep/save results data
+cd tests && ./run_test_suite.sh -t 1 -k
 ```
+
+### Test Suite Options
+* `-t <category>`: Run a specific test category (e.g. `hydro`, `mhd`) or test range/indices (e.g., `-t 3-5,10` or `-t 1` for `advect1d`).
+* `-p <N>`: Run in parallel using MPI on `<N>` processes.
+* `-r`: Run tests with restart verification.
+* `-c`: Clean build and delete intermediate build files before starting.
+* `-k`: Keep/save results data (do not delete output folders like `output_*` after comparison finishes).
+* `-s`: Run the test suite with coverage collection (`gcov`).
 
 ### Snapshot Parity Verification
 The primary goal is **binary parity** with legacy RAMSES. Output snapshots are automatically compared to legacy references by the Python scripts in `tests/visu/` when running the test suite.
+
 
 ## Architecture
 
