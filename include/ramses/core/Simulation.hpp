@@ -77,6 +77,27 @@ private:
     int snapshot_count_ = 1;
     int iout_ = 0;
     bool finished_ = false;
+
+    // Execution phase timing collectors (in seconds)
+    std::vector<std::string> timer_keys_ = {
+        "io",
+        "courant",
+        "hydro - set unew",
+        "hydro - godunov",
+        "hydro - rev ghostzones",
+        "hydro - set uold",
+        "hydro - ghostzones"
+    };
+    std::vector<double> timer_accumulators_ = std::vector<double>(7, 0.0);
+    
+    void accum_time(const std::string& key, double duration) {
+        for (size_t i = 0; i < timer_keys_.size(); ++i) {
+            if (timer_keys_[i] == key) {
+                timer_accumulators_[i] += duration;
+                break;
+            }
+        }
+    }
 };
 
 } // namespace ramses

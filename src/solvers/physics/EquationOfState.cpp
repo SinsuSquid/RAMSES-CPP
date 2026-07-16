@@ -47,7 +47,7 @@ real_t EquationOfState::get_cs2(real_t density, real_t pressure, real_t gamma,
             cs2 += gamma_rad[ie] * q[NDIM + 2 + ie];
         }
     }
-    return std::clamp(cs2 / std::max(density, 1e-10), (real_t)1e-2, (real_t)1e12);
+    return std::max(cs2 / std::max(density, (real_t)1e-10), (real_t)1e-20);
 }
 
 real_t EquationOfState::get_rhd_enthalpy(real_t density, real_t pressure, real_t gamma, const std::string& eos_type) {

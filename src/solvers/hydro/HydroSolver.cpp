@@ -217,101 +217,225 @@ void HydroSolver::godunov_fine(int ilevel, real_t dt, real_t dx) {
                             
                             int interpol_type = config_.get_int("refine_params", "interpol_type", 1);
                             int interpol_var = config_.get_int("refine_params", "interpol_var", config_.get_int("hydro_params", "interpol_var", 0));
-                            real_t dq_coarse[20] = {0};
-                            real_t dx_coarse = 2.0 * dx; // Coarse neighbor is 2x larger
-                            
-                            if (interpol_var == 0) {
-                                // Conserved variables interpolation
+                            real_t qm_nb[20] = {0}, qp_nb[20] = {0};
+                            if (NDIM == 1) {
+                                // 1. Convert conserved variables u_l, u_c, u_r of parent to interpolation variables q1_l, q1_c, q1_r
+                                real_t q1_l[20] = {0}, q1_c[20] = {0}, q1_r[20] = {0};
+                                if (interpol_var == 0) {
+                                    for (int iv = 0; iv < grid_.nvar; ++iv) {
+                                        q1_l[iv] = u_l[iv];
+                                        q1_c[iv] = u_c[iv];
+                                        q1_r[iv] = u_r[iv];
+                                    }
+                                } else if (interpol_var == 1) {
+                                    auto get_q_mode1 = [&](const real_t u[20], real_t q[20]) {
+                                        real_t d = std::max(u[0], (real_t)1e-10);
+                                        q[0] = u[0];
+                                        real_t e_kin = 0.5 * u[1] * u[1] / d;
+                                        int iener = NDIM + 1;
+                                        real_t e_nonthermal = 0.0;
+                                        for (int ie = 0; ie < nener_; ++ie) {
+                                            q[iener + 1 + ie] = u[iener + 1 + ie];
+                                            e_nonthermal += u[iener + 1 + ie];
+                                        }
+                                        q[iener] = u[iener] - e_kin - e_nonthermal;
+                                        for (int iv = iener + 1 + nener_; iv < grid_.nvar; ++iv) q[iv] = u[iv];
+                                    };
+                                    get_q_mode1(u_l, q1_l);
+                                    get_q_mode1(u_c, q1_c);
+                                    get_q_mode1(u_r, q1_r);
+                                } else {
+                                    ctoprim(u_l, q1_l, gamma);
+                                    ctoprim(u_c, q1_c, gamma);
+                                    ctoprim(u_r, q1_r, gamma);
+                                }
+
+                                // 2. Compute interpolation slopes (MinMod, MonCen, or Central)
                                 real_t slopes[20] = {0};
                                 for (int iv = 0; iv < grid_.nvar; ++iv) {
-                                    real_t dlft = u_c[iv] - u_l[iv];
-                                    real_t drgt = u_r[iv] - u_c[iv];
-                                    if (interpol_type > 0 && dlft * drgt > 0.0) {
+                                    real_t dlft = q1_c[iv] - q1_l[iv];
+                                    real_t drgt = q1_r[iv] - q1_c[iv];
+                                    if (dlft * drgt > 0.0) {
                                         real_t sgn = (dlft >= 0.0) ? 1.0 : -1.0;
-                                        if (interpol_type == 1) {
+                                        int itype = interpol_type;
+                                        if (interpol_type == 4) {
+                                            itype = (interpol_var == 2 && iv == 1) ? 3 : 2;
+                                        }
+                                        if (itype == 1) {
                                             slopes[iv] = sgn * 0.5 * std::min(std::abs(dlft), std::abs(drgt));
-                                        } else if (interpol_type == 2) {
+                                        } else if (itype == 2) {
                                             slopes[iv] = sgn * std::min({std::abs(dlft), std::abs(drgt), 0.25 * std::abs(dlft + drgt)});
-                                        } else if (interpol_type == 3) {
+                                        } else if (itype == 3) {
                                             slopes[iv] = 0.25 * (dlft + drgt);
                                         }
                                     }
-                                    dq_coarse[iv] = slopes[iv] / dx_coarse;
                                 }
-                                
-                                // Swap back conserved vars
-                                if (idim > 0) {
-                                    std::swap(u_l[1], u_l[1+idim]);
-                                    std::swap(u_c[1], u_c[1+idim]);
-                                    std::swap(u_r[1], u_r[1+idim]);
-                                }
-                                
-                                // Re-evaluate primitive q_c for trace
-                                ctoprim(u_c, q_c, gamma);
-                                if (idim > 0) {
-                                    std::swap(q_c[1], q_c[1+idim]);
-                                }
-                                
-                                // Compute primitive slopes for the trace step
-                                real_t q_l[20], q_r[20];
-                                ctoprim(u_l, q_l, gamma);
-                                ctoprim(u_r, q_r, gamma);
-                                if (idim > 0) {
-                                    std::swap(q_l[1], q_l[1+idim]);
-                                    std::swap(q_r[1], q_r[1+idim]);
-                                }
+
+                                // 3. Compute child states
+                                real_t q2_child_L[20] = {0}, q2_child_R[20] = {0};
                                 for (int iv = 0; iv < grid_.nvar; ++iv) {
-                                    real_t dlft = q_c[iv] - q_l[iv];
-                                    real_t drgt = q_r[iv] - q_c[iv];
-                                    real_t slope_p = 0.0;
-                                    if (interpol_type > 0 && dlft * drgt > 0.0) {
-                                        real_t sgn = (dlft >= 0.0) ? 1.0 : -1.0;
-                                        if (interpol_type == 1) {
-                                            slope_p = sgn * 0.5 * std::min(std::abs(dlft), std::abs(drgt));
-                                        } else if (interpol_type == 2) {
-                                            slope_p = sgn * std::min({std::abs(dlft), std::abs(drgt), 0.25 * std::abs(dlft + drgt)});
-                                        } else if (interpol_type == 3) {
-                                            slope_p = 0.25 * (dlft + drgt);
-                                        }
-                                    }
-                                    dq_coarse[iv] = slope_p / dx_coarse;
+                                    q2_child_L[iv] = q1_c[iv] - slopes[iv];
+                                    q2_child_R[iv] = q1_c[iv] + slopes[iv];
                                 }
+
+                                // 4. Convert back to conserved variables u_child_L, u_child_R
+                                real_t u_child_L[20] = {0}, u_child_R[20] = {0};
+                                if (interpol_var == 0) {
+                                    for (int iv = 0; iv < grid_.nvar; ++iv) {
+                                        u_child_L[iv] = q2_child_L[iv];
+                                        u_child_R[iv] = q2_child_R[iv];
+                                    }
+                                } else if (interpol_var == 1) {
+                                    auto get_u_mode1 = [&](const real_t q[20], real_t u[20]) {
+                                        real_t d = std::max(q[0], (real_t)1e-10);
+                                        u[0] = d;
+                                        real_t e_kin = 0.5 * q[1] * q[1] / d;
+                                        int iener = NDIM + 1;
+                                        real_t e_nonthermal = 0.0;
+                                        for (int ie = 0; ie < nener_; ++ie) {
+                                            u[iener + 1 + ie] = q[iener + 1 + ie];
+                                            e_nonthermal += q[iener + 1 + ie];
+                                        }
+                                        u[iener] = q[iener] + e_kin + e_nonthermal;
+                                        for (int iv = iener + 1 + nener_; iv < grid_.nvar; ++iv) u[iv] = q[iv];
+                                    };
+                                    get_u_mode1(q2_child_L, u_child_L);
+                                    get_u_mode1(q2_child_R, u_child_R);
+                                } else {
+                                    auto get_u_mode2 = [&](const real_t q[20], real_t u[20]) {
+                                        real_t d = std::max(q[0], (real_t)1e-10);
+                                        u[0] = d;
+                                        real_t e_kin = 0.5 * d * q[1] * q[1];
+                                        int iener = NDIM + 1;
+                                        real_t p = q[iener];
+                                        real_t e_nonthermal = 0.0;
+                                        for (int ie = 0; ie < nener_; ++ie) {
+                                            u[iener + 1 + ie] = q[iener + 1 + ie] / (grid_.gamma_rad[ie] - 1.0);
+                                            e_nonthermal += u[iener + 1 + ie];
+                                        }
+                                        u[iener] = p / (gamma - 1.0) + e_kin + e_nonthermal;
+                                        for (int iv = iener + 1 + nener_; iv < grid_.nvar; ++iv) u[iv] = d * q[iv];
+                                    };
+                                    get_u_mode2(q2_child_L, u_child_L);
+                                    get_u_mode2(q2_child_R, u_child_R);
+                                }
+
+                                // 5. Get primitive variables at ghost cells
+                                real_t q_ghost_2[20] = {0}, q_ghost[20] = {0};
+                                if (side == 0) {
+                                    ctoprim(u_child_L, q_ghost_2, gamma);
+                                    ctoprim(u_child_R, q_ghost, gamma);
+                                } else {
+                                    ctoprim(u_child_R, q_ghost_2, gamma);
+                                    ctoprim(u_child_L, q_ghost, gamma);
+                                }
+
+                                // 6. Compute slope_ghost using active cell state
+                                real_t u_act[20], q_act[20];
+                                for (int iv = 1; iv <= grid_.nvar; ++iv) u_act[iv-1] = grid_.uold(idc_0 + 1, iv);
+                                ctoprim(u_act, q_act, gamma);
+
+                                real_t dq_ghost[20] = {0};
+                                for (int iv = 0; iv < grid_.nvar; ++iv) {
+                                    real_t dlft, drgt;
+                                    if (side == 0) {
+                                        dlft = q_ghost[iv] - q_ghost_2[iv];
+                                        drgt = q_act[iv] - q_ghost[iv];
+                                    } else {
+                                        dlft = q_ghost[iv] - q_act[iv];
+                                        drgt = q_ghost_2[iv] - q_ghost[iv];
+                                    }
+                                    real_t nu = q_ghost[1] * dt / dx;
+                                    dq_ghost[iv] = SlopeLimiter::compute_slope(q_ghost[iv] - dlft, q_ghost[iv], q_ghost[iv] + drgt, slope_type, 1.5, nu) / dx;
+                                }
+
+                                // 7. Trace step on ghost cell
+                                trace(q_ghost, dq_ghost, dt, dx, qm_nb, qp_nb, gamma);
+
                             } else {
-                                // Primitive variables interpolation
-                                if (idim > 0) {
-                                    std::swap(u_l[1], u_l[1+idim]);
-                                    std::swap(u_c[1], u_c[1+idim]);
-                                    std::swap(u_r[1], u_r[1+idim]);
-                                }
-                                ctoprim(u_c, q_c, gamma);
-                                real_t q_l[20], q_r[20];
-                                ctoprim(u_l, q_l, gamma);
-                                ctoprim(u_r, q_r, gamma);
-                                if (idim > 0) {
-                                    std::swap(q_l[1], q_l[1+idim]);
-                                    std::swap(q_c[1], q_c[1+idim]);
-                                    std::swap(q_r[1], q_r[1+idim]);
-                                }
-                                for (int iv = 0; iv < grid_.nvar; ++iv) {
-                                    real_t dlft = q_c[iv] - q_l[iv];
-                                    real_t drgt = q_r[iv] - q_c[iv];
-                                    real_t slope = 0.0;
-                                    if (interpol_type > 0 && dlft * drgt > 0.0) {
-                                        real_t sgn = (dlft >= 0.0) ? 1.0 : -1.0;
-                                        if (interpol_type == 1) {
-                                            slope = sgn * 0.5 * std::min(std::abs(dlft), std::abs(drgt));
-                                        } else if (interpol_type == 2) {
-                                            slope = sgn * std::min({std::abs(dlft), std::abs(drgt), 0.25 * std::abs(dlft + drgt)});
-                                        } else if (interpol_type == 3) {
-                                            slope = 0.25 * (dlft + drgt);
+                                real_t dq_coarse[20] = {0};
+                                real_t dx_coarse = 2.0 * dx;
+                                if (interpol_var == 0) {
+                                    real_t slopes[20] = {0};
+                                    for (int iv = 0; iv < grid_.nvar; ++iv) {
+                                        real_t dlft = u_c[iv] - u_l[iv];
+                                        real_t drgt = u_r[iv] - u_c[iv];
+                                        if (interpol_type > 0 && dlft * drgt > 0.0) {
+                                            real_t sgn = (dlft >= 0.0) ? 1.0 : -1.0;
+                                            if (interpol_type == 1) {
+                                                slopes[iv] = sgn * 0.5 * std::min(std::abs(dlft), std::abs(drgt));
+                                            } else if (interpol_type == 2) {
+                                                slopes[iv] = sgn * std::min({std::abs(dlft), std::abs(drgt), 0.25 * std::abs(dlft + drgt)});
+                                            } else if (interpol_type == 3) {
+                                                slopes[iv] = 0.25 * (dlft + drgt);
+                                            }
                                         }
+                                        dq_coarse[iv] = slopes[iv] / dx_coarse;
                                     }
-                                    dq_coarse[iv] = slope / dx_coarse;
+                                    if (idim > 0) {
+                                        std::swap(u_l[1], u_l[1+idim]);
+                                        std::swap(u_c[1], u_c[1+idim]);
+                                        std::swap(u_r[1], u_r[1+idim]);
+                                    }
+                                    ctoprim(u_c, q_c, gamma);
+                                    if (idim > 0) std::swap(q_c[1], q_c[1+idim]);
+                                    real_t q_l[20], q_r[20];
+                                    ctoprim(u_l, q_l, gamma);
+                                    ctoprim(u_r, q_r, gamma);
+                                    if (idim > 0) {
+                                        std::swap(q_l[1], q_l[1+idim]);
+                                        std::swap(q_r[1], q_r[1+idim]);
+                                    }
+                                    for (int iv = 0; iv < grid_.nvar; ++iv) {
+                                        real_t dlft = q_c[iv] - q_l[iv];
+                                        real_t drgt = q_r[iv] - q_c[iv];
+                                        real_t slope_p = 0.0;
+                                        if (interpol_type > 0 && dlft * drgt > 0.0) {
+                                            real_t sgn = (dlft >= 0.0) ? 1.0 : -1.0;
+                                            if (interpol_type == 1) {
+                                                slope_p = sgn * 0.5 * std::min(std::abs(dlft), std::abs(drgt));
+                                            } else if (interpol_type == 2) {
+                                                slope_p = sgn * std::min({std::abs(dlft), std::abs(drgt), 0.25 * std::abs(dlft + drgt)});
+                                            } else if (interpol_type == 3) {
+                                                slope_p = 0.25 * (dlft + drgt);
+                                            }
+                                        }
+                                        dq_coarse[iv] = slope_p / dx_coarse;
+                                    }
+                                } else {
+                                    if (idim > 0) {
+                                        std::swap(u_l[1], u_l[1+idim]);
+                                        std::swap(u_c[1], u_c[1+idim]);
+                                        std::swap(u_r[1], u_r[1+idim]);
+                                    }
+                                    ctoprim(u_c, q_c, gamma);
+                                    real_t q_l[20], q_r[20];
+                                    ctoprim(u_l, q_l, gamma);
+                                    ctoprim(u_r, q_r, gamma);
+                                    if (idim > 0) {
+                                        std::swap(q_l[1], q_l[1+idim]);
+                                        std::swap(q_c[1], q_c[1+idim]);
+                                        std::swap(q_r[1], q_r[1+idim]);
+                                    }
+                                    for (int iv = 0; iv < grid_.nvar; ++iv) {
+                                        real_t dlft = q_c[iv] - q_l[iv];
+                                        real_t drgt = q_r[iv] - q_c[iv];
+                                        real_t slope = 0.0;
+                                        if (interpol_type > 0 && dlft * drgt > 0.0) {
+                                            real_t sgn = (dlft >= 0.0) ? 1.0 : -1.0;
+                                            if (interpol_type == 1) {
+                                                slope = sgn * 0.5 * std::min(std::abs(dlft), std::abs(drgt));
+                                            } else if (interpol_type == 2) {
+                                                slope = sgn * std::min({std::abs(dlft), std::abs(drgt), 0.25 * std::abs(dlft + drgt)});
+                                            } else if (interpol_type == 3) {
+                                                slope = 0.25 * (dlft + drgt);
+                                            }
+                                        }
+                                        dq_coarse[iv] = slope / dx_coarse;
+                                    }
                                 }
+                                trace(q_c, dq_coarse, dt, dx_coarse, qm_nb, qp_nb, gamma);
                             }
-                            
-                            real_t qm_nb[20], qp_nb[20];
-                            trace(q_c, dq_coarse, dt, dx_coarse, qm_nb, qp_nb, gamma);
                             
                             // Swap back if idim > 0
                             if (idim > 0) {

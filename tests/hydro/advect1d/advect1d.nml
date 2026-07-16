@@ -6,7 +6,7 @@ a time of 1. This setup illustrates how slope_type can affect the results.
 &RUN_PARAMS
 hydro=.true.
 ncontrol=10000
-verbose=.false.
+verbose=.true.
 /
 
 &AMR_PARAMS

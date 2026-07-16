@@ -97,6 +97,55 @@ endif()
 
 add_executable(ramses_${d}d src/main.cpp)
 target_compile_definitions(ramses_${d}d PRIVATE NDIM=${d})
+
+# Dynamic git information gathering
+string(TIMESTAMP BUILD_DATE "%m/%d/%y-%H:%M:%S")
+
+# Build command line mock or approximate command
+set(BUILD_CMD "cmake .. -DNDIM=${d} -DMPI=${MPI}")
+
+# Retrieve Git hash, branch, and remote URL
+execute_process(
+    COMMAND git rev-parse HEAD
+    WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}
+    OUTPUT_VARIABLE GIT_HASH
+    OUTPUT_STRIP_TRAILING_WHITESPACE
+    ERROR_QUIET
+)
+execute_process(
+    COMMAND git rev-parse --abbrev-ref HEAD
+    WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}
+    OUTPUT_VARIABLE GIT_BRANCH
+    OUTPUT_STRIP_TRAILING_WHITESPACE
+    ERROR_QUIET
+)
+execute_process(
+    COMMAND git config --get remote.origin.url
+    WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}
+    OUTPUT_VARIABLE GIT_REPO
+    OUTPUT_STRIP_TRAILING_WHITESPACE
+    ERROR_QUIET
+)
+
+if(NOT GIT_HASH)
+    set(GIT_HASH "unknown")
+endif()
+if(NOT GIT_BRANCH)
+    set(GIT_BRANCH "unknown")
+endif()
+if(NOT GIT_REPO)
+    set(GIT_REPO "unknown")
+endif()
+
+target_compile_definitions(ramses_${d}d PRIVATE
+    RAMSES_BUILD_DATE="${BUILD_DATE}"
+    RAMSES_BUILD_COMMAND="${BUILD_CMD}"
+    RAMSES_PATCH_DIR=""
+    RAMSES_GIT_REPO="${GIT_REPO}"
+    RAMSES_GIT_BRANCH="${GIT_BRANCH}"
+    RAMSES_GIT_HASH="${GIT_HASH}"
+)
+
 target_link_libraries(ramses_${d}d PRIVATE ${LIB_NAME})
 
 

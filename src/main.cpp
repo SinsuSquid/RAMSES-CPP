@@ -29,6 +29,14 @@ int main(int argc, char** argv) {
 #else
         printf(" Using solver = hydro with nvar = %2d\n", NDIM + 2);
 #endif
+        printf(" \n");
+        printf(" compile date    = %s\n", RAMSES_BUILD_DATE);
+        printf(" compile command = %s\n", RAMSES_BUILD_COMMAND);
+        printf(" patch dir       = %s\n", RAMSES_PATCH_DIR);
+        printf(" remote repo     = %s\n", RAMSES_GIT_REPO);
+        printf(" local branch    = %s\n", RAMSES_GIT_BRANCH);
+        printf(" last commit     = %s\n", RAMSES_GIT_HASH);
+        printf(" \n");
     }
 
     if (argc < 2) {
