@@ -252,7 +252,7 @@ void Simulation::initialize(const std::string& nml_path) {
     ncontrol_ = config_.get_int("run_params", "ncontrol", 1);
     
     if (MpiManager::instance().rank() == 0 && config_.get_bool("run_params", "verbose", false)) {
-        std::cout << "[Simulation] nstepmax=" << nstepmax_ << " tend=" << tend_ << " ncontrol=" << ncontrol_ << std::endl;
+        printf(" nstepmax=%d tend=%12.5e ncontrol=%d\n", nstepmax_, tend_, ncontrol_);
     }
 
     std::string tout_s = config_.get("output_params", "tout", "");
@@ -284,41 +284,53 @@ void Simulation::initialize(const std::string& nml_path) {
 void Simulation::run() {
     snapshot_count_ = 1;
     iout_ = 0;
-    
-    dump_snapshot(snapshot_count_++);
     bool verbose = config_.get_bool("run_params", "verbose", false);
+    int ncontrol = config_.get_int("run_params", "ncontrol", 1);
+
+    // Record wall-clock start for "Total elapsed time" at end
+    auto t_run_start = std::chrono::high_resolution_clock::now();
+
+    dump_snapshot(snapshot_count_++);
 
     if (MpiManager::instance().rank() == 0) {
         if (verbose) {
-            std::cout << "[Simulation] Starting simulation with NDIM=" << NDIM << std::endl;
-            std::cout << "[Simulation] Boxlen=" << p::boxlen << " Levelmin=" << p::levelmin << " Levelmax=" << p::nlevelmax << std::endl;
-            std::cout << "[Simulation] Gamma=" << grid_.gamma << " Courant=" << courant_factor_ << std::endl;
+            std::cout << "Entering amr_step_coarse" << std::endl;
         }
+        // Legacy adaptive_loop.f90:68 -- "Initial mesh structure"
         std::cout << "Initial mesh structure" << std::endl;
         for (int il = 1; il <= grid_.nlevelmax; ++il) {
-            int ngrids = grid_.count_grids_at_level(il);
-            if (ngrids > 0) {
-                std::cout << " Level " << std::setw(2) << il << " has " << std::setw(10) << ngrids << " grids" << std::endl;
+            int ng = grid_.count_grids_at_level(il);
+            if (ng > 0) {
+                // Legacy format 999: ' Level ',I2,' has ',I10,' grids (',3(I8,','),')'
+                printf(" Level %2d has %10d grids\n", il, ng);
             }
         }
+        // Legacy adaptive_loop.f90:76
         std::cout << "Starting time integration" << std::endl;
     }
 
-    auto t_start_loop = std::chrono::high_resolution_clock::now();
+    // Accumulators for legacy mus/pt reporting (adaptive_loop.f90:186-195)
+    double muspt_accum = 0.0;
+    int    tot_pt      = -1;   // -1 means "first step not yet done"
+    int    nstep_coarse = 0;
+    auto   t_start_wall = std::chrono::high_resolution_clock::now();
+
     while (!finished_) {
         auto t_step_start = std::chrono::high_resolution_clock::now();
 
         // 1. Refine coarse domain (adaptive_loop.f90:96-126)
-        // Fortran: outer loop calls refine_fine(il) for il=1..levelmin-1 ONLY;
-        // refine_fine(levelmin) is called inside amr_step, not here.
         if (p::levelmin < p::nlevelmax) {
              for (int il = 1; il <= p::levelmin - 1; ++il) {
-                 updater_.make_grid_fine(il); // refine_fine
+                 updater_.make_grid_fine(il);
              }
              grid_.synchronize_level_counts();
         }
 
-        // 2. Call amr_step for base level (adaptive_loop.f90:185)
+        if (verbose && MpiManager::instance().rank() == 0) {
+            std::cout << "Entering amr_step_coarse" << std::endl;
+        }
+
+        // 2. Call amr_step for base level (adaptive_loop.f90:135)
         amr_step(p::levelmin, 1);
 
         // Build refinement map for coarser levels (adaptive_loop.f90:171)
@@ -329,7 +341,7 @@ void Simulation::run() {
             }
         }
 
-        // 3. Restriction for whole domain (adaptive_loop.f90:188)
+        // 3. Restriction for whole domain (adaptive_loop.f90:138-168)
         if (p::levelmin < p::nlevelmax) {
              for (int il = p::levelmin - 1; il >= 0; --il) {
                   updater_.restrict_fine(il);
@@ -338,44 +350,84 @@ void Simulation::run() {
 
         particles_->relink();
 
-        // 4. Output stats
-        auto t_step_end = std::chrono::high_resolution_clock::now();
-        double duration = std::chrono::duration<double>(t_step_end - t_step_start).count();
-        double total_time = std::chrono::duration<double>(t_step_end - t_start_loop).count();
-        real_t min_rho = 1e30, max_rho = -1e30;
-        for (int i = 1; i <= grid_.ncell; ++i) {
-            bool active = false;
-            if (i <= grid_.ncoarse) active = true;
-            else {
-                int igrid = ((i - grid_.ncoarse - 1) % grid_.ngridmax) + 1;
-                if (grid_.father[igrid - 1] > 0) active = true;
-            }
-            if (active && grid_.son[i - 1] == 0) {
-                real_t rho_val = grid_.uold(i, 1);
-                min_rho = std::min(min_rho, rho_val);
-                max_rho = std::max(max_rho, rho_val);
-            }
-        }
-        if (MpiManager::instance().rank() == 0) {
-            printf(" Step=%d t=%12.5e dt=%10.3e min_rho=%10.3e max_rho=%10.3e time_elapsed=%8.2fs total_time=%8.2fs\n", nstep_, t_, dtnew_[p::levelmin], min_rho, max_rho, duration, total_time);
-        }
+        // New coarse time-step counter (adaptive_loop.f90:178)
+        nstep_coarse++;
 
+        // 4. Legacy adaptive_loop.f90:182-210 -- timing / memory / muspt output
+        if (MpiManager::instance().rank() == 0) {
+            if (nstep_coarse % ncontrol == 0) {
+                auto t_step_end = std::chrono::high_resolution_clock::now();
+                double step_sec  = std::chrono::duration<double>(t_step_end - t_step_start).count();
+                double total_sec = std::chrono::duration<double>(t_step_end - t_start_wall).count();
+
+                // Compute n_step: total leaf-cell updates this coarse step
+                long long n_step = (long long)grid_.count_grids_at_level(p::levelmin) * (1 << NDIM);
+                for (int il = p::levelmin + 1; il <= p::nlevelmax; ++il) {
+                    int nsub = nsubcycle_[std::min(il - 1, 31)];
+                    n_step += (long long)grid_.count_grids_at_level(il)
+                              * ((1 << NDIM) - 1) * nsub;
+                }
+                if (n_step < 1) n_step = 1;
+
+                // On the very first step don't count mus/pt (legacy: "if tot_pt==0 muspt=0")
+                double muspt_this = 0.0;
+                if (tot_pt >= 0) {
+                    muspt_this = step_sec * 1e6 / (double)n_step;
+                    muspt_accum += muspt_this;
+                }
+                tot_pt++;
+                double muspt_av = (tot_pt > 0) ? muspt_accum / tot_pt : 0.0;
+
+                // Legacy adaptive_loop.f90:194-195
+                printf(" Time elapsed since last coarse step:%8.2f s%12.2f mus/pt%12.2f mus/pt (av)\n",
+                       step_sec, muspt_this, muspt_av);
+
+                // Legacy memory.f90: writemem reads /proc/self/stat field 24 (RSS pages)
+                {
+                    FILE* fp = fopen("/proc/self/stat", "r");
+                    if (fp) {
+                        long rss_pages = 0;
+                        if (fscanf(fp,
+                            "%*d %*s %*c %*d %*d %*d %*d %*d %*u %*lu %*lu %*lu %*lu "
+                            "%*lu %*lu %*ld %*ld %*ld %*ld %*ld %*ld %*llu %*lu %ld",
+                            &rss_pages) == 1) {
+                            double page_bytes = (double)rss_pages * 4096.0;
+                            if      (page_bytes > 1024.0*1024*1024*1024)
+                                printf(" Used memory:%9.3f TB\n", page_bytes / (1024.0*1024*1024*1024));
+                            else if (page_bytes > 1024.0*1024*1024)
+                                printf(" Used memory:%9.3f GB\n", page_bytes / (1024.0*1024*1024));
+                            else if (page_bytes > 1024.0*1024)
+                                printf(" Used memory:%9.1f MB\n", page_bytes / (1024.0*1024));
+                            else if (page_bytes > 1024.0)
+                                printf(" Used memory:%9.1f kB\n", page_bytes / 1024.0);
+                        }
+                        fclose(fp);
+                    }
+                }
+
+                // Legacy adaptive_loop.f90:197
+                printf(" Total running time:%6.2f s\n", total_sec);
+            }
+        }
     }
 
     if (MpiManager::instance().rank() == 0) {
-        auto t_end_loop = std::chrono::high_resolution_clock::now();
-        double total_duration = std::chrono::duration<double>(t_end_loop - t_start_loop).count();
-        std::cout << "Simulation finished in " << std::fixed << std::setprecision(2) << total_duration << " seconds." << std::endl;
-        std::cout << "Total steps: " << nstep_ << " Final time: " << std::scientific << std::setprecision(6) << t_ << std::endl;
+        auto t_end_wall = std::chrono::high_resolution_clock::now();
+        double total_elapsed = std::chrono::duration<double>(t_end_wall - t_run_start).count();
+        // Legacy update_time.f90:128,131
+        std::cout << " Run completed" << std::endl;
+        printf(" Total elapsed time:%12.2f\n", total_elapsed);
     }
 }
+
 
 void Simulation::amr_step(int ilevel, int icount) {
     if (ilevel > grid_.nlevelmax) return;
     if (grid_.count_grids_at_level(ilevel) == 0 && ilevel > 0) return;
 
+    // Legacy amr_step.f90:35 -- format 999: ' Entering amr_step(',i1,') for level',i2
     if (config_.get_bool("run_params", "verbose", false) && MpiManager::instance().rank() == 0) {
-        std::cout << " Entering amr_step(" << icount << ") for level " << ilevel << std::endl;
+        printf(" Entering amr_step(%d) for level%2d\n", icount, ilevel);
     }
 
     // 1. Make new refinements and update boundaries
@@ -420,6 +472,7 @@ void Simulation::amr_step(int ilevel, int icount) {
 
     // 4. Recursive call to finer levels
     int nsub = (ilevel < (int)nsubcycle_.size()) ? nsubcycle_[ilevel] : 1;
+    int ncontrol = config_.get_int("run_params", "ncontrol", 1);
     if (ilevel < p::nlevelmax) {
         if (grid_.count_grids_at_level(ilevel + 1) > 0) {
             for (int i = 1; i <= nsub; ++i) amr_step(ilevel + 1, i);
@@ -427,9 +480,19 @@ void Simulation::amr_step(int ilevel, int icount) {
             dtold_[ilevel + 1] = dtnew_[ilevel] / (real_t)nsub;
             dtnew_[ilevel + 1] = dtnew_[ilevel] / (real_t)nsub;
             t_ += dt; nstep_++;
+            // Legacy update_time.f90:143-153 -- ' Fine step=' output
+            if (ilevel == p::levelmin && MpiManager::instance().rank() == 0 && nstep_ % ncontrol == 0) {
+                printf(" Fine step=%7d t=%12.5e dt=%10.3e a=%10.3e mem=%4.1f%%\n",
+                       nstep_, t_, dtnew_[ilevel], aexp_, 0.0f);
+            }
         }
     } else {
         t_ += dt; nstep_++;
+        // Legacy update_time.f90:143-153 -- ' Fine step=' output
+        if (ilevel == p::levelmin && MpiManager::instance().rank() == 0 && nstep_ % ncontrol == 0) {
+            printf(" Fine step=%7d t=%12.5e dt=%10.3e a=%10.3e mem=%4.1f%%\n",
+                   nstep_, t_, dtnew_[ilevel], aexp_, 0.0f);
+        }
     }
 
     // 5. Hydro step (godunov_fine)

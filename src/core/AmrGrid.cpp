@@ -15,7 +15,6 @@ void AmrGrid::allocate(int nx_val, int ny_val, int nz_val, int ngridmax_val, int
     ngridmax = std::max(ngridmax_val, 1); nvar = std::max(nvar_val, 1); ncpu = std::max(ncpu_val, 1); nlevelmax = std::max(nlevelmax_val, 1);
     ncoarse = (long long)nx * ny * nz;
     ncell = ncoarse + (long long)constants::twotondim * ngridmax;
-    std::cout << "[AmrGrid] Allocating ngridmax=" << ngridmax << " ncell=" << ncell << " nvar=" << nvar << std::endl;
 
     headl_vec.assign((ncpu + nboundary) * (nlevelmax + 1), 0);
     taill_vec.assign((ncpu + nboundary) * (nlevelmax + 1), 0);

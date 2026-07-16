@@ -21,6 +21,14 @@ int main(int argc, char** argv) {
                 ::  ::      CC    CC  PP        PP
                 ::  ::       CCCCCC   PP        PP      ;
 )" << std::endl;
+        // Legacy read_params.f90:50 -- Working with nproc / ndim
+        printf(" Working with nproc = %5d for ndim = %1d\n", mpi.size(), NDIM);
+        // Legacy read_params.f90:52-66 -- solver / nvar info
+#ifdef MHD
+        printf(" Using solver = mhd with nvar = %2d\n", NDIM + 2);
+#else
+        printf(" Using solver = hydro with nvar = %2d\n", NDIM + 2);
+#endif
     }
 
     if (argc < 2) {
