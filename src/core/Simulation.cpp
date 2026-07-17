@@ -353,7 +353,12 @@ void Simulation::run() {
         // Print initial Fine step= 0 (fortran legacy outputs step 0 before coarse steps run)
         // Format: ' Fine step=',i7,' t=',1pe12.5,' dt=',1pe10.3,' a=',1pe10.3,' mem=',0pF4.1,'%'
         // Using uppercase 'E' for exponents
-        double initial_dt = 1.699e-07; // default initial time step or calculated
+        // Pre-compute initial dt for parity with legacy init_time
+        if (params::levelmin <= params::nlevelmax && grid_.count_grids_at_level(params::levelmin) > 0) {
+            real_t dx = params::boxlen / (real_t)(params::nx * (1 << params::levelmin));
+            dtnew_[params::levelmin] = hydro_->compute_courant_step(params::levelmin, dx, grid_.gamma, courant_factor_);
+        }
+
         double mem_percent = 100.0 * (grid_.ngridmax - grid_.numbf) / std::max(1.0, (double)grid_.ngridmax);
         RAMSES_INFO(" Fine step={:10} t={:12.5E} dt={:12.3E} a={:12.3E} mem={:5.1f}% ", 0, 0.0, dtnew_[params::levelmin], aexp_, mem_percent);
     }
