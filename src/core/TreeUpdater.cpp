@@ -320,8 +320,8 @@ void TreeUpdater::flag_fine(int ilevel, real_t ed, real_t ep, real_t ev, real_t 
 
     auto get_err_grad = [&](real_t val_l, real_t val_c, real_t val_r, real_t floor_val) {
         return 2.0 * std::max(
-            std::abs(val_r - val_c) / (val_r + val_c + std::max(val_r, val_c) * 1e-3 + floor_val),
-            std::abs(val_c - val_l) / (val_c + val_l + std::max(val_c, val_l) * 1e-3 + floor_val)
+            std::abs(val_r - val_c) / (val_r + val_c + floor_val),
+            std::abs(val_c - val_l) / (val_c + val_l + floor_val)
         );
     };
 

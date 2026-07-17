@@ -458,7 +458,14 @@ void Simulation::run() {
             }
         }
 
-        if (nstep_coarse >= nstepmax_ || t_ >= tend_) {
+        // Output snapshot if needed
+        if (iout_ < (int)tout_.size() && t_ >= tout_[iout_] - 1e-10 * std::min(dtnew_[p::levelmin], p::boxlen)) {
+            dump_snapshot(snapshot_count_++); iout_++;
+        }
+
+        double max_tout = 0.0;
+        if (!tout_.empty()) max_tout = tout_.back();
+        if (nstep_coarse >= nstepmax_ || (tend_ > 0.0 && t_ >= tend_) || (!tout_.empty() && t_ >= max_tout)) {
             finished_ = true;
         }
     }
@@ -514,15 +521,7 @@ void Simulation::amr_step(int ilevel, int icount) {
         }
     }
 
-    if (ilevel == p::levelmin && icount == 1) {
-        if (iout_ < (int)tout_.size() && t_ >= tout_[iout_] - 1e-10 * std::min(dtnew_[p::levelmin], p::boxlen)) {
-            dump_snapshot(snapshot_count_++); iout_++;
-            if (iout_ >= (int)tout_.size()) {
-                finished_ = true;
-                return;
-            }
-        }
-    }
+    // Removed dump_snapshot from here, moved to run()
 
     // 2. Timestep calculation (newdt_fine)
     auto t_courant_start = std::chrono::high_resolution_clock::now();
