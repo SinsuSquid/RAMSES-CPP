@@ -3,7 +3,7 @@
 #include "ramses/core/Constants.hpp"
 #include "ramses/core/MpiManager.hpp"
 #include <fstream>
-#include <iostream>
+#include "ramses/utils/Logger.hpp"
 #include <cmath>
 #include <algorithm>
 
@@ -15,6 +15,9 @@ namespace ramses {
 RtSolver::~RtSolver() {}
 
 void RtSolver::initialize() {
+    bool verbose = config_.get_bool("run_params", "verbose", false);
+    if (verbose) RAMSES_INFO("Entering init_rt");
+    
     nGroups = 0;
 #ifdef RAMSES_NGROUPS
     nGroups = RAMSES_NGROUPS;
@@ -24,6 +27,7 @@ void RtSolver::initialize() {
     rt_use_hll = config_.get("rt_params", "rt_riemann", "hll") == "hll";
 
     if (nGroups > 0) {
+        RAMSES_INFO(" Working with {} photon groups", nGroups);
         load_hll_eigenvalues();
         chem_ = std::make_unique<RtChemistry>(nGroups);
     }
@@ -46,7 +50,7 @@ void RtSolver::load_hll_eigenvalues() {
     }
 
     if (!file.is_open()) {
-        std::cerr << "[RtSolver] Error: Could not open HLL eigenvalues file: " << path << " (checked common relative paths)" << std::endl;
+        RAMSES_ERROR("[RtSolver] Error: Could not open HLL eigenvalues file: {} (checked common relative paths)", path);
         return;
     }
 
@@ -61,7 +65,7 @@ void RtSolver::load_hll_eigenvalues() {
             file >> ii >> jj >> lambda1[ii][jj] >> d1 >> d2 >> lambda4[ii][jj];
         }
     }
-    std::cout << "[RtSolver] Loaded HLL eigenvalues from " << path << std::endl;
+    RAMSES_INFO("[RtSolver] Loaded HLL eigenvalues from {}", path);
 }
 
 void RtSolver::godunov_fine(int ilevel, real_t dt, real_t dx) {
