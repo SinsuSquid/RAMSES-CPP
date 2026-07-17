@@ -264,6 +264,12 @@ void TreeUpdater::smooth_fine(int ilevel) {
 void TreeUpdater::flag_fine(int ilevel, real_t ed, real_t ep, real_t ev, real_t eb2, const std::vector<real_t>& evar, int nexp, int icount, int nsubcycle_val) {
     if (ilevel > grid_.nlevelmax) return;
     int myid = MpiManager::instance().rank() + 1, n2d = (1 << NDIM), lmin = config_.get_int("amr_params", "levelmin", 1);
+    
+    bool verbose = config_.get_bool("run_params", "verbose", false);
+    if (verbose) {
+        if (ilevel == 1) RAMSES_INFO("  Entering flag_coarse");
+        else RAMSES_INFO("Entering flag");
+    }
 
     struct CellState {
         real_t d = 0;
@@ -476,6 +482,10 @@ void TreeUpdater::flag_fine(int ilevel, real_t ed, real_t ep, real_t ev, real_t 
     authorize_fine(ilevel);
     if (ilevel > lmin + 1 && icount < nsubcycle_val) {
         ensure_ref_rules(ilevel);
+    }
+    
+    if (verbose) {
+        if (ilevel > 1) RAMSES_INFO("Complete flag");
     }
 
     if (config_.get_bool("run_params", "verbose", false)) {

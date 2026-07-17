@@ -6,7 +6,7 @@
 #include "ramses/core/Constants.hpp"
 #include "ramses/core/SolverFactory.hpp"
 #include "ramses/solvers/hydro/SlopeLimiter.hpp"
-#include <iostream>
+#include "ramses/utils/Logger.hpp"
 #include <algorithm>
 #include <cmath>
 #include <vector>
@@ -37,9 +37,7 @@ void HydroSolver::godunov_fine(int ilevel, real_t dt, real_t dx) {
         }
     }
     if (verbose && ilevel == 5) {
-        std::cout << "[DEBUG verify] cell_levels[1057] = " << cell_levels[1057] 
-                  << " get_cell_level(1057) = " << grid_.get_cell_level(1057) 
-                  << " ncell = " << grid_.ncell << std::endl;
+        RAMSES_INFO_ALL("[DEBUG verify] cell_levels[1057] = {} get_cell_level(1057) = {} ncell = {}", cell_levels[1057], grid_.get_cell_level(1057), grid_.ncell);
     }
 
     std::vector<int> octs;
@@ -57,8 +55,8 @@ void HydroSolver::godunov_fine(int ilevel, real_t dt, real_t dx) {
     int slope_type = config_.get_int("hydro_params", "slope_type", 1);
     // std::cout << "[DEBUG slope] slope_type = " << slope_type << " config_raw = " << config_.get("hydro_params", "slope_type", "NONE") << std::endl;
     static bool first_print = true;
-    if (first_print && ilevel == 0 && MpiManager::instance().rank() == 0 && verbose) {
-        std::cout << "[HydroSolver] Using slope_type=" << slope_type << " Riemann=" << config_.get("hydro_params", "riemann", "hllc") << std::endl;
+    if (first_print && ilevel == 0 && verbose) {
+        RAMSES_INFO("[HydroSolver] Using slope_type={} Riemann={}", slope_type, config_.get("hydro_params", "riemann", "hllc"));
         first_print = false;
     }
     std::string riemann = config_.get("hydro_params", "riemann", "hllc");
@@ -152,7 +150,7 @@ void HydroSolver::godunov_fine(int ilevel, real_t dt, real_t dx) {
                             if (verbose) {
                                 static int branch_same = 0;
                                 if (branch_same < 10 && ilevel == 4) {
-                                    std::cout << "[DEBUG branch] SAME level for idc_0=" << idc_0 << " id_n=" << id_n << " side=" << side << std::endl;
+                                    RAMSES_INFO_ALL("[DEBUG branch] SAME level for idc_0={} id_n={} side={}", idc_0, id_n, side);
                                     branch_same++;
                                 }
                             }
@@ -166,7 +164,7 @@ void HydroSolver::godunov_fine(int ilevel, real_t dt, real_t dx) {
                             if (verbose) {
                                 static int branch_coarse = 0;
                                 if (branch_coarse < 10 && ilevel == 4) {
-                                    std::cout << "[DEBUG branch] COARSE level for idc_0=" << idc_0 << " id_n=" << id_n << " side=" << side << " cell_levels[id_n]=" << (id_n > 0 ? cell_levels[id_n] : -1) << std::endl;
+                                    RAMSES_INFO_ALL("[DEBUG branch] COARSE level for idc_0={} id_n={} side={} cell_levels[id_n]={}", idc_0, id_n, side, (id_n > 0 ? cell_levels[id_n] : -1));
                                     branch_coarse++;
                                 }
                             }
@@ -550,8 +548,7 @@ void HydroSolver::godunov_fine(int ilevel, real_t dt, real_t dx) {
         if (verbose) {
             static int print_count = 0;
             if (print_count < 32 && ilevel == 4) {
-                std::cout << "[DEBUG flux_sum] idc=" << (idc_0 + 1) << " level=" << ilevel
-                          << " flux_sum[0]=" << flux_sum[0] << " flux_sum[1]=" << flux_sum[1] << " flux_sum[2]=" << flux_sum[2] << std::endl;
+                RAMSES_INFO_ALL("[DEBUG flux_sum] idc={} level={} flux_sum[0]={} flux_sum[1]={} flux_sum[2]={}", (idc_0 + 1), ilevel, flux_sum[0], flux_sum[1], flux_sum[2]);
                 print_count++;
             }
         }

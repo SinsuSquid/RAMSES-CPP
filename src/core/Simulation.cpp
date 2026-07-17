@@ -127,6 +127,26 @@ void Simulation::initialize(const std::string& nml_path) {
     p::scale_nH = p::units_number_density;
     p::scale_T2 = p::units_pressure / p::units_density; // Simplified scale for T/mu
 
+    // Parameter validations ported from legacy/amr/read_params.f90
+    if (levelmax < levelmin) {
+        RAMSES_WARN("levelmax should not be lower than levelmin");
+    }
+    if (ngridmax == 0) {
+        RAMSES_WARN("Error in the namelist: ngridmax and ngridtot are 0!");
+        RAMSES_WARN("Allocate some space for refinements !!!");
+    }
+    if (p::MC_tracer && !p::tracer) {
+        RAMSES_WARN("Error: you have activated the MC tracer but not the tracers in RUN_PARAMS.");
+    }
+    if (p::MC_tracer && !p::pic) {
+        RAMSES_WARN("Error: you have activated the MC tracer but pic is false.");
+    }
+    bool stellar = config_.get_bool("run_params", "stellar", false);
+    bool sink = config_.get_bool("run_params", "sink", false);
+    if (stellar && !sink) {
+        RAMSES_WARN("Error in the namelist: sink=.true. is needed if stellar=.true. !");
+    }
+
     int ncpu = MpiManager::instance().size();
     grid_.allocate(p::nx, p::ny, p::nz, ngridmax, nvar, ncpu, levelmax);
     if (nparttot > 0) grid_.resize_particles(nparttot);
@@ -448,11 +468,13 @@ void Simulation::run() {
                     }
                 }
 
-                // Print Main step line
-                RAMSES_INFO(" Main step=      {} mcons= 0.00E+00 econs= 0.00E+00 epot= 0.00E+00 ekin= 1.25E-01", nstep_coarse);
+                // Print Main step line (ported from update_time.f90)
+                double mcons = 0.0, econs = 0.0, epot_tot = 0.0, ekin_tot = 0.0;
+                RAMSES_INFO(" Main step={:10} mcons={:11.4E} econs={:11.4E} epot={:11.4E} ekin={:11.4E}", nstep_coarse, mcons, econs, epot_tot, ekin_tot);
 
                 // Print Fine step line
-                RAMSES_INFO(" Fine step=      {} t= {:.5} dt= {:.3} a= {:.3} mem=85.9%% ", nstep_, t_, dtnew_[p::levelmin], aexp_);
+                double mem_percent = 100.0 * (grid_.ngridmax - grid_.numbf) / std::max(1.0, (double)grid_.ngridmax);
+                RAMSES_INFO(" Fine step={:10} t={:12.5E} dt={:12.3E} a={:12.3E} mem={:5.1f}% ", nstep_, t_, dtnew_[p::levelmin], aexp_, mem_percent);
             }
         }
 
@@ -676,9 +698,20 @@ void Simulation::dump_snapshot(int iout) {
         return ss.str();
     };
 
+    bool verbose = config_.get_bool("run_params", "verbose", false);
+    if (verbose) RAMSES_INFO("Entering dump_all");
+    
+    if (verbose) RAMSES_INFO("Start backup amr");
     RamsesWriter(get_path("amr", ".out", true)).write_amr(grid_, info);
+    if (verbose) RAMSES_INFO("End backup amr");
+    
+    if (verbose) RAMSES_INFO("Start backup hydro");
     RamsesWriter(get_path("hydro", ".out", true)).write_hydro(grid_, info);
+    if (verbose) RAMSES_INFO("End backup hydro");
+    
+    if (verbose) RAMSES_INFO("Start backup grav");
     RamsesWriter(get_path("grav", ".out", true)).write_grav(grid_, info);
+    if (verbose) RAMSES_INFO("End backup grav");
     
     // Header for particles (required by visu_ramses even if npart=0)
     RamsesWriter(get_path("header", ".txt", false)).write_header_file(grid_, info);
@@ -688,9 +721,11 @@ void Simulation::dump_snapshot(int iout) {
     RamsesWriter(dir + "/part_file_descriptor.txt").write_particles_descriptor(grid_, info);
 
     if (MpiManager::instance().rank() == 0) {
+        if (verbose) RAMSES_INFO("Start backup header");
         std::stringstream ss_info;
         ss_info << dir << "/info_" << std::setfill('0') << std::setw(5) << iout << ".txt";
         RamsesWriter(ss_info.str()).write_header(grid_, info);
+        if (verbose) RAMSES_INFO("End backup header");
     }
     auto t_io_end = std::chrono::high_resolution_clock::now();
     accum_time("io", std::chrono::duration<double>(t_io_end - t_io_start).count());

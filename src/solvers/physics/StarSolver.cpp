@@ -4,7 +4,7 @@
 #include "ramses/core/MpiManager.hpp"
 #include <cmath>
 #include <algorithm>
-#include <iostream>
+#include "ramses/utils/Logger.hpp"
 
 namespace ramses {
 
@@ -27,6 +27,9 @@ void StarSolver::init() {
 
 void StarSolver::form_stars(int ilevel, real_t dt) {
     if (ilevel < 2) return; // Legacy RAMSES typically doesn't form stars on level 1
+    
+    bool verbose = config_.get_bool("run_params", "verbose", false);
+    if (verbose) RAMSES_INFO(" Entering make_stellar_from_sinks");
 
     int myid = MpiManager::instance().rank() + 1;
     real_t dx = p::boxlen / (real_t)(p::nx * (1 << (ilevel - 1)));
@@ -103,7 +106,7 @@ void StarSolver::form_stars(int ilevel, real_t dt) {
                 for (int i = 0; i < nstar; ++i) {
                     int ip = grid_.get_free_particle();
                     if (ip == 0) {
-                        std::cerr << "[StarSolver] Out of particle memory!" << std::endl;
+                        RAMSES_WARN("[StarSolver] Out of particle memory!");
                         break;
                     }
                     

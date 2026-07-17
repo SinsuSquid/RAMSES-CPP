@@ -3,6 +3,7 @@
 #include "ramses/core/Constants.hpp"
 #include <cmath>
 #include <algorithm>
+#include "ramses/utils/Logger.hpp"
 
 #ifdef RAMSES_USE_MPI
 #include <mpi.h>
@@ -24,6 +25,9 @@ void SinkSolver::init() {
 
 void SinkSolver::create_sinks(int ilevel) {
     if (!config_.get_bool("sink_params", "create_sinks", false)) return;
+    
+    bool verbose = config_.get_bool("run_params", "verbose", false);
+    if (verbose) RAMSES_INFO(" Entering create_sink");
     
     // In a real port, we'd call the clump finder here.
     // For now, we'll implement a simple density-based seed formation if a clump finder isn't available.
@@ -203,6 +207,10 @@ void SinkSolver::synchronize_sinks() {
     int nsink = static_cast<int>(sinks_.size());
     int nsink_global = 0;
     MPI_Allreduce(&nsink, &nsink_global, 1, MPI_INT, MPI_MAX, MPI_COMM_WORLD);
+    
+    if (nsink_global != nsink && nsink_global > 0) {
+        RAMSES_WARN("Sink number mismatch! local={} global={}", nsink, nsink_global);
+    }
 
     // 2. If a new sink was created on any rank, broadcast the updated list
     // For simplicity, we assume rank 0 is the master of the sink list

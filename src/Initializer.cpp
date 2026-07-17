@@ -164,6 +164,13 @@ void Initializer::init_tracers() {
     namespace p = ramses::params;
     if (!p::tracer) return;
 
+    bool verbose = config_.get_bool("run_params", "verbose", false);
+    if (verbose) {
+        RAMSES_INFO("Entering init_part");
+        RAMSES_INFO("WARNING: NEVER USE FAMILY CODES / TAGS > 127.");
+        RAMSES_INFO("See https://bitbucket.org/rteyssie/ramses/wiki/Particle%20Families");
+    }
+
     if (p::tracer_feed_fmt == "inplace") {
         RAMSES_INFO("Creating tracers 'inplace' based on gas density...");
 
