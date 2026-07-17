@@ -274,8 +274,8 @@ void HydroSolver::godunov_fine(int ilevel, real_t dt, real_t dx) {
                                 // 3. Compute child states
                                 real_t q2_child_L[20] = {0}, q2_child_R[20] = {0};
                                 for (int iv = 0; iv < grid_.nvar; ++iv) {
-                                    q2_child_L[iv] = q1_c[iv] - slopes[iv];
-                                    q2_child_R[iv] = q1_c[iv] + slopes[iv];
+                                    q2_child_L[iv] = q1_c[iv] - 0.5 * slopes[iv];
+                                    q2_child_R[iv] = q1_c[iv] + 0.5 * slopes[iv];
                                 }
 
                                 // 4. Convert back to conserved variables u_child_L, u_child_R
@@ -346,7 +346,11 @@ void HydroSolver::godunov_fine(int ilevel, real_t dt, real_t dx) {
                                         drgt = q_ghost_2[iv] - q_ghost[iv];
                                     }
                                     real_t nu = q_ghost[1] * dt / dx;
-                                    dq_ghost[iv] = SlopeLimiter::compute_slope(q_ghost[iv] - dlft, q_ghost[iv], q_ghost[iv] + drgt, slope_type, 1.5, nu) / dx;
+                                    if ((slope_type == 5 || slope_type == 6) && iv != 0) {
+                                        dq_ghost[iv] = 0.0;
+                                    } else {
+                                        dq_ghost[iv] = SlopeLimiter::compute_slope(q_ghost[iv] - dlft, q_ghost[iv], q_ghost[iv] + drgt, slope_type, 1.5, nu) / dx;
+                                    }
                                 }
 
                                 // 7. Trace step on ghost cell
@@ -610,24 +614,43 @@ void HydroSolver::set_uold(int ilevel) {
 }
 
 void HydroSolver::ctoprim(const real_t u[], real_t q[], real_t gamma) {
-    real_t d = std::max(u[0], 1e-10);
-    d = std::min(d, 1e6);
+    // Match legacy ctoprim exactly (umuscl.f90:861-965)
+    real_t smallr = 1e-10;
+    real_t smallc = 1e-10;
+    real_t smalle = smallc * smallc / gamma / (gamma - 1.0);
+
+    real_t d = std::max(u[0], smallr);
     q[0] = d;
-    real_t v2 = 0.0; for (int i = 1; i <= NDIM; ++i) {
-        q[i] = std::clamp(u[i] / d, -10.0, 10.0);
-        v2 += q[i] * q[i];
+    real_t oneoverrho = 1.0 / d;
+
+    // Velocities (no clamping, matching legacy)
+    real_t eken = 0.0;
+    for (int i = 1; i <= NDIM; ++i) {
+        q[i] = u[i] * oneoverrho;
+        eken += 0.5 * q[i] * q[i];
     }
+
     int iener = NDIM + 1; // 0-based index in local array
-    
+
+    // Non-thermal energy
+    real_t erad = 0.0;
+    for (int ie = 0; ie < nener_; ++ie) {
+        q[iener + 1 + ie] = (grid_.gamma_rad[ie] - 1.0) * u[iener + 1 + ie];
+        erad += u[iener + 1 + ie] * oneoverrho;
+    }
+
     if (params::barotropic_eos) {
         q[iener] = EquationOfState::get_barotropic_pressure(d);
     } else {
-        real_t e_thermal_dens = u[iener] - 0.5 * d * v2;
-        for (int ie = 0; ie < nener_; ++ie) e_thermal_dens -= u[iener + 1 + ie];
-        q[iener] = EquationOfState::get_pressure(d, e_thermal_dens, gamma);
+        // Thermal pressure: p = (gamma-1) * rho * eint
+        real_t eint = std::max(u[iener] * oneoverrho - eken - erad, smalle);
+        q[iener] = (gamma - 1.0) * d * eint;
     }
-    
-    for (int iv = iener + 1; iv < grid_.nvar; ++iv) { if (iv < iener + 1 + nener_) q[iv] = u[iv] * (grid_.gamma_rad[iv - (iener + 1)] - 1.0); else q[iv] = u[iv] / d; }
+
+    // Passive scalars
+    for (int iv = iener + 1 + nener_; iv < grid_.nvar; ++iv) {
+        q[iv] = u[iv] * oneoverrho;
+    }
 }
 
 void HydroSolver::compute_slopes(int idc, const int icelln[6], int idim, real_t dq[20], int slope_type, real_t dt, real_t dx) {
@@ -692,10 +715,7 @@ void HydroSolver::trace(const real_t q[], const real_t dq[], real_t dt, real_t d
     real_t cs2 = RiemannSolver::get_cs2(r, p, gamma, q, nener_, grid_.gamma_rad);
     real_t sp0 = -u * dq[NDIM+1] - dq[1] * r * cs2;
 
-    // Stabilize source terms in vacuum regions to prevent timestep collapse
-    su0 = std::max(-r * 1e3, std::min(r * 1e3, su0));
-    sp0 = std::max(-r * 1e3, std::min(r * 1e3, sp0));
-
+    // No stabilizing source terms caps
     for (int iv = 0; iv < grid_.nvar; ++iv) {
         real_t dqi = dq[iv];
         real_t dq_dt = 0;
@@ -706,19 +726,12 @@ void HydroSolver::trace(const real_t q[], const real_t dq[], real_t dt, real_t d
         qp[iv] = q[iv] - 0.5 * dx * dqi + 0.5 * dt * dq_dt;
         qm[iv] = q[iv] + 0.5 * dx * dqi + 0.5 * dt * dq_dt;
 
-        // Ensure states don't explode
+        // Density floor matching legacy
         if (iv == 0) {
-            qp[iv] = std::max(r * (real_t)1e-2, std::min(r * (real_t)1e2, qp[iv]));
-            qm[iv] = std::max(r * (real_t)1e-2, std::min(r * (real_t)1e2, qm[iv]));
-        } else if (iv == NDIM + 1) {
-            qp[iv] = std::max(p * (real_t)1e-2, std::min(p * (real_t)1e2, qp[iv]));
-            qm[iv] = std::max(p * (real_t)1e-2, std::min(p * (real_t)1e2, qm[iv]));
-        } else if (iv > 0 && iv <= NDIM) {
-            qp[iv] = std::clamp(qp[iv], (real_t)-1e3, (real_t)1e3);
-            qm[iv] = std::clamp(qm[iv], (real_t)-1e3, (real_t)1e3);
+            if (qp[iv] < 1e-10) qp[iv] = r;
+            if (qm[iv] < 1e-10) qm[iv] = r;
         }
     }
-    // No trace prints here
 }
 
 void HydroSolver::interpol_hydro(const real_t u1[7][64], real_t u2[8][64]) {

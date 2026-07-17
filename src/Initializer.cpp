@@ -83,12 +83,12 @@ void Initializer::region_condinit(int ilevel) {
         for (int ir = 0; ir < nreg; ++ir) {
             bool in_reg = false;
             if (reg_type[ir] == "cube" || reg_type[ir] == "square") {
-                if (std::abs(x - x_c[ir]) <= 0.5 * lx[ir] + 1e-10 &&
-                    std::abs(y - y_c[ir]) <= 0.5 * ly[ir] + 1e-10 &&
-                    std::abs(z - z_c[ir]) <= 0.5 * lz[ir] + 1e-10) in_reg = true;
+                if (std::abs(x - x_c[ir]) < 0.5 * lx[ir] &&
+                    std::abs(y - y_c[ir]) < 0.5 * ly[ir] &&
+                    std::abs(z - z_c[ir]) < 0.5 * lz[ir]) in_reg = true;
             } else if (reg_type[ir] == "sphere") {
                 real_t r2 = std::pow(x - x_c[ir], 2) + std::pow(y - y_c[ir], 2) + std::pow(z - z_c[ir], 2);
-                if (r2 <= std::pow(lx[ir], 2) + 1e-10) in_reg = true;
+                if (r2 < std::pow(lx[ir], 2)) in_reg = true;
             }
 
             if (in_reg) {

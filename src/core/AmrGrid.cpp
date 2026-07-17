@@ -276,7 +276,12 @@ void AmrGrid::free_grid(int igrid) {
         son[father_cell - 1] = 0;
     }
     father[igrid - 1] = 0;
-    for (int ic = 1; ic <= constants::twotondim; ++ic) son[ncoarse + (ic - 1) * ngridmax + igrid - 1] = 0;
+    for (int ic = 1; ic <= constants::twotondim; ++ic) {
+        int idc = ncoarse + (ic - 1) * ngridmax + igrid - 1;
+        son[idc] = 0;
+        flag1[idc] = 0;
+        flag2[idc] = 0;
+    }
     if (tailf == 0) { headf = igrid; tailf = igrid; prev[igrid - 1] = 0; next[igrid - 1] = 0; }
     else { next[tailf - 1] = igrid; prev[igrid - 1] = tailf; next[igrid - 1] = 0; tailf = igrid; }
     numbf++;
@@ -372,9 +377,10 @@ int AmrGrid::find_cell_by_coords(const real_t x[3], int level) const {
         int ig = son[curr_cell - 1];
         curr_level++;
         real_t dx = boxlen / (real_t)(nx * (1 << (curr_level - 1)));
-        int ixc = (NDIM >= 1 && x[0] > xg[0 * ngridmax + ig - 1]) ? 1 : 0;
-        int iyc = (NDIM >= 2 && x[1] > xg[1 * ngridmax + ig - 1]) ? 1 : 0;
-        int izc = (NDIM >= 3 && x[2] > xg[2 * ngridmax + ig - 1]) ? 1 : 0;
+        real_t scale = boxlen / (real_t)nx;
+        int ixc = (NDIM >= 1 && x[0] > xg[0 * ngridmax + ig - 1] * scale) ? 1 : 0;
+        int iyc = (NDIM >= 2 && x[1] > xg[1 * ngridmax + ig - 1] * scale) ? 1 : 0;
+        int izc = (NDIM >= 3 && x[2] > xg[2 * ngridmax + ig - 1] * scale) ? 1 : 0;
         int ic = izc * 4 + iyc * 2 + ixc + 1;
         curr_cell = ncoarse + (ic - 1) * ngridmax + ig;
     }

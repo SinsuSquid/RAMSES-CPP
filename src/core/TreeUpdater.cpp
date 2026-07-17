@@ -320,8 +320,8 @@ void TreeUpdater::flag_fine(int ilevel, real_t ed, real_t ep, real_t ev, real_t 
 
     auto get_err_grad = [&](real_t val_l, real_t val_c, real_t val_r, real_t floor_val) {
         return 2.0 * std::max(
-            std::abs(val_r - val_c) / (val_r + val_c + floor_val),
-            std::abs(val_c - val_l) / (val_c + val_l + floor_val)
+            std::abs(val_r - val_c) / (val_r + val_c + std::max(val_r, val_c) * 1e-3 + floor_val),
+            std::abs(val_c - val_l) / (val_c + val_l + std::max(val_c, val_l) * 1e-3 + floor_val)
         );
     };
 
@@ -341,7 +341,7 @@ void TreeUpdater::flag_fine(int ilevel, real_t ed, real_t ep, real_t ev, real_t 
         for (int i = 0; i < grid_.ncoarse; ++i) grid_.flag1[i] = 0;
         for (int i = 1; i <= grid_.ncoarse; ++i) {
             grid_.cpu_map[i-1] = myid;
-            if (ilevel < lmin) {
+            if (ilevel <= lmin) {
                 grid_.flag1[i-1] = 1;
             } else {
                 bool ok = false;
@@ -364,7 +364,7 @@ void TreeUpdater::flag_fine(int ilevel, real_t ed, real_t ep, real_t ev, real_t 
             for (int ic = 1; ic <= n2d; ++ic) {
                 int idc = grid_.ncoarse + (ic - 1) * grid_.ngridmax + ig - 1;
                 grid_.flag1[idc] = 0;
-                if (ilevel < lmin) {
+                if (ilevel <= lmin) {
                     grid_.flag1[idc] = 1;
                 } else {
                     bool ok = false;
