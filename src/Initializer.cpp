@@ -9,6 +9,8 @@
 #include <cmath>
 #include <sstream>
 #include <random>
+#include "ramses/utils/Logger.hpp"
+
 
 namespace ramses {
 
@@ -155,7 +157,7 @@ void Initializer::region_condinit(int ilevel) {
 }
 
 void Initializer::load_grafic() {
-    std::cout << "Loading Grafic ICs..." << std::endl;
+    RAMSES_INFO("Loading Grafic ICs...");
 }
 
 void Initializer::init_tracers() {
@@ -163,9 +165,7 @@ void Initializer::init_tracers() {
     if (!p::tracer) return;
 
     if (p::tracer_feed_fmt == "inplace") {
-        if (MpiManager::instance().rank() == 0) {
-            std::cout << "Creating tracers 'inplace' based on gas density..." << std::endl;
-        }
+        RAMSES_INFO("Creating tracers 'inplace' based on gas density...");
 
         int myid = MpiManager::instance().rank() + 1;
         int n2d = (1 << NDIM);
@@ -222,9 +222,7 @@ void Initializer::init_tracers() {
             }
         }
     } else {
-        if (MpiManager::instance().rank() == 0) {
-            std::cout << "Warning: tracer_feed_fmt '" << p::tracer_feed_fmt << "' not implemented yet." << std::endl;
-        }
+        RAMSES_WARN("Warning: tracer_feed_fmt '{}' not implemented yet.", p::tracer_feed_fmt);
     }
 }
 

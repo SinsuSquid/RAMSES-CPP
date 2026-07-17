@@ -9,6 +9,14 @@ if(NOT CMAKE_BUILD_TYPE)
     set(CMAKE_BUILD_TYPE Release)
 endif()
 
+include(FetchContent)
+FetchContent_Declare(
+    spdlog
+    GIT_REPOSITORY https://github.com/gabime/spdlog.git
+    GIT_TAG v1.12.0
+)
+FetchContent_MakeAvailable(spdlog)
+
 # Configuration Options
 set(NDIM 3 CACHE STRING "Dimensions (1, 2, or 3)")
 set(NPRE 8 CACHE STRING "Real precision (4 or 8)")
@@ -70,6 +78,7 @@ include_directories(
 )
 
 target_compile_definitions(${LIB_NAME} PUBLIC NDIM=${d} NPRE=${NPRE} ${PARAM_DEFS})
+target_link_libraries(${LIB_NAME} PUBLIC spdlog::spdlog)
 
 if(MPI)
     find_package(MPI REQUIRED)

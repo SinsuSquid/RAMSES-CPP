@@ -2,7 +2,7 @@
 #include "ramses/core/AmrGrid.hpp"
 #include "ramses/core/Constants.hpp"
 #include "ramses/core/MpiManager.hpp"
-#include <iostream>
+#include "ramses/utils/Logger.hpp"
 #include <algorithm>
 #include <cmath>
 #include <vector>
@@ -44,9 +44,9 @@ void TreeUpdater::make_grid_fine(int ilevel) {
     }
 
     int ncreate = cells_to_refine.size();
-    if (config_.get_bool("run_params", "verbose", false) && MpiManager::instance().rank() == 0) {
-        std::cout << "    Entering refine_fine for level  " << ilevel - 1 << std::endl;
-        std::cout << "   ==> Make      " << ncreate << " sub-grids" << std::endl;
+    if (config_.get_bool("run_params", "verbose", false)) {
+        RAMSES_INFO("    Entering refine_fine for level  {}", ilevel - 1);
+        RAMSES_INFO("   ==> Make      {} sub-grids", ncreate);
     }
 
     for (size_t idx = 0; idx < cells_to_refine.size(); ++idx) {
@@ -181,9 +181,9 @@ void TreeUpdater::remove_grid_fine(int ilevel) {
         }
         ig = next_ig;
     }
-    if (config_.get_bool("run_params", "verbose", false) && MpiManager::instance().rank() == 0) {
-        std::cout << "    Entering refine_fine for level  " << ilevel - 1 << std::endl;
-        std::cout << "   ==> Kill      " << nkill << " sub-grids" << std::endl;
+    if (config_.get_bool("run_params", "verbose", false)) {
+        RAMSES_INFO("    Entering refine_fine for level  {}", ilevel - 1);
+        RAMSES_INFO("   ==> Kill      {} sub-grids", nkill);
     }
 }
 
@@ -478,7 +478,7 @@ void TreeUpdater::flag_fine(int ilevel, real_t ed, real_t ep, real_t ev, real_t 
         ensure_ref_rules(ilevel);
     }
 
-    if (config_.get_bool("run_params", "verbose", false) && MpiManager::instance().rank() == 0) {
+    if (config_.get_bool("run_params", "verbose", false)) {
         int nflagged = 0;
         if (ilevel == 1) {
             for (int i = 0; i < grid_.ncoarse; ++i) {
@@ -494,7 +494,7 @@ void TreeUpdater::flag_fine(int ilevel, real_t ed, real_t ep, real_t ev, real_t 
                 ig = grid_.next[ig - 1];
             }
         }
-        std::cout << "   ==> Flag " << nflagged << " cells (C++ level " << ilevel - 1 << ")" << std::endl;
+        RAMSES_INFO("   ==> Flag {} cells (C++ level {})", nflagged, ilevel - 1);
     }
 }
 

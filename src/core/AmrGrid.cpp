@@ -6,7 +6,7 @@
 #endif
 #include <algorithm>
 #include <cmath>
-#include <iostream>
+#include "ramses/utils/Logger.hpp"
 
 namespace ramses {
 
@@ -122,8 +122,7 @@ void AmrGrid::resize_grids(int new_ngridmax) {
     int new_ncell = ncoarse + constants::twotondim * new_ngridmax;
     int n2d = constants::twotondim;
 
-    std::cout << "[AmrGrid::resize_grids] Resizing from ngridmax=" << old_ngridmax
-              << " to " << new_ngridmax << " (ncell " << old_ncell << " -> " << new_ncell << ")" << std::endl;
+    RAMSES_INFO("[AmrGrid::resize_grids] Resizing from ngridmax={} to {} (ncell {} -> {})", old_ngridmax, new_ngridmax, old_ncell, new_ncell);
 
     // Helper: resize per-cell array with ncomp "planes" of size ncell each
     auto resize_cell_real = [&](std::vector<real_t>& arr, int ncomp) {

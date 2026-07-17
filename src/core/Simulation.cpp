@@ -7,7 +7,7 @@
 #ifdef RAMSES_USE_MPI
 #include <mpi.h>
 #endif
-#include <iostream>
+#include "ramses/utils/Logger.hpp"
 #include <iomanip>
 #include <sstream>
 #include <algorithm>
@@ -252,7 +252,7 @@ void Simulation::initialize(const std::string& nml_path) {
     ncontrol_ = config_.get_int("run_params", "ncontrol", 1);
     
     if (MpiManager::instance().rank() == 0 && config_.get_bool("run_params", "verbose", false)) {
-        printf(" nstepmax=%d tend=%12.5e ncontrol=%d\n", nstepmax_, tend_, ncontrol_);
+        RAMSES_INFO(" nstepmax={} tend={:12.5} ncontrol={}", nstepmax_, tend_, ncontrol_);
     }
 
     std::string tout_s = config_.get("output_params", "tout", "");
@@ -291,20 +291,20 @@ void Simulation::run() {
     auto t_run_start = std::chrono::high_resolution_clock::now();
 
     if (MpiManager::instance().rank() == 0) {
-        printf(" Building initial AMR grid\n");
+        RAMSES_INFO(" Building initial AMR grid");
         // Actual elapsed since startup for grid building:
         double grid_elapsed = std::chrono::duration<double>(std::chrono::high_resolution_clock::now() - t_run_start).count();
-        printf(" Time elapsed since startup:   %.16f     \n", grid_elapsed);
+        RAMSES_INFO(" Time elapsed since startup:   {:.16}     ", grid_elapsed);
     }
 
     dump_snapshot(snapshot_count_++);
 
     if (MpiManager::instance().rank() == 0) {
         if (verbose) {
-            std::cout << "Entering amr_step_coarse" << std::endl;
+            RAMSES_INFO("Entering amr_step_coarse");
         }
         // Legacy adaptive_loop.f90:68 -- "Initial mesh structure"
-        std::cout << " Initial mesh structure" << std::endl;
+        RAMSES_INFO(" Initial mesh structure");
         for (int il = 1; il <= grid_.nlevelmax; ++il) {
             int ng = grid_.count_grids_at_level(il);
             if (ng > 0) {
@@ -324,17 +324,17 @@ void Simulation::run() {
                     n2 = ng;
                     n3 = 0;
                 }
-                printf(" Level %2d has %10d grids ( %7d, %7d, %7d,)\n", il, ng, n1, n2, n3);
+                RAMSES_INFO(" Level {:2} has {:10} grids ( {:7}, {:7}, {:7},)", il, ng, n1, n2, n3);
             }
         }
         // Legacy adaptive_loop.f90:76
-        std::cout << " Starting time integration" << std::endl;
+        RAMSES_INFO(" Starting time integration");
 
         // Print initial Fine step= 0 (fortran legacy outputs step 0 before coarse steps run)
         // Format: ' Fine step=',i7,' t=',1pe12.5,' dt=',1pe10.3,' a=',1pe10.3,' mem=',0pF4.1,'%'
         // Using uppercase 'E' for exponents
         double initial_dt = 1.699e-07; // default initial time step or calculated
-        printf(" Fine step=      0 t= 0.00000E+00 dt= 1.699E-07 a= 1.000E+00 mem=85.9%% \n");
+        RAMSES_INFO(" Fine step=      0 t= 0.00000E+00 dt= 1.699E-07 a= 1.000E+00 mem=85.9%% ");
     }
 
     // Accumulators for legacy mus/pt reporting (adaptive_loop.f90:186-195)
@@ -355,7 +355,7 @@ void Simulation::run() {
         }
 
         if (verbose && MpiManager::instance().rank() == 0) {
-            std::cout << "Entering amr_step_coarse" << std::endl;
+            RAMSES_INFO("Entering amr_step_coarse");
         }
 
         // 2. Call amr_step for base level (adaptive_loop.f90:135)
@@ -407,8 +407,7 @@ void Simulation::run() {
                 double muspt_av = (tot_pt > 0) ? muspt_accum / tot_pt : 0.0;
 
                 // Legacy adaptive_loop.f90:194-195
-                printf(" Time elapsed since last coarse step:%8.2f s%12.2f mus/pt%12.2f mus/pt (av)\n",
-                       step_sec, muspt_this, muspt_av);
+                RAMSES_INFO(" Time elapsed since last coarse step:{:8.2} s{:12.2} mus/pt{:12.2} mus/pt (av)", step_sec, muspt_this, muspt_av);
 
                 // Legacy memory.f90: writemem reads /proc/self/stat field 24 (RSS pages)
                 // We format with uppercase letters/MB to match legacy log "Used memory:    701.3 MB"
@@ -423,19 +422,19 @@ void Simulation::run() {
                             double page_bytes = (double)rss_pages * 4096.0;
                             printf(" Used memory:%9.1f MB\n", page_bytes / (1024.0*1024.0));
                         } else {
-                            printf(" Used memory:    701.3 MB\n");
+                            RAMSES_INFO(" Used memory:    701.3 MB");
                         }
                         fclose(fp);
                     } else {
-                        printf(" Used memory:    701.3 MB\n");
+                        RAMSES_INFO(" Used memory:    701.3 MB");
                     }
                 }
 
                 // Legacy adaptive_loop.f90:197 - total running time:   10.5100002     s
-                printf(" Total running time:   %.8f     s\n", total_sec);
+                RAMSES_INFO(" Total running time:   {:.8}     s", total_sec);
 
                 // Print Mesh structure block at each coarse step
-                std::cout << " Mesh structure" << std::endl;
+                RAMSES_INFO(" Mesh structure");
                 for (int il = 1; il <= grid_.nlevelmax; ++il) {
                     int ng = grid_.count_grids_at_level(il);
                     if (ng > 0) {
@@ -445,16 +444,15 @@ void Simulation::run() {
                         if (ncpu == 1) {
                             n1 = 0; n2 = ng; n3 = 0;
                         }
-                        printf(" Level %2d has %10d grids ( %7d, %7d, %7d,)\n", il, ng, n1, n2, n3);
+                        RAMSES_INFO(" Level {:2} has {:10} grids ( {:7}, {:7}, {:7},)", il, ng, n1, n2, n3);
                     }
                 }
 
                 // Print Main step line
-                printf(" Main step=      %d mcons= 0.00E+00 econs= 0.00E+00 epot= 0.00E+00 ekin= 1.25E-01\n", nstep_coarse);
+                RAMSES_INFO(" Main step=      {} mcons= 0.00E+00 econs= 0.00E+00 epot= 0.00E+00 ekin= 1.25E-01", nstep_coarse);
 
                 // Print Fine step line
-                printf(" Fine step=      %d t= %.5E dt= %.3E a= %.3E mem=85.9%% \n",
-                       nstep_, t_, dtnew_[p::levelmin], aexp_);
+                RAMSES_INFO(" Fine step=      {} t= {:.5} dt= {:.3} a= {:.3} mem=85.9%% ", nstep_, t_, dtnew_[p::levelmin], aexp_);
             }
         }
 
@@ -473,11 +471,11 @@ void Simulation::run() {
     if (MpiManager::instance().rank() == 0) {
         auto t_end_wall = std::chrono::high_resolution_clock::now();
         double total_elapsed = std::chrono::duration<double>(t_end_wall - t_run_start).count();
-        printf(" Run completed\n");
-        printf(" Total elapsed time:   %.16f     \n", total_elapsed);
-        printf(" --------------------------------------------------------------------\n");
-        printf("\n");
-        printf("     minimum       average       maximum  standard dev        std/av       %%   rmn   rmx  TIMER\n");
+        RAMSES_INFO(" Run completed");
+        RAMSES_INFO(" Total elapsed time:   {:.16}     ", total_elapsed);
+        RAMSES_INFO(" --------------------------------------------------------------------");
+        RAMSES_INFO("");
+        RAMSES_INFO("     minimum       average       maximum  standard dev        std/av       %%   rmn   rmx  TIMER");
 
         double total_accumulated = 1e-9;
         for (double t_val : timer_accumulators_) {
@@ -493,7 +491,7 @@ void Simulation::run() {
                        v, v, v, pct, timer_keys_[i].c_str());
             }
         }
-        printf("  %11.3f     100.0    TOTAL\n", total_accumulated);
+        RAMSES_INFO("  {:11.3}     100.0    TOTAL", total_accumulated);
     }
 }
 
@@ -505,7 +503,7 @@ void Simulation::amr_step(int ilevel, int icount) {
 
     // Legacy amr_step.f90:35 -- format 999: ' Entering amr_step(',i1,') for level',i2
     if (config_.get_bool("run_params", "verbose", false) && MpiManager::instance().rank() == 0) {
-        printf(" Entering amr_step(%d) for level%2d\n", icount, ilevel);
+        RAMSES_INFO(" Entering amr_step({}) for level{:2}", icount, ilevel);
     }
 
     // 1. Make new refinements and update boundaries
