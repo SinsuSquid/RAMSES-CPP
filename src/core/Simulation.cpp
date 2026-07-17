@@ -354,7 +354,8 @@ void Simulation::run() {
         // Format: ' Fine step=',i7,' t=',1pe12.5,' dt=',1pe10.3,' a=',1pe10.3,' mem=',0pF4.1,'%'
         // Using uppercase 'E' for exponents
         double initial_dt = 1.699e-07; // default initial time step or calculated
-        RAMSES_INFO(" Fine step=      0 t= 0.00000E+00 dt= 1.699E-07 a= 1.000E+00 mem=85.9%% ");
+        double mem_percent = 100.0 * (grid_.ngridmax - grid_.numbf) / std::max(1.0, (double)grid_.ngridmax);
+        RAMSES_INFO(" Fine step={:10} t={:12.5E} dt={:12.3E} a={:12.3E} mem={:5.1f}% ", 0, 0.0, dtnew_[params::levelmin], aexp_, mem_percent);
     }
 
     // Accumulators for legacy mus/pt reporting (adaptive_loop.f90:186-195)
