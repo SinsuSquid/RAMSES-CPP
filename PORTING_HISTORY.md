@@ -4,6 +4,12 @@ This document tracks the milestones, architecture updates, and physics solver in
 
 ---
 
+## 🚩 Phase 51: Timestep Stabilization and AMR Over-refinement Fix (Completed) 🚀✨
+* **Fixed `Fine Step` Timestep Stagnation**: Corrected an off-by-one check in [TreeUpdater::flag_fine](file:///home/bgkang/Projects/RAMSES-CPP/src/core/TreeUpdater.cpp) from `ilevel < lmin` to `ilevel <= lmin`. This ensures the base refinement block correctly propagates up to `levelmin`, preventing `compute_courant_step` from reading zero valid cells and freezing the simulation with a zero timestep.
+* **Eliminated AMR False Positives**: Added the missing `max(val_r, val_c) * 1e-3` numerical noise floor to `get_err_grad` in [TreeUpdater.cpp](file:///home/bgkang/Projects/RAMSES-CPP/src/core/TreeUpdater.cpp), exactly matching legacy Fortran's `err_grad_d` threshold logic. This resolves the `hydro/advect1d` test mismatch by stopping aggressive numerical noise from triggering unwanted refinement bounds, bringing the total initial cell count back from 104 down to the perfect 100 cells.
+
+---
+
 ## 🚩 Phase 50: 27-Cell Neighbor Lookup Fix (Completed) 🚀✨
 * **Fixed Neighbor Chaining in `get_27_cell_neighbors`**: Replaced the fragile orthogonal lookup chaining algorithm in [AmrGrid.cpp](file:///home/bgkang/Projects/RAMSES-CPP/src/core/AmrGrid.cpp) with a robust coordinate-based neighbor lookup.
 * **Fixed `find_cell_by_coords` traversal**: Fixed a major off-by-one level descent bug in [AmrGrid.cpp](file:///home/bgkang/Projects/RAMSES-CPP/src/core/AmrGrid.cpp) that caused grid search to terminate prematurely, and added `NDIM` dimension guards to prevent reading out-of-bounds uninitialized coordinates.
