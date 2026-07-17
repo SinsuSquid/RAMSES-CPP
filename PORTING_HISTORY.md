@@ -6,7 +6,8 @@ This document tracks the milestones, architecture updates, and physics solver in
 
 ## 🚩 Phase 51: Timestep Stabilization and AMR Over-refinement Fix (Completed) 🚀✨
 * **Fixed `Fine Step` Timestep Stagnation**: Corrected an off-by-one check in [TreeUpdater::flag_fine](file:///home/bgkang/Projects/RAMSES-CPP/src/core/TreeUpdater.cpp) from `ilevel < lmin` to `ilevel <= lmin`. This ensures the base refinement block correctly propagates up to `levelmin`, preventing `compute_courant_step` from reading zero valid cells and freezing the simulation with a zero timestep.
-* **Eliminated AMR False Positives**: Added the missing `max(val_r, val_c) * 1e-3` numerical noise floor to `get_err_grad` in [TreeUpdater.cpp](file:///home/bgkang/Projects/RAMSES-CPP/src/core/TreeUpdater.cpp), exactly matching legacy Fortran's `err_grad_d` threshold logic. This resolves the `hydro/advect1d` test mismatch by stopping aggressive numerical noise from triggering unwanted refinement bounds, bringing the total initial cell count back from 104 down to the perfect 100 cells.
+* **Snapshot Output & Exit Timing Alignment**: Moved `dump_snapshot` logic out of `amr_step` and into the main loop of `Simulation::run` in [Simulation.cpp](file:///home/bgkang/Projects/RAMSES-CPP/src/core/Simulation.cpp). This ensures that the final snapshot output (e.g., `output_00002` at `t=10.0`) is cleanly captured after the fine-step loop finishes but before the simulation exit condition triggers.
+* **Refinement Gradient Logic Verification**: Investigated `get_err_grad` and `get_err_grad_u` in [TreeUpdater.cpp](file:///home/bgkang/Projects/RAMSES-CPP/src/core/TreeUpdater.cpp) and confirmed mathematically equivalent scaling to Fortran's `err_grad_d` thresholding, reverting an incorrect `1e-3` relative noise floor patch.
 
 ---
 
