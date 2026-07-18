@@ -4,6 +4,12 @@ This document tracks the milestones, architecture updates, and physics solver in
 
 ---
 
+## 🚩 Phase 52: Exact Neighbor Lookup and Stalled Refinement Discovery (In Progress) 🚀✨
+* **Spurious Gradient Resolution**: Implemented `get_nbor_cells_exact` and father-cell fallback logic in `TreeUpdater::flag_fine` within [TreeUpdater.cpp](file:///home/bgkang/Projects/RAMSES-CPP/src/core/TreeUpdater.cpp). This correctly handles missing fine-level neighbors by intercepting the `0` return and pulling the coarse neighbor state from the father cell, successfully eliminating artificial physics gradients that previously caused runaway over-refinement to level 9.
+* **Base Refinement Stall Discovery**: With spurious gradients removed, discovered that the base `Simulation::initialize` loop stalls at `levelmin = 1`. This reveals a deeper structural bug where `flag1` and `flag2` propagation logic inside `TreeUpdater::make_grid_fine` and the bottom-up `flag_all` iteration fail to propagate the unconditional refinement up to `levelmin = 4` natively.
+
+---
+
 ## 🚩 Phase 51: Timestep Stabilization and AMR Over-refinement Fix (Completed) 🚀✨
 * **Fixed `Fine Step` Timestep Stagnation**: Corrected an off-by-one check in [TreeUpdater::flag_fine](file:///home/bgkang/Projects/RAMSES-CPP/src/core/TreeUpdater.cpp) from `ilevel < lmin` to `ilevel <= lmin`. This ensures the base refinement block correctly propagates up to `levelmin`, preventing `compute_courant_step` from reading zero valid cells and freezing the simulation with a zero timestep.
 * **Snapshot Output & Exit Timing Alignment**: Moved `dump_snapshot` logic out of `amr_step` and into the main loop of `Simulation::run` in [Simulation.cpp](file:///home/bgkang/Projects/RAMSES-CPP/src/core/Simulation.cpp). This ensures that the final snapshot output (e.g., `output_00002` at `t=10.0`) is cleanly captured after the fine-step loop finishes but before the simulation exit condition triggers.
