@@ -28,7 +28,7 @@ void StarSolver::init() {
 void StarSolver::form_stars(int ilevel, real_t dt) {
     if (ilevel < 2) return; // Legacy RAMSES typically doesn't form stars on level 1
     
-    bool verbose = config_.get_bool("run_params", "verbose", false);
+    bool verbose = ramses::params::verbose;
     if (verbose) RAMSES_INFO(" Entering make_stellar_from_sinks");
 
     int myid = MpiManager::instance().rank() + 1;

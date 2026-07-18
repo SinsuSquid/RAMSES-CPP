@@ -6,6 +6,7 @@
 #include <algorithm>
 #include <cmath>
 #include <vector>
+#include "ramses/core/Parameters.hpp"
 
 namespace ramses {
 
@@ -31,6 +32,9 @@ void TreeUpdater::make_grid_fine(int ilevel) {
     if (ilevel == 1) {
         for (int ic = 1; ic <= grid_.ncoarse; ++ic) {
             if (grid_.flag1[ic - 1] == 1 && grid_.flag2[ic - 1] == 1 && grid_.son[ic - 1] == 0) cells_to_refine.push_back(ic);
+            if (ic == 1) {
+                RAMSES_INFO("DEBUG make_grid_fine(1): flag1={}, flag2={}, son={}", grid_.flag1[0], grid_.flag2[0], grid_.son[0]);
+            }
         }
     } else {
         int ig = grid_.get_headl(myid, ilevel - 1);
@@ -44,7 +48,7 @@ void TreeUpdater::make_grid_fine(int ilevel) {
     }
 
     int ncreate = cells_to_refine.size();
-    if (config_.get_bool("run_params", "verbose", false)) {
+    if (ramses::params::verbose) {
         RAMSES_INFO("    Entering refine_fine for level  {}", ilevel - 1);
         RAMSES_INFO("   ==> Make      {} sub-grids", ncreate);
     }
@@ -181,7 +185,7 @@ void TreeUpdater::remove_grid_fine(int ilevel) {
         }
         ig = next_ig;
     }
-    if (config_.get_bool("run_params", "verbose", false)) {
+    if (ramses::params::verbose) {
         RAMSES_INFO("    Entering refine_fine for level  {}", ilevel - 1);
         RAMSES_INFO("   ==> Kill      {} sub-grids", nkill);
     }
@@ -213,8 +217,7 @@ void TreeUpdater::smooth_fine(int ilevel) {
     int myid = MpiManager::instance().rank() + 1, n2d = (1 << NDIM);
     int ngridmax = grid_.ngridmax;
 
-    // flag2 is used as workspace
-    for (int i = 0; i < (int)grid_.ncell; ++i) grid_.flag2[i] = 0;
+    std::vector<int> ok_flag(grid_.ncell, 0);
 
     if (ilevel == 1) {
         for (int ic = 1; ic <= grid_.ncoarse; ++ic) {
@@ -227,7 +230,7 @@ void TreeUpdater::smooth_fine(int ilevel) {
                         if (grid_.flag1[neighbor_cell - 1] == 1) num_flagged_nbors++;
                     }
                 }
-                if (num_flagged_nbors > 0) grid_.flag2[ic - 1] = 1;
+                if (num_flagged_nbors > 0) ok_flag[ic - 1] = 1;
             }
         }
     } else {
@@ -248,16 +251,16 @@ void TreeUpdater::smooth_fine(int ilevel) {
                             if (grid_.flag1[neighbor_cell - 1] == 1) num_flagged_nbors++;
                         }
                     }
-                    if (num_flagged_nbors > 0) grid_.flag2[idc] = 1;
+                    if (num_flagged_nbors > 0) ok_flag[idc] = 1;
                 }
             }
             ig = grid_.next[ig - 1];
         }
     }
 
-    // Apply flag2 to flag1
+    // Apply ok_flag to flag1
     for (int i = 0; i < (int)grid_.ncell; ++i) {
-        if (grid_.flag2[i] == 1) grid_.flag1[i] = 1;
+        if (ok_flag[i] == 1) grid_.flag1[i] = 1;
     }
 }
 
@@ -265,7 +268,7 @@ void TreeUpdater::flag_fine(int ilevel, real_t ed, real_t ep, real_t ev, real_t 
     if (ilevel > grid_.nlevelmax) return;
     int myid = MpiManager::instance().rank() + 1, n2d = (1 << NDIM), lmin = config_.get_int("amr_params", "levelmin", 1);
     
-    bool verbose = config_.get_bool("run_params", "verbose", false);
+    bool verbose = ramses::params::verbose;
     if (verbose) {
         if (ilevel == 1) RAMSES_INFO("  Entering flag_coarse");
         else RAMSES_INFO("Entering flag");
@@ -488,7 +491,7 @@ void TreeUpdater::flag_fine(int ilevel, real_t ed, real_t ep, real_t ev, real_t 
         if (ilevel > 1) RAMSES_INFO("Complete flag");
     }
 
-    if (config_.get_bool("run_params", "verbose", false)) {
+    if (ramses::params::verbose) {
         int nflagged = 0;
         if (ilevel == 1) {
             for (int i = 0; i < grid_.ncoarse; ++i) {

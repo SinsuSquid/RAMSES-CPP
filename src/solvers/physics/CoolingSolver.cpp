@@ -13,7 +13,7 @@ CoolingSolver::~CoolingSolver() {}
 void CoolingSolver::apply_cooling(int ilevel, real_t dt) {
     if (!config_.get_bool("cooling_params", "cooling", false)) return;
     
-    bool verbose = config_.get_bool("run_params", "verbose", false);
+    bool verbose = ramses::params::verbose;
     static bool table_printed = false;
     if (verbose && !table_printed && ilevel == 2) {
         RAMSES_INFO("Computing new cooling table");

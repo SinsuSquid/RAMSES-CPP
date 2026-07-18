@@ -15,7 +15,7 @@ namespace ramses {
 RtSolver::~RtSolver() {}
 
 void RtSolver::initialize() {
-    bool verbose = config_.get_bool("run_params", "verbose", false);
+    bool verbose = ramses::params::verbose;
     if (verbose) RAMSES_INFO("Entering init_rt");
     
     nGroups = 0;

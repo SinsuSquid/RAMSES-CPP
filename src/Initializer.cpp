@@ -164,7 +164,7 @@ void Initializer::init_tracers() {
     namespace p = ramses::params;
     if (!p::tracer) return;
 
-    bool verbose = config_.get_bool("run_params", "verbose", false);
+    bool verbose = ramses::params::verbose;
     if (verbose) {
         RAMSES_INFO("Entering init_part");
         RAMSES_INFO("WARNING: NEVER USE FAMILY CODES / TAGS > 127.");

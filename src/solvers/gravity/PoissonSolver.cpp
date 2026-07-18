@@ -21,7 +21,7 @@ void PoissonSolver::solve(int ilevel, real_t aexp, real_t omega_m, real_t rho_to
         fourpi = 1.5 * omega_m * aexp * scale;
     }
 
-    bool verbose = config_.get_bool("run_params", "verbose", false);
+    bool verbose = ramses::params::verbose;
     
     // Perform Multigrid V-Cycles
     for (int iter = 0; iter < 10; ++iter) {

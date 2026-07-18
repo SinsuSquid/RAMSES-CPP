@@ -17,7 +17,7 @@ HydroSolver::~HydroSolver() {}
 
 void HydroSolver::godunov_fine(int ilevel, real_t dt, real_t dx) {
     int myid = MpiManager::instance().rank() + 1;
-    bool verbose = config_.get_bool("run_params", "verbose", false);
+    bool verbose = ramses::params::verbose;
     
     std::vector<int> cell_levels(grid_.ncell + 1, 0);
     for (int ig = 1; ig <= grid_.ngridmax; ++ig) {

@@ -81,6 +81,7 @@ void Simulation::initialize(const std::string& nml_path) {
     int levelmin = config_.get_int("amr_params", "levelmin", 1);
     int levelmax = config_.get_int("amr_params", "levelmax", 1);
     params::levelmin = levelmin; params::nlevelmax = levelmax;
+    params::verbose = ramses::params::verbose;
     
     int nparttot = config_.get_int("amr_params", "nparttot", 0);
     
@@ -224,27 +225,21 @@ void Simulation::initialize(const std::string& nml_path) {
 
     // 1. Base refinement loop (1 to levelmin)
     for (int il_ref = 1; il_ref <= lmin; ++il_ref) {
-        // Flag all levels (nlevelmax down to 1) like legacy flag subroutine
-        for (int il = lmax; il >= 1; --il) {
-            updater_.flag_fine(il, ed, ep, ev, eb2, {}, nexpand_[std::min(il, 32)]);
-        }
-        // Refine all levels (1 up to nlevelmax) like legacy refine subroutine
+        // Flag and refine all levels (1 up to nlevelmax) like legacy init_amr
         for (int il = 1; il <= lmax; ++il) {
+            updater_.flag_fine(il, ed, ep, ev, eb2, {}, nexpand_[std::min(il, 32)], 1);
             updater_.make_grid_fine(il); // refine_fine
         }
         grid_.synchronize_level_counts();
     }
 
     // 2. Further refinements (levelmin+1 to levelmax)
-    for (int il_ref = lmin + 1; il_ref <= lmax + 2; ++il_ref) {
+    for (int il_ref = lmin + 1; il_ref <= lmax; ++il_ref) {
         legacy_init_flow();
         
-        // Flag all levels
-        for (int il = lmax; il >= 1; --il) {
-            updater_.flag_fine(il, ed, ep, ev, eb2, {}, nexpand_[std::min(il, 32)]);
-        }
-        // Refine all levels
+        // Flag and refine all levels
         for (int il = 1; il <= lmax; ++il) {
+            updater_.flag_fine(il, ed, ep, ev, eb2, {}, nexpand_[std::min(il, 32)], 1);
             updater_.make_grid_fine(il);
         }
         grid_.synchronize_level_counts();
@@ -254,8 +249,7 @@ void Simulation::initialize(const std::string& nml_path) {
             load_balancer_.balance();
         }
         
-        // Break if no more grids are being created (mimic legacy exit condition)
-        // For simplicity, we just run the full loop for now.
+        if (grid_.count_grids_at_level(il_ref) == 0) break;
     }
 
     // 3. Final flow initialization
@@ -271,7 +265,7 @@ void Simulation::initialize(const std::string& nml_path) {
     nstepmax_ = config_.get_int("run_params", "nstepmax", 1000000);
     ncontrol_ = config_.get_int("run_params", "ncontrol", 1);
     
-    if (MpiManager::instance().rank() == 0 && config_.get_bool("run_params", "verbose", false)) {
+    if (MpiManager::instance().rank() == 0 && params::verbose) {
         RAMSES_INFO(" nstepmax={} tend={:12.5} ncontrol={}", nstepmax_, tend_, ncontrol_);
     }
 
@@ -304,7 +298,7 @@ void Simulation::initialize(const std::string& nml_path) {
 void Simulation::run() {
     snapshot_count_ = 1;
     iout_ = 0;
-    bool verbose = config_.get_bool("run_params", "verbose", false);
+    bool verbose = params::verbose;
     int ncontrol = config_.get_int("run_params", "ncontrol", 1);
 
     // Record startup time
@@ -529,9 +523,9 @@ void Simulation::amr_step(int ilevel, int icount) {
     if (ilevel > grid_.nlevelmax) return;
     if (grid_.count_grids_at_level(ilevel) == 0 && ilevel > 0) return;
 
-    // Legacy amr_step.f90:35 -- format 999: ' Entering amr_step(',i1,') for level',i2
-    if (config_.get_bool("run_params", "verbose", false) && MpiManager::instance().rank() == 0) {
-        RAMSES_INFO(" Entering amr_step({}) for level{:2}", icount, ilevel);
+    // Legacy amr_step.f90:35 -- format 999: ' Entering amr_step for level ',i2
+    if (params::verbose && MpiManager::instance().rank() == 0) {
+        RAMSES_INFO(" Entering amr_step for level {}", ilevel);
     }
 
     // 1. Make new refinements and update boundaries
@@ -704,7 +698,7 @@ void Simulation::dump_snapshot(int iout) {
         return ss.str();
     };
 
-    bool verbose = config_.get_bool("run_params", "verbose", false);
+    bool verbose = params::verbose;
     if (verbose) RAMSES_INFO("Entering dump_all");
     
     if (verbose) RAMSES_INFO("Start backup amr");

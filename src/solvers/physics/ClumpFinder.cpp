@@ -1,6 +1,7 @@
 #include "ramses/solvers/physics/ClumpFinder.hpp"
 #include "ramses/core/MpiManager.hpp"
 #include "ramses/utils/Logger.hpp"
+#include "ramses/core/Parameters.hpp"
 
 namespace ramses {
 
@@ -11,7 +12,7 @@ ClumpFinder::ClumpFinder(AmrGrid& grid, Config& config) : grid_(grid), config_(c
 ClumpFinder::~ClumpFinder() {}
 
 void ClumpFinder::find_clumps() {
-    bool verbose = config_.get_bool("run_params", "verbose", false);
+    bool verbose = ramses::params::verbose;
     if (verbose) RAMSES_INFO(" Entering clump_finder");
     
     identify_peaks();
@@ -20,7 +21,7 @@ void ClumpFinder::find_clumps() {
 }
 
 void ClumpFinder::identify_peaks() {
-    bool verbose = config_.get_bool("run_params", "verbose", false);
+    bool verbose = ramses::params::verbose;
     if (verbose) RAMSES_INFO("Finding peak patches");
     // Peak finding logic: local maxima above threshold
 }

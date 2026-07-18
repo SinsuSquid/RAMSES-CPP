@@ -8,6 +8,7 @@
 #ifdef RAMSES_USE_MPI
 #include <mpi.h>
 #endif
+#include "ramses/core/Parameters.hpp"
 
 namespace ramses {
 
@@ -26,7 +27,7 @@ void SinkSolver::init() {
 void SinkSolver::create_sinks(int ilevel) {
     if (!config_.get_bool("sink_params", "create_sinks", false)) return;
     
-    bool verbose = config_.get_bool("run_params", "verbose", false);
+    bool verbose = ramses::params::verbose;
     if (verbose) RAMSES_INFO(" Entering create_sink");
     
     // In a real port, we'd call the clump finder here.
