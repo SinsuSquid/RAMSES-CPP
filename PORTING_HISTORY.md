@@ -4,10 +4,21 @@ This document tracks the milestones, architecture updates, and physics solver in
 
 ---
 
-## 🎯 Next Target: Multi-Dimensional Hydro & MHD Regression Alignment 🚀✨
-* **2D/3D Hydro Regression Verification**: Run and validate 2D/3D test problems (`hydro/implosion`, `hydro/sedov3d`, `hydro/sod-tube`) using the newly aligned HLLC Riemann solver and prolongation operators.
+## 🎯 Next Target: Level 7 Sedov3D Alignment, Implosion & MHD Regression Verification 🚀✨
+* **Sedov3D Fine Level 7 Refinement Alignment**: Align Level 6 `err_grad_p` and geometry-refine parameters to match the reference 7,071-cell solution and stopping time.
+* **2D Implosion Verification**: Run and validate 2D `hydro/implosion` using the aligned HLLC Riemann solver and prolongation operators.
 * **MHD HLLD Solver Realignment**: Align constrained transport (CT) EMF averaging, HLLD star state recovery, and magnetic prolongation operators in `MhdSolver` with the Fortran baseline (`legacy/mhd/`).
-* **Test Suite CI Regression Suite**: Update test suite script runner flags and baseline comparisons across remaining test cases.
+
+---
+
+## 🚩 Phase 54: AMR Boundary & IC Alignment, Point Blast Deposition, and Timestep Subcycling Synchronization (Completed) 🚀✨
+**Commits:** `f90e550`, `8185e12`
+* **AMR Coarse Boundary & Reflective Gradient Fixes**: Fixed coarse-level boundary routing in `TreeUpdater::flag_fine` via `grid.get_nbor_cells_coarse` instead of periodic modulo, preserving negative physical boundary IDs in `get_nbor_cells_exact`. Added boundary state reflection flipping normal velocity for reflective boundaries in gradient checks, eliminating spurious boundary gradient errors that caused runaway refinement across entire domains.
+* **Point IC CIC Cloud Deposition & Boxlen Sync**: Resolved uninitialized `grid_.boxlen` bug where `AmrGrid` defaulted to `1.0` instead of namelist values, misplacing cell coordinates and dropping Cloud-in-Cell (CIC) weights to zero for off-origin point sources. Added full CIC volume-weighted point source energy/density deposition in [Initializer.cpp](file:///home/bgkang/Projects/RAMSES-CPP/src/Initializer.cpp) matching `legacy/hydro/init_flow_fine.f90:554-592`.
+* **AMR Timestep Subcycling Synchronization**: Resolved coarse-level time step desynchronization in `Simulation::amr_step`. Coarser level time steps are now properly accumulated from child subcycles (`dtnew_[ilevel - 1] = dtold_[ilevel] + dtnew_[ilevel]`) matching `legacy/amr/amr_step.f90:550-555`, preventing coarse levels from blowing past fine subcycles with unconstrained coarse CFL steps.
+* **Fortran Scientific Notation in Namelist Output Arrays**: Fixed `output_params/tout` parsing to handle Fortran double-precision exponents (`d` and `D`) via `config_.get_double_array`, preventing `9.91d-3` from truncating to `9.91` and reducing `sedov3d` runtime from minutes to 0.4 seconds.
+* **Hydro Prolongation Mode 2 Alignment**: Aligned `interpol_hydro` mode 2 (`interpol_var == 2`) in [HydroSolver.cpp](file:///home/bgkang/Projects/RAMSES-CPP/src/solvers/hydro/HydroSolver.cpp) to interpolate $(\rho, u_d, \rho \epsilon)$ rather than primitive pressure, with strict momentum conservation correction ($mom_{err} = mom_{avg} - u_1[0][d]$) matching `legacy/hydro/interpol_hydro.f90:280-440`.
+* **Test Runner Robustness**: Enhanced `tests/run_test_suite.sh` with regex/directory matching supporting hyphenated tests and category folders without division-by-zero errors, and added `-q` quick test selection.
 
 ---
 
