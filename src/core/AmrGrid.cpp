@@ -464,9 +464,11 @@ void AmrGrid::get_nbor_cells_exact(const int ign[7], int ic, int icn[6]) const {
                 if (ig_child > 0) {
                     icn[slot] = ncoarse + (ic_pos - 1) * ngridmax + ig_child;
                 }
-                // else: neighbor grid absent at this level → leave icn[slot]=0
+            } else if (ig < 0) {
+                // Boundary neighbor
+                icn[slot] = ig;
             }
-            // ig == 0 (not exist) or ig < 0 (boundary) → leave icn[slot]=0
+            // ig == 0 (not exist) → leave icn[slot]=0
         }
     }
 }

@@ -46,6 +46,7 @@ void Simulation::initialize(const std::string& nml_path) {
     p::ny = config_.get_int("amr_params", "ny", 1);
     p::nz = config_.get_int("amr_params", "nz", 1);
     p::boxlen = config_.get_double("amr_params", "boxlen", 1.0);
+    grid_.boxlen = p::boxlen;
 
     int ngridmax = config_.get_int("amr_params", "ngridmax", 1000);
     ngridmax = config_.get_int("amr_params", "ngridtot", ngridmax);
@@ -270,11 +271,7 @@ void Simulation::initialize(const std::string& nml_path) {
         RAMSES_INFO(" nstepmax={} tend={:12.5} ncontrol={}", nstepmax_, tend_, ncontrol_);
     }
 
-    std::string tout_s = config_.get("output_params", "tout", "");
-    if (!tout_s.empty()) {
-        tout_.clear(); std::replace(tout_s.begin(), tout_s.end(), ',', ' ');
-        std::stringstream ss(tout_s); double t; while(ss >> t) tout_.push_back(t);
-    }
+    tout_ = config_.get_double_array("output_params", "tout");
     if (tout_.empty()) tout_.push_back(tend_);
 
     if (tend_ > tout_.back()) {
@@ -589,35 +586,36 @@ void Simulation::amr_step(int ilevel, int icount) {
         } else {
             dtold_[ilevel + 1] = dtnew_[ilevel] / (real_t)nsub;
             dtnew_[ilevel + 1] = dtnew_[ilevel] / (real_t)nsub;
-            t_ += dt; nstep_++;
+            t_ += dtnew_[ilevel]; nstep_++;
         }
     } else {
-        t_ += dt; nstep_++;
+        t_ += dtnew_[ilevel]; nstep_++;
     }
 
     // 5. Hydro step (godunov_fine)
+    real_t dt_step = dtnew_[ilevel];
     auto t_god_start = std::chrono::high_resolution_clock::now();
 #ifdef MHD
-    mhd_->godunov_fine(ilevel, dt, dx);
+    mhd_->godunov_fine(ilevel, dt_step, dx);
 #else
-    hydro_->godunov_fine(ilevel, dt, dx);
+    hydro_->godunov_fine(ilevel, dt_step, dx);
 #endif
     auto t_god_end = std::chrono::high_resolution_clock::now();
     accum_time("hydro - godunov", std::chrono::duration<double>(t_god_end - t_god_start).count());
 
-    if (config_.get_bool("run_params", "turb", false)) turb_->apply_forcing(ilevel, dt);
+    if (config_.get_bool("run_params", "turb", false)) turb_->apply_forcing(ilevel, dt_step);
     if (config_.get_bool("run_params", "sink", false)) {
         sink_->create_sinks(ilevel);
-        sink_->grow_sinks(ilevel, dt);
+        sink_->grow_sinks(ilevel, dt_step);
         sink_->synchronize_sinks();
     }
-    if (config_.get_bool("run_params", "star", false)) star_->form_stars(ilevel, dt);
+    if (config_.get_bool("run_params", "star", false)) star_->form_stars(ilevel, dt_step);
 
-    cooling_->apply_cooling(ilevel, dt);
+    cooling_->apply_cooling(ilevel, dt_step);
 
 #ifdef RT
-    rt_->godunov_fine(ilevel, dt, dx);
-    rt_->apply_source_terms(ilevel, dt);
+    rt_->godunov_fine(ilevel, dt_step, dx);
+    rt_->apply_source_terms(ilevel, dt_step);
 #endif
 
     // 6. set_uold
@@ -645,6 +643,15 @@ void Simulation::amr_step(int ilevel, int icount) {
     updater_.flag_fine(ilevel, err_grad_d_, err_grad_p_, err_grad_v_, err_grad_b2_, {}, nexp, icount, ilevel > 0 ? nsubcycle_[ilevel - 1] : 1);
     auto t_flag_end = std::chrono::high_resolution_clock::now();
     accum_time("hydro - ghostzones", std::chrono::duration<double>(t_flag_end - t_flag_start).count());
+
+    // Update coarser level time-step (legacy amr_step.f90:550-555)
+    if (ilevel > p::levelmin) {
+        if (nsubcycle_[ilevel - 1] == 1) {
+            dtnew_[ilevel - 1] = dtnew_[ilevel];
+        } else if (icount == 2) {
+            dtnew_[ilevel - 1] = dtold_[ilevel] + dtnew_[ilevel];
+        }
+    }
 
     if (ilevel == p::levelmin && icount == 2) {
         static int last_leaf_count = 100;

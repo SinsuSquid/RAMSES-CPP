@@ -81,58 +81,108 @@ void Initializer::region_condinit(int ilevel) {
         if (i < (int)var_list.size()) var_r[i] = std::stod(var_list[i]);
     }
 
+    real_t dx = params::boxlen / (real_t)(params::nx * (1 << ilevel));
+    real_t vol = std::pow(dx, NDIM);
+
     auto apply_to_cell = [&](int idc, real_t x, real_t y, real_t z) {
+        real_t q_d = 1e-10;
+        real_t q_u = 0.0, q_v = 0.0, q_w = 0.0;
+        real_t q_p = 1e-10 * 1e-20 / gam;
+        real_t var_val = 0.0;
+        int active_region = -1;
+
         for (int ir = 0; ir < nreg; ++ir) {
-            bool in_reg = false;
             if (reg_type[ir] == "cube" || reg_type[ir] == "square") {
-                if (std::abs(x - x_c[ir]) < 0.5 * lx[ir] &&
-                    std::abs(y - y_c[ir]) < 0.5 * ly[ir] &&
-                    std::abs(z - z_c[ir]) < 0.5 * lz[ir]) in_reg = true;
+                real_t en = exp_reg[ir];
+                real_t xn = 2.0 * std::abs(x - x_c[ir]) / lx[ir];
+                real_t yn = (NDIM > 1) ? (2.0 * std::abs(y - y_c[ir]) / ly[ir]) : 0.0;
+                real_t zn = (NDIM > 2) ? (2.0 * std::abs(z - z_c[ir]) / lz[ir]) : 0.0;
+                real_t r = 0.0;
+                if (en < 10.0) {
+                    real_t sum = std::pow(xn, en);
+                    if (NDIM > 1) sum += std::pow(yn, en);
+                    if (NDIM > 2) sum += std::pow(zn, en);
+                    r = std::pow(sum, 1.0 / en);
+                } else {
+                    r = std::max({xn, yn, zn});
+                }
+                if (r < 1.0) {
+                    q_d = dr[ir];
+                    q_u = ur[ir];
+                    q_v = vr[ir];
+                    q_w = wr[ir];
+                    q_p = pr[ir];
+                    var_val = var_r[ir];
+                    active_region = ir;
+                }
             } else if (reg_type[ir] == "sphere") {
-                real_t r2 = std::pow(x - x_c[ir], 2) + std::pow(y - y_c[ir], 2) + std::pow(z - z_c[ir], 2);
-                if (r2 < std::pow(lx[ir], 2)) in_reg = true;
+                real_t r2 = std::pow(x - x_c[ir], 2);
+                if (NDIM > 1) r2 += std::pow(y - y_c[ir], 2);
+                if (NDIM > 2) r2 += std::pow(z - z_c[ir], 2);
+                if (r2 < std::pow(lx[ir], 2)) {
+                    q_d = dr[ir];
+                    q_u = ur[ir];
+                    q_v = vr[ir];
+                    q_w = wr[ir];
+                    q_p = pr[ir];
+                    var_val = var_r[ir];
+                    active_region = ir;
+                }
+            } else if (reg_type[ir] == "point") {
+                real_t wx = std::max((real_t)(1.0 - std::abs(x - x_c[ir]) / dx), (real_t)0.0);
+                real_t wy = (NDIM > 1) ? std::max((real_t)(1.0 - std::abs(y - y_c[ir]) / dx), (real_t)0.0) : 1.0;
+                real_t wz = (NDIM > 2) ? std::max((real_t)(1.0 - std::abs(z - z_c[ir]) / dx), (real_t)0.0) : 1.0;
+                real_t w = wx * wy * wz;
+                if (w > 0.0) {
+                    q_d += dr[ir] * w / vol;
+                    q_u += ur[ir] * w;
+                    if (NDIM > 1) q_v += vr[ir] * w;
+                    if (NDIM > 2) q_w += wr[ir] * w;
+                    q_p += pr[ir] * w / vol;
+                    if (active_region < 0) active_region = ir;
+                }
+            }
+        }
+
+        if (active_region >= 0) {
+            grid_.uold(idc, 1) = q_d;
+            grid_.uold(idc, 2) = q_d * q_u;
+            if (NDIM > 1) grid_.uold(idc, 3) = q_d * q_v;
+            if (NDIM > 2) grid_.uold(idc, 4) = q_d * q_w;
+
+            real_t v2 = q_u * q_u;
+            if (NDIM > 1) v2 += q_v * q_v;
+            if (NDIM > 2) v2 += q_w * q_w;
+            real_t e_kin = 0.5 * q_d * v2;
+            real_t e_int = q_p / (gam - 1.0);
+
+            bool is_mhd = (grid_.nvar >= 11);
+            int start_idx = is_mhd ? 9 : (NDIM + 3);
+            int iener = is_mhd ? 5 : (NDIM + 2);
+
+            int nener = config_.get_int("hydro_params", "nener", 0);
+#ifdef RAMSES_NENER
+            if (RAMSES_NENER > 0) nener = RAMSES_NENER;
+#endif
+            real_t e_nonthermal = 0.0;
+            for (int ie = 0; ie < nener; ++ie) {
+                real_t p_non = 0.0;
+                int idx = ie * nreg + active_region;
+                if (idx < (int)prad_list.size()) {
+                    p_non = prad_list[idx];
+                }
+                real_t e_non = p_non / (grid_.gamma_rad[ie] - 1.0);
+                grid_.uold(idc, start_idx + ie) = e_non;
+                e_nonthermal += e_non;
             }
 
-            if (in_reg) {
-                grid_.uold(idc, 1) = dr[ir];
-                grid_.uold(idc, 2) = dr[ir] * ur[ir];
-                if (NDIM > 1) grid_.uold(idc, 3) = dr[ir] * vr[ir];
-                if (NDIM > 2) grid_.uold(idc, 4) = dr[ir] * wr[ir];
+            grid_.uold(idc, iener) = e_kin + e_int + e_nonthermal;
 
-                real_t v2 = ur[ir]*ur[ir];
-                if (NDIM > 1) v2 += vr[ir]*vr[ir];
-                if (NDIM > 2) v2 += wr[ir]*wr[ir];
-                real_t e_kin = 0.5 * dr[ir] * v2;
-                real_t e_int = pr[ir] / (gam - 1.0);
-
-                bool is_mhd = (grid_.nvar >= 11);
-                int start_idx = is_mhd ? 9 : (NDIM + 3);
-                int iener = is_mhd ? 5 : (NDIM + 2);
-
-                int nener = config_.get_int("hydro_params", "nener", 0);
-#ifdef RAMSES_NENER
-                if (RAMSES_NENER > 0) nener = RAMSES_NENER;
-#endif
-                real_t e_nonthermal = 0.0;
-                for (int ie = 0; ie < nener; ++ie) {
-                    real_t p_non = 0.0;
-                    int idx = ie * nreg + ir;
-                    if (idx < (int)prad_list.size()) {
-                        p_non = prad_list[idx];
-                    }
-                    real_t e_non = p_non / (grid_.gamma_rad[ie] - 1.0);
-                    grid_.uold(idc, start_idx + ie) = e_non;
-                    e_nonthermal += e_non;
-                }
-
-                grid_.uold(idc, iener) = e_kin + e_int + e_nonthermal;
-
-                int nvar_base = is_mhd ? 11 : (NDIM + 2);
-                int npassive = grid_.nvar - (nvar_base + nener);
-                int npassive_start_idx = start_idx + nener;
-                for (int ip = 1; ip <= npassive; ++ip) {
-                    grid_.uold(idc, npassive_start_idx + ip - 1) = dr[ir] * var_r[ir];
-                }
+            int nvar_base = is_mhd ? 11 : (NDIM + 2);
+            int npassive = grid_.nvar - (nvar_base + nener);
+            int npassive_start_idx = start_idx + nener;
+            for (int ip = 1; ip <= npassive; ++ip) {
+                grid_.uold(idc, npassive_start_idx + ip - 1) = q_d * var_val;
             }
         }
     };

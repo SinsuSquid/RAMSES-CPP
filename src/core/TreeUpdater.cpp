@@ -7,21 +7,16 @@
 #include <cmath>
 #include <vector>
 #include "ramses/core/Parameters.hpp"
+#include <iostream>
 
 namespace ramses {
 
 TreeUpdater::TreeUpdater(AmrGrid& grid, Config& config) : grid_(grid), config_(config) {}
 
 int get_nbor_of_coarse(const AmrGrid& grid, int ic, int idim, int side) {
-    int nx = grid.nx, ny = grid.ny, nz = grid.nz;
-    int idx = ic - 1;
-    int iz = idx / (nx * ny); int rem = idx % (nx * ny);
-    int iy = rem / nx; int ix = rem % nx;
-    int ixyz[3] = {ix, iy, iz};
-    int n[3] = {nx, ny, nz};
-    if (side == 0) ixyz[idim] = (ixyz[idim] - 1 + n[idim]) % n[idim];
-    else ixyz[idim] = (ixyz[idim] + 1) % n[idim];
-    return ixyz[2] * nx * ny + ixyz[1] * nx + ixyz[0] + 1;
+    int icn[6] = {0};
+    grid.get_nbor_cells_coarse(ic, icn);
+    return icn[idim * 2 + side];
 }
 
 void TreeUpdater::make_grid_fine(int ilevel) {
@@ -216,47 +211,51 @@ void TreeUpdater::restrict_fine(int ilevel) {
 void TreeUpdater::smooth_fine(int ilevel) {
     int myid = MpiManager::instance().rank() + 1, n2d = (1 << NDIM);
     int ngridmax = grid_.ngridmax;
+    int n_nbor[3] = {1, 2, 2};
 
-    std::vector<int> ok_flag(grid_.ncell, 0);
+    for (int ismooth = 0; ismooth < NDIM; ++ismooth) {
+        int thresh = n_nbor[ismooth];
+        std::vector<int> ok_flag(grid_.ncell, 0);
 
-    if (ilevel == 0) {
-        for (int ic = 1; ic <= grid_.ncoarse; ++ic) {
-            if (grid_.flag1[ic - 1] == 0) {
-                int icn_nb[6]; grid_.get_nbor_cells_coarse(ic, icn_nb);
-                int num_flagged_nbors = 0;
-                for (int inbor = 0; inbor < 2 * NDIM; ++inbor) {
-                    int neighbor_cell = icn_nb[inbor];
-                    if (neighbor_cell > 0 && neighbor_cell <= grid_.ncoarse) {
-                        if (grid_.flag1[neighbor_cell - 1] == 1) num_flagged_nbors++;
-                    }
-                }
-                if (num_flagged_nbors > 0) ok_flag[ic - 1] = 1;
-            }
-        }
-    } else {
-        int ig = grid_.get_headl(myid, ilevel);
-        while (ig > 0) {
-            int ign[7]; grid_.get_nbor_grids(ig, ign);
-            for (int ic = 1; ic <= n2d; ++ic) {
-                int idc = grid_.ncoarse + (ic - 1) * ngridmax + ig - 1;
-                if (grid_.flag1[idc] == 0) {
-                    int icn_nb[6]; grid_.get_nbor_cells_exact(ign, ic, icn_nb);
+        if (ilevel == 0) {
+            for (int ic = 1; ic <= grid_.ncoarse; ++ic) {
+                if (grid_.flag1[ic - 1] == 0) {
+                    int icn_nb[6]; grid_.get_nbor_cells_coarse(ic, icn_nb);
                     int num_flagged_nbors = 0;
                     for (int inbor = 0; inbor < 2 * NDIM; ++inbor) {
                         int neighbor_cell = icn_nb[inbor];
-                        if (neighbor_cell > 0 && neighbor_cell <= grid_.ncell) {
+                        if (neighbor_cell > 0 && neighbor_cell <= grid_.ncoarse) {
                             if (grid_.flag1[neighbor_cell - 1] == 1) num_flagged_nbors++;
                         }
                     }
-                    if (num_flagged_nbors > 0) ok_flag[idc] = 1;
+                    if (num_flagged_nbors >= thresh) ok_flag[ic - 1] = 1;
                 }
             }
-            ig = grid_.next[ig - 1];
+        } else {
+            int ig = grid_.get_headl(myid, ilevel);
+            while (ig > 0) {
+                int ign[7]; grid_.get_nbor_grids(ig, ign);
+                for (int ic = 1; ic <= n2d; ++ic) {
+                    int idc = grid_.ncoarse + (ic - 1) * ngridmax + ig - 1;
+                    if (grid_.flag1[idc] == 0) {
+                        int icn_nb[6]; grid_.get_nbor_cells_exact(ign, ic, icn_nb);
+                        int num_flagged_nbors = 0;
+                        for (int inbor = 0; inbor < 2 * NDIM; ++inbor) {
+                            int neighbor_cell = icn_nb[inbor];
+                            if (neighbor_cell > 0 && neighbor_cell <= grid_.ncell) {
+                                if (grid_.flag1[neighbor_cell - 1] == 1) num_flagged_nbors++;
+                            }
+                        }
+                        if (num_flagged_nbors >= thresh) ok_flag[idc] = 1;
+                    }
+                }
+                ig = grid_.next[ig - 1];
+            }
         }
-    }
 
-    for (int i = 0; i < (int)grid_.ncell; ++i) {
-        if (ok_flag[i] == 1) grid_.flag1[i] = 1;
+        for (int i = 0; i < (int)grid_.ncell; ++i) {
+            if (ok_flag[i] == 1) grid_.flag1[i] = 1;
+        }
     }
 }
 
@@ -400,27 +399,93 @@ void TreeUpdater::flag_fine(int ilevel, real_t ed, real_t ep, real_t ev, real_t 
 
     smooth_fine(ilevel);
 
+    std::vector<double> r_refine = config_.get_double_array("refine_params", "r_refine");
+    std::vector<double> x_refine = config_.get_double_array("refine_params", "x_refine");
+    std::vector<double> y_refine = config_.get_double_array("refine_params", "y_refine");
+    std::vector<double> z_refine = config_.get_double_array("refine_params", "z_refine");
+    std::vector<double> exp_refine = config_.get_double_array("refine_params", "exp_refine");
+
+    int geom_idx = ilevel - lmin;
+    bool has_geom = (geom_idx >= 0 && geom_idx < (int)r_refine.size() && r_refine[geom_idx] > 0.0);
+    real_t rr = has_geom ? r_refine[geom_idx] : -1.0;
+    real_t xr = (has_geom && geom_idx < (int)x_refine.size()) ? x_refine[geom_idx] : 0.0;
+    real_t yr = (has_geom && geom_idx < (int)y_refine.size()) ? y_refine[geom_idx] : 0.0;
+    real_t zr = (has_geom && geom_idx < (int)z_refine.size()) ? z_refine[geom_idx] : 0.0;
+    real_t er = (has_geom && geom_idx < (int)exp_refine.size()) ? exp_refine[geom_idx] : 2.0;
+
+    auto check_geom = [&](real_t x, real_t y, real_t z) -> bool {
+        if (!has_geom) return true;
+        real_t xn = 2.0 * std::abs(x - xr) / rr;
+        real_t yn = (NDIM > 1) ? (2.0 * std::abs(y - yr) / rr) : 0.0;
+        real_t zn = (NDIM > 2) ? (2.0 * std::abs(z - zr) / rr) : 0.0;
+        real_t r = 0.0;
+        if (er < 10.0) {
+            real_t sum = std::pow(xn, er);
+            if (NDIM > 1) sum += std::pow(yn, er);
+            if (NDIM > 2) sum += std::pow(zn, er);
+            r = std::pow(sum, 1.0 / er);
+        } else {
+            r = std::max({xn, yn, zn});
+        }
+        return (r < 1.0);
+    };
+
+    auto check_gradient = [&](const CellState& sl, const CellState& sc, const CellState& sr, int idim) -> bool {
+        if (ed > 0.0) {
+            real_t error = get_err_grad(sl.d, sc.d, sr.d, 1e-10);
+            if (error > ed) return true;
+        }
+        if (ep > 0.0) {
+            real_t error = get_err_grad(sl.p, sc.p, sr.p, 1e-10);
+            if (error > ep) return true;
+        }
+        if (ev > 0.0) {
+            real_t vl = sl.v[idim], vc = sc.v[idim], vr = sr.v[idim];
+            real_t cl = std::sqrt(std::max(grid_.gamma * sl.p / sl.d, (real_t)1e-20));
+            real_t cc = std::sqrt(std::max(grid_.gamma * sc.p / sc.d, (real_t)1e-20));
+            real_t cr = std::sqrt(std::max(grid_.gamma * sr.p / sr.d, (real_t)1e-20));
+            real_t d1 = std::abs(vr - vc) / (cr + cc + std::abs(vr) + std::abs(vc) + 1e-10);
+            real_t d2 = std::abs(vc - vl) / (cc + cl + std::abs(vc) + std::abs(vl) + 1e-10);
+            real_t error = 2.0 * std::max(d1, d2);
+            if (error > ev) return true;
+        }
+        return false;
+    };
+
+    auto get_boundary_or_cell_state = [&](int id_n, const CellState& sc, int idim) -> CellState {
+        if (id_n > 0 && id_n <= grid_.ncell) {
+            return get_cell_state(id_n);
+        }
+        CellState s = sc;
+        int ib = -id_n;
+        if (ib > 0 && ib <= (int)grid_.bound_type.size() && grid_.bound_type[ib - 1] == 1) {
+            s.v[idim] = -sc.v[idim];
+        }
+        return s;
+    };
+
     if (ed > 0.0 || ep > 0.0 || ev > 0.0 || eb2 > 0.0) {
         if (ilevel == 0) {
             for (int i = 1; i <= grid_.ncoarse; ++i) {
                 if (grid_.flag1[i-1] == 0) {
                     bool ok = false;
                     CellState state_c = get_cell_state(i);
+                    int icn_coarse[6] = {0};
+                    grid_.get_nbor_cells_coarse(i, icn_coarse);
                     for (int idim = 0; idim < NDIM; ++idim) {
-                        int nx_dim = (idim == 0) ? grid_.nx : ((idim == 1) ? grid_.ny : grid_.nz);
-                        int nskip = (idim == 0) ? 1 : ((idim == 1) ? grid_.nx : grid_.nx * grid_.ny);
-                        int id_l = i - nskip; if (id_l < 1) id_l += nx_dim * nskip;
-                        int id_r = i + nskip; if (id_r > grid_.ncoarse) id_r -= nx_dim * nskip;
+                        int id_l = icn_coarse[idim * 2];
+                        int id_r = icn_coarse[idim * 2 + 1];
+                        CellState state_l = get_boundary_or_cell_state(id_l, state_c, idim);
+                        CellState state_r = get_boundary_or_cell_state(id_r, state_c, idim);
                         
-                        CellState state_l = get_cell_state(id_l);
-                        CellState state_r = get_cell_state(id_r);
-                        
-                        if (ed > 0.0) {
-                            real_t error = get_err_grad(state_l.d, state_c.d, state_r.d, 1e-10);
-                            if (error > ed) { ok = true; break; }
+                        if (check_gradient(state_l, state_c, state_r, idim)) {
+                            ok = true; break;
                         }
                     }
-                    if (ok) grid_.flag1[i-1] = 1;
+                    if (ok) {
+                        real_t xc[3]; grid_.get_cell_center(i, xc);
+                        if (check_geom(xc[0], xc[1], xc[2])) grid_.flag1[i-1] = 1;
+                    }
                 }
             }
         } else {
@@ -439,17 +504,17 @@ void TreeUpdater::flag_fine(int ilevel, real_t ed, real_t ep, real_t ev, real_t 
                             int id_r = icn_nb[idim*2+1];
                             if (id_r == 0) id_r = grid_.nbor[(idim*2+1) * grid_.ngridmax + ig - 1];
                             
-                            CellState state_l = (id_l > 0 && id_l <= grid_.ncell) ? get_cell_state(id_l) : state_c;
-                            CellState state_r = (id_r > 0 && id_r <= grid_.ncell) ? get_cell_state(id_r) : state_c;
+                            CellState state_l = get_boundary_or_cell_state(id_l, state_c, idim);
+                            CellState state_r = get_boundary_or_cell_state(id_r, state_c, idim);
                             
-                            if (ed > 0.0) {
-                                real_t error = get_err_grad(state_l.d, state_c.d, state_r.d, 1e-10);
-                                if (error > ed) { 
-                                    ok = true; break; 
-                                }
+                            if (check_gradient(state_l, state_c, state_r, idim)) {
+                                ok = true; break;
                             }
                         }
-                        if (ok) grid_.flag1[idc] = 1;
+                        if (ok) {
+                            real_t xc[3]; grid_.get_cell_center(idc + 1, xc);
+                            if (check_geom(xc[0], xc[1], xc[2])) grid_.flag1[idc] = 1;
+                        }
                     }
                 }
                 ig = grid_.next[ig - 1];

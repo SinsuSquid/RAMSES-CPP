@@ -833,9 +833,25 @@ void HydroSolver::interpol_hydro(const real_t u1[7][64], real_t u2[8][64]) {
             }
         }
     } else {
-        // Mode 2: primitive variables (density, velocity, pressure, scalars)
+        // Mode 2: density, velocity, internal energy, scalars
         for (int i = 0; i < 7; ++i) {
-            ctoprim(u1[i], q1[i], gam);
+            real_t d = std::max(u1[i][0], (real_t)1e-10);
+            q1[i][0] = u1[i][0]; // density
+            real_t e_kin = 0.0;
+            for (int idim = 1; idim <= NDIM; ++idim) {
+                q1[i][idim] = u1[i][idim] / d; // velocity
+                e_kin += 0.5 * u1[i][idim] * u1[i][idim] / d;
+            }
+            real_t e_nonthermal = 0.0;
+            int iener = NDIM + 1;
+            for (int ie = 0; ie < nener_; ++ie) {
+                e_nonthermal += u1[i][iener + 1 + ie];
+                q1[i][iener + 1 + ie] = u1[i][iener + 1 + ie];
+            }
+            q1[i][iener] = u1[i][iener] - e_kin - e_nonthermal; // internal energy
+            for (int iv = iener + 1 + nener_; iv < nvar; ++iv) {
+                q1[i][iv] = u1[i][iv]; // passive scalars/other vars
+            }
         }
     }
 
@@ -845,23 +861,23 @@ void HydroSolver::interpol_hydro(const real_t u1[7][64], real_t u2[8][64]) {
         for (int idim = 0; idim < NDIM; ++idim) {
             real_t dlft = q1[0][iv] - q1[2*idim+1][iv];
             real_t drgt = q1[2*idim+2][iv] - q1[0][iv];
-            if (dlft * drgt > 0.0) {
-                real_t sgn = (dlft >= 0.0) ? 1.0 : -1.0;
-                int itype = interpol_type;
-                if (interpol_type == 4) {
-                    // type 3 (central) for velocity, type 2 (moncen) for others
-                    if (interpol_var == 2 && iv >= 1 && iv <= NDIM) {
-                        itype = 3;
-                    } else {
-                        itype = 2;
-                    }
+            int itype = interpol_type;
+            if (interpol_type == 4) {
+                // type 3 (central) for velocity, type 2 (moncen) for others
+                if (interpol_var == 2 && iv >= 1 && iv <= NDIM) {
+                    itype = 3;
+                } else {
+                    itype = 2;
                 }
+            }
+            if (itype == 3) {
+                slopes[idim] = 0.25 * (dlft + drgt);
+            } else if (dlft * drgt > 0.0) {
+                real_t sgn = (dlft >= 0.0) ? 1.0 : -1.0;
                 if (itype == 1) {
                     slopes[idim] = sgn * 0.5 * std::min(std::abs(dlft), std::abs(drgt));
                 } else if (itype == 2) {
                     slopes[idim] = sgn * std::min({std::abs(dlft), std::abs(drgt), 0.25 * std::abs(dlft + drgt)});
-                } else if (itype == 3) {
-                    slopes[idim] = 0.25 * (dlft + drgt);
                 } else {
                     slopes[idim] = 0.0;
                 }
@@ -903,38 +919,43 @@ void HydroSolver::interpol_hydro(const real_t u1[7][64], real_t u2[8][64]) {
             }
         }
     } else {
-        // Mode 2: primitive variables -> conserved variables (with momentum conservation)
+        // Mode 2: density, velocity, internal energy -> conserved variables (with momentum conservation)
         int n2d = 1 << NDIM;
         real_t oneover_n2d = 1.0 / n2d;
-        for (int d_idx = 1; d_idx <= NDIM; ++d_idx) {
+        for (int i = 0; i < 8; ++i) {
+            real_t d = std::max(q2[i][0], (real_t)1e-10);
+            u2[i][0] = d;
+            for (int idim = 1; idim <= NDIM; ++idim) {
+                u2[i][idim] = q2[i][idim] * d;
+            }
+            for (int iv = NDIM + 1; iv < nvar; ++iv) {
+                u2[i][iv] = q2[i][iv];
+            }
+        }
+
+        for (int idim = 1; idim <= NDIM; ++idim) {
             real_t mom_sum = 0.0;
             for (int i = 0; i < n2d; ++i) {
-                mom_sum += q2[i][0] * q2[i][d_idx] * oneover_n2d;
+                mom_sum += u2[i][idim] * oneover_n2d;
             }
-            real_t mom_err = mom_sum - u1[0][d_idx];
+            real_t mom_err = mom_sum - u1[0][idim];
             for (int i = 0; i < n2d; ++i) {
-                real_t d = std::max(q2[i][0], (real_t)1e-10);
-                q2[i][d_idx] = (d * q2[i][d_idx] - mom_err) / d;
+                u2[i][idim] -= mom_err;
             }
         }
 
         int iener = NDIM + 1;
         for (int i = 0; i < 8; ++i) {
-            real_t d = std::max(q2[i][0], 1e-10);
-            real_t p = 0;
-            if (params::barotropic_eos) {
-                p = EquationOfState::get_barotropic_pressure(d);
-            } else {
-                p = std::max(q2[i][iener], 1e-20);
+            real_t d = std::max(u2[i][0], (real_t)1e-10);
+            real_t e_kin = 0.0;
+            for (int idim = 1; idim <= NDIM; ++idim) {
+                e_kin += 0.5 * u2[i][idim] * u2[i][idim] / d;
             }
-            
-            u2[i][0] = d;
-            real_t v2 = 0;
-            for(int d_idx=1; d_idx<=NDIM; ++d_idx) { u2[i][d_idx] = d * q2[i][d_idx]; v2 += q2[i][d_idx] * q2[i][d_idx]; }
-            real_t e_thermal = p / (gam - 1.0), e_kinetic = 0.5 * d * v2, e_nonthermal = 0.0;
-            for (int ie = 0; ie < nener_; ++ie) { real_t e_rad = q2[i][iener+1+ie] / (grid_.gamma_rad[ie] - 1.0); u2[i][iener+1+ie] = e_rad; e_nonthermal += e_rad; }
-            u2[i][iener] = e_thermal + e_kinetic + e_nonthermal;
-            for (int iv = iener + 1 + nener_; iv < nvar; ++iv) u2[i][iv] = d * q2[i][iv];
+            real_t e_nonthermal = 0.0;
+            for (int ie = 0; ie < nener_; ++ie) {
+                e_nonthermal += u2[i][iener + 1 + ie];
+            }
+            u2[i][iener] = q2[i][iener] + e_kin + e_nonthermal;
         }
     }
 }
