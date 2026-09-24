@@ -65,6 +65,10 @@ while getopts "cksp:qt:vr" OPTION; do
          SELECTTEST=true;
          TESTNUMBER=$OPTARG;
       ;;
+      q)
+         SELECTTEST=true;
+         TESTNUMBER="hydro/advect1d,hydro/sod-tube,mhd/imhd-tube";
+      ;;
       v)
          VERBOSE=true;
       ;;
@@ -170,65 +174,69 @@ if $SELECTTEST ; then
    s1=$(echo $TESTNUMBER | sed 's/,/ /g');
    testsegs=( $s1 );
    nseg=${#testsegs[@]};
-
-   # Check if entire directory is submitted
-   dir_list="";
-   for ((n=0;n<$nseg;n++)); do
-      for ((m=0;m<$nseg_all;m++)); do
-         if [ ${testsegs[n]} == ${testsegs_all[m]} ] ; then
-            dir_list="${dir_list} ${testsegs[n]}/*";
-         fi
-      done
-   done
-
-   # Split list of directories into array
-   s1=$(echo $dir_list);
-   submit_dirs=( $s1 );
-   nsubs=${#submit_dirs[@]};
    ntests=0;
-   if [ ${nsubs} -gt 0 ] ; then
-      for ((n=0;n<$nsubs;n++)); do
-         for ((m=0;m<$ntestsall;m++)); do
-            # If directory requested is found in global test list,
-            # add it to the current test list
-            if [ ${submit_dirs[n]} == ${testname[m]} ] ; then
-               testnum[${ntests}]=$m;
-               ntests=$((ntests + 1));
-            fi
-         done
-      done
 
-   else
+   for ((n=0;n<$nseg;n++)); do
+      seg="${testsegs[n]}";
 
-      # Search for dashes in individual segments
-      for ((n=0;n<$nseg;n++)); do
-         dashsearch=$(echo ${testsegs[n]} | grep '-');
-         if [ ${#dashsearch} -gt 0 ] ; then
-            istart=$(echo ${testsegs[n]} | cut -d '-' -f1);
-            iend=$(echo ${testsegs[n]} | cut -d '-' -f2);
-            is=$((istart - 1));
-            ie=$((iend - 1));
-            iep1=$(($ie + 1));
-            for ((j=$is;j<$iep1;j++)); do
-               if [ ${j} -ge 0 ] && [ ${j} -lt $ntestsall ] ; then
-                  testnum[${ntests}]=$j;
+      # 1. Check if matches category directory (e.g. "hydro", "mhd")
+      is_dir=false;
+      for ((m=0;m<$nseg_all;m++)); do
+         if [ "$seg" == "${testsegs_all[m]}" ] ; then
+            is_dir=true;
+            for ((k=0;k<$ntestsall;k++)); do
+               if [[ "${testname[k]}" == "${seg}"/* ]] ; then
+                  testnum[${ntests}]=$k;
                   ntests=$((ntests + 1));
-               else
-                  echo "Selected test ${j} does not exist! Ignoring test" | tee -a $LOGFILE;
                fi
             done
-         else
-            # No dash, just include test in list
-            if [ ${testsegs[n]} -gt 0 ] && [ ${testsegs[n]} -le $ntestsall ] ; then
-               testnum[${ntests}]=$((${testsegs[n]} - 1));
-               ntests=$((ntests + 1));
-            else
-               echo "Selected test ${testsegs[n]} does not exist! Ignoring test" | tee -a $LOGFILE;
-            fi
-
+            break;
          fi
       done
-   fi
+      if $is_dir ; then continue; fi
+
+      # 2. Check if matches full test name (e.g. "hydro/sod-tube") or test basename (e.g. "sod-tube")
+      is_test=false;
+      for ((m=0;m<$ntestsall;m++)); do
+         bname=$(basename "${testname[m]}");
+         if [ "$seg" == "${testname[m]}" ] || [ "$seg" == "$bname" ] ; then
+            testnum[${ntests}]=$m;
+            ntests=$((ntests + 1));
+            is_test=true;
+            break;
+         fi
+      done
+      if $is_test ; then continue; fi
+
+      # 3. Check if numeric range (e.g. "3-5")
+      if [[ "$seg" =~ ^[0-9]+-[0-9]+$ ]] ; then
+         istart=$(echo "$seg" | cut -d '-' -f1);
+         iend=$(echo "$seg" | cut -d '-' -f2);
+         for ((j=$((istart - 1));j<=$((iend - 1));j++)); do
+            if [ ${j} -ge 0 ] && [ ${j} -lt $ntestsall ] ; then
+               testnum[${ntests}]=$j;
+               ntests=$((ntests + 1));
+            else
+               echo "Selected test $(($j + 1)) does not exist! Ignoring test" | tee -a $LOGFILE;
+            fi
+         done
+         continue;
+      fi
+
+      # 4. Check if individual number (e.g. "10")
+      if [[ "$seg" =~ ^[0-9]+$ ]] ; then
+         j=$((seg - 1));
+         if [ ${j} -ge 0 ] && [ ${j} -lt $ntestsall ] ; then
+            testnum[${ntests}]=$j;
+            ntests=$((ntests + 1));
+         else
+            echo "Selected test $seg does not exist! Ignoring test" | tee -a $LOGFILE;
+         fi
+         continue;
+      fi
+
+      echo "Selected test $seg does not exist! Ignoring test" | tee -a $LOGFILE;
+   done
 
 else
 
